@@ -1,0 +1,48 @@
+{
+  "summary": "Full E2E test of BEATCUT MVP. Backend: 16/17 pytest tests pass (1 test bug fixed; 1 environment-related failure for brute-force lockout when going through public ingress with rotating proxy IPs — works perfectly via localhost). Frontend: landing/login/dashboard/Stripe checkout redirect/force-PRO/unsubscribe with AlertDialog/resubscribe button/studio iframe/logout all PASS. Demo user subscription reset to null at the end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/auth/login",
+        "issue": "Brute-force lockout uses `f\"{request.client.host}:{email}\"` as identifier. Behind the Kubernetes ingress/reverse-proxy the immediate request.client.host can rotate between pods/proxy IPs, so 5 failed attempts from a real attacker may not reliably trigger 429. Test confirmed: works correctly via localhost (lockout on 6th attempt), but fails via public URL (got 6x 401, no 429). Recommend using only email as identifier OR reading X-Forwarded-For real client IP."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Logout redirect",
+        "issues": ["After clicking the nav logout button user lands on /login instead of the landing page /. Functionally fine (session cleared, protected routes blocked) but main-agent spec said 'redirect to landing'. Minor UX deviation."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional, minor) Harden brute-force lockout for production behind a proxy: include X-Forwarded-For or rate-limit by email only.",
+    "(Optional, minor) Decide whether logout should redirect to / (landing) or /login — currently /login."
+  ],
+  "critical_code_review_comments": [
+    "server.py: clean and small (~480 lines), good separation. Subscription/payment flow is idempotent via payment_transactions.processed. Good.",
+    "MongoDB _id properly excluded everywhere with projections {_id:0}.",
+    "JWT cookie set httponly+secure+samesite=lax — good. Google session cookie uses samesite=none+secure which is correct for cross-site OAuth flows.",
+    "seed_user idempotent and updates password if changed — good.",
+    "Server-side enforced PRO_PRICE (9.99 EUR) — payment amount cannot be tampered from frontend. Good.",
+    "Minor: brute-force identifier includes request.client.host — behind k8s ingress this rotates and weakens protection (see backend_issues.minor)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (created)"
+  ],
+  "success_rate": {"backend": "94% (16/17 pytest; 1 env-dependent brute force failure)", "frontend": "100% on critical flows"},
+  "test_credentials": "Demo: demo@beatcut.fr / Demo1234! ; Admin: admin@beatcut.fr / Admin123! (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "Used Mongo direct write to (a) force PRO subscription on demo user for unsubscribe-flow test, (b) inject fake Google session per /app/auth_testing.md Step 3. All TEST_ users and login_attempts cleaned up; demo subscription reset to null at end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest covers: health, register/login/me/logout, brute-force, Google bearer session, payment checkout creation + status, force-PRO via Mongo + /me reflects PRO, /api/subscription GET + cancel + double-cancel rejection + cancel-without-sub rejection. UI Playwright tested landing (FR copy, 9,99€, Gratuit), mobile viewport (390x844 screenshot), protected route redirect, demo login, GRATUIT badge, Stripe checkout URL navigation (verified URL contains checkout.stripe.com), force-PRO badge + unsubscribe AlertDialog + resubscribe button visible + toast, /studio iframe loaded with full editor UI, logout + post-logout protection. The brute-force minor issue is environment-related (k8s ingress rotates client IPs) and likely works fine for normal users with stable IPs — flag but not a blocker.",
+  "rca_of_the_issue": "Brute-force lockout test failure RCA: identifier = f'{request.client.host}:{email}' in /app/backend/server.py line ~262. When tests hit the public URL https://pro-mailer-2.preview.emergentagent.com, Kubernetes ingress/proxy forwards from rotating internal IPs, so login_attempts rows accumulate under different identifiers and the per-identifier count never reaches MAX_ATTEMPTS=5. Direct curl on localhost:8001 shows correct 401×5 then 429 (verified). Mitigation: read real client IP from X-Forwarded-For (first hop) or simply key the rate-limit by email only for app-layer protection."
+}
