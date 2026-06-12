@@ -1,0 +1,113 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 2: Performance Pro (Tactical Minimalism / Creative Control Room)",
+  "design_philosophy": "A mix of high-contrast modern dark mode with a 'command-center' studio feel. It contrasts the deep dark background (#121016) with ivory text (#ece6da) and vibrant, precise accents (red #ff3b30 for action, green #d9ffd0 for data/OSD terminal overlays).",
+  "colors": {
+    "background": {
+      "primary": "#121016",
+      "secondary": "#1A1720",
+      "tertiary": "#2A2631"
+    },
+    "text": {
+      "primary": "#ece6da",
+      "secondary": "#9ca3af",
+      "tertiary": "#6b7280"
+    },
+    "accent": {
+      "primary": "#ff3b30",
+      "primary_hover": "#d32f2f",
+      "secondary": "#d9ffd0",
+      "border": "#2A2631"
+    }
+  },
+  "typography": {
+    "headings": {
+      "font_family": "Cabinet Grotesk, sans-serif",
+      "weight": "800",
+      "tracking": "tracking-tight"
+    },
+    "body": {
+      "font_family": "DM Sans, sans-serif",
+      "weight": "400",
+      "tracking": "tracking-normal"
+    },
+    "mono_terminal": {
+      "font_family": "JetBrains Mono, monospace",
+      "weight": "500",
+      "usage": "Used for timestamps, BPM, video lengths, and technical/OSD overlays."
+    },
+    "scale": {
+      "h1": "text-5xl sm:text-6xl+",
+      "h2": "text-3xl sm:text-4xl",
+      "h3": "text-xl sm:text-2xl",
+      "h4": "text-lg sm:text-xl",
+      "body": "text-base",
+      "small": "text-sm",
+      "overline": "text-xs tracking-[0.2em] uppercase"
+    }
+  },
+  "spacing_and_layout": {
+    "landing_page": {
+      "padding": "py-24 to py-32 for sections",
+      "grid": "grid-cols-1 md:grid-cols-12 gap-8 to gap-12",
+      "alignment": "Left-aligned for textual blocks, massive asymmetrical layouts"
+    },
+    "studio_app": {
+      "padding": "p-4 to p-6",
+      "grid": "grid-cols-1 md:grid-cols-12 h-screen overflow-hidden gap-4",
+      "layout_structure": "Left Panel (col-span-3, tools/steps), Center Preview Canvas (col-span-6, 9:16 focus), Right Panel (col-span-3, settings/export) or Bottom Timeline (row-span-2)."
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#ff3b30] text-[#ece6da] hover:bg-[#d32f2f] rounded-none px-6 py-3 font-bold transition-all transform hover:-translate-y-1 shadow-[0_0_15px_rgba(255,59,48,0.4)]",
+      "secondary": "bg-transparent border border-[#2A2631] text-[#ece6da] hover:border-[#ece6da] rounded-none px-6 py-3 transition-colors"
+    },
+    "cards": {
+      "marketing": "bg-[#1A1720] border border-[#2A2631] p-8 relative overflow-hidden group hover:border-[#d9ffd0] transition-colors",
+      "pricing": "3-card tiering pattern, Pro card highlighted with #ff3b30 border and subtle neon glow.",
+      "studio_panels": "Flat backgrounds (#1A1720), 1px solid border (#2A2631), no shadows. Tactical feel."
+    },
+    "inputs": {
+      "style": "bg-[#121016] border border-[#2A2631] text-[#ece6da] focus:border-[#d9ffd0] focus:ring-1 focus:ring-[#d9ffd0] rounded-none"
+    }
+  },
+  "motion": {
+    "transitions": "transition-all duration-200 ease-in-out",
+    "hover_effects": "Slight lift (-translate-y-1) for marketing cards, subtle border color shift for app controls.",
+    "studio": "Instantaneous snap, minimal animation to preserve a 'pro tool' fast feel."
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://images.unsplash.com/photo-1765539160785-e7953620488f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwyfHxjb250ZW50JTIwY3JlYXRvciUyMG5lb24lMjBzdHVkaW98ZW58MHx8fHwxNzgxMjU5MTg1fDA&ixlib=rb-4.1.0&q=85",
+        "category": "hero_background",
+        "description": "Man working in neon studio. Use with a heavy black overlay (bg-black/60) behind the main hero text to establish the 'creator studio' vibe."
+      },
+      {
+        "url": "https://images.pexels.com/photos/11809800/pexels-photo-11809800.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "feature_showcase",
+        "description": "Smartphone displaying vertical video with vibrant neon background. Use in the 'Export to TikTok/Reels' section."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1572018098513-8c5fa9a254cc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwzfHxjb250ZW50JTIwY3JlYXRvciUyMG5lb24lMjBzdHVkaW98ZW58MHx8fHwxNzgxMjU5MTg1fDA&ixlib=rb-4.1.0&q=85",
+        "category": "mood_accent",
+        "description": "Lighted red Studio signage. Use as a subtle decorative image or in the about/community section."
+      }
+    ],
+    "image_treatment": "All images should have a subtle dark/grayscale filter that brightens on hover, or a strict opacity overlay to maintain the dark tactical contrast."
+  },
+  "accessibility": {
+    "contrast": "Ensure #ece6da on #121016 passes AAA. The #9ca3af secondary text must pass AA.",
+    "testing_attributes": "All buttons, forms, tabs, and export actions MUST have data-testid attributes (e.g., data-testid='studio-export-button', data-testid='pricing-subscribe-pro')."
+  },
+  "instructions_to_main_agent": [
+    "Install required fonts: Cabinet Grotesk, DM Sans, JetBrains Mono.",
+    "Use @phosphor-icons/react for precise, technical iconography suitable for a Pro tool.",
+    "Structure the app into two layouts: 1) Marketing/Auth Layout (scrolling, expansive, highly padded), 2) Studio Layout (h-screen, overflow-hidden, dense control-room grid).",
+    "For the Studio UI, use a strict grid with left sidebar for track/video upload and bpm syncing, center for the 9:16 vertical video preview canvas, and right sidebar (or bottom) for timeline/export.",
+    "Use pure HTML/Tailwind for the landing page for maximum creative freedom. Use Shadcn for the Studio (dropdowns, sliders, tabs).",
+    "Ensure the 'Se désabonner' (Unsubscribe) functionality and Google Login are seamlessly integrated in the Dashboard.",
+    "Implement the green OSD/terminal accent (#d9ffd0) via a monospace font specifically for the BPM counter, timestamps, and processing status messages to retain the 'camcorder' studio feel."
+  ]
+}
