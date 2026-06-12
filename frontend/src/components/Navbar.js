@@ -15,8 +15,8 @@ export default function Navbar({ landing = false }) {
   const [open, setOpen] = useState(false);
 
   const handleLogout = async () => {
-    await logout();
     navigate("/");
+    await logout();
   };
 
   const links = landing
