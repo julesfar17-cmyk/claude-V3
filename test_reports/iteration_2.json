@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 2 E2E (auth/email reset + REAL Stripe live subscriptions + Resend simulated + studio turnkey proxy). Backend: 24/24 pytest tests PASS (8 new tests added for forgot/reset, proxy auth, proxy pexels, reactivate). Frontend: forgot-password flow with dev_reset_link, reset-password (TempTest99! → relogin), edge cases (mismatched confirm, no token), studio iframe turnkey mode (Groq/Pexels key fields hidden, pexelsInfo 'aucune clé à fournir', 12 thumbnails via /api/proxy/pexels), dashboard 'Passer en PRO' redirects to live Stripe checkout (cs_live_ verified), full lifecycle (force PRO no-stripe-ids → désabonner with confirm dialog → status canceled → Se réabonner → /reactivate 400 → checkout fallback cs_live_ verified), logout redirects to landing / (fix from iteration 1 confirmed). NO card data entered on Stripe live page. Demo password reset to Demo1234! and subscription nulled at the end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "Brute-force identifier already improved to use X-Forwarded-For (line ~404) — works now via public URL; previous iteration 1 minor item resolved."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py grew to ~780 lines but is well-organized by section comments. Acceptable; could split (auth/payments/proxy) once it crosses ~1000 lines.",
+    "send_email() correctly returns False in simulated mode and forgot_password leaks dev_reset_link ONLY when not sent — this is the intended demo-mode UX. Safe as long as RESEND_API_KEY remains empty in dev only (in prod must be set).",
+    "/api/proxy/transcribe properly enforces 26MB cap and auth before forwarding to Groq. Good.",
+    "Sub reactivate handles missing stripe_subscription_id with 400 + frontend gracefully falls back to /payments/checkout. Good UX.",
+    "Stripe key is sk_live — be sure documentation/UX warns user during testing (already respected: no card data entered).",
+    "MongoDB _id excluded everywhere via {_id:0}. Good.",
+    "Password reset token: 1h expiry + used-flag + URL-safe 32 bytes — solid."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (extended with TestForgotReset, TestProxy, TestReactivate)"
+  ],
+  "success_rate": {"backend": "100% (24/24 pytest)", "frontend": "100% on all critical flows tested"},
+  "test_credentials": "Demo: demo@beatcut.fr / Demo1234! ; Admin: admin@beatcut.fr / Admin123!",
+  "seed_data_creation": "Temporarily forced PRO subscription on demo user (no stripe ids) for lifecycle test; reset to null at the end. Created/deleted a few TEST_ users for register/reactivate edge tests; cleaned up.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All iteration 2 features verified end-to-end. Backend pytest covers: health, auth (register/login/me/logout/dup/invalid), brute-force lockout, Google bearer session, payments (auth + checkout creation w/ cs_live_), subscription (force PRO + GET + cancel + double-cancel + cancel-without-sub), forgot/reset full cycle + token reuse + invalid token + unknown email generic response, proxy pexels & transcribe auth + pexels authenticated. Frontend Playwright covers forgot/reset flow (link + dev_reset_link + reset + new-password login), reset edge cases (mismatch + no-token invalid-link), studio turnkey (#cloudOpts & #pexelsKeyRow hidden, 'aucune clé', 12 pexels results), dashboard Passer en PRO → live Stripe cs_live_ redirect, force-PRO + cancel via AlertDialog + Se réabonner fallback to live checkout, logout → landing /. Demo password is Demo1234! and subscription is null at the end of run.",
+  "rca_of_the_issue": "N/A — no bugs found."
+}

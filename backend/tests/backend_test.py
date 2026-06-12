@@ -233,6 +233,111 @@ class TestSubscription:
         assert r.status_code == 400
 
 
+# ---------------------------------------------------------------------------
+# Forgot / Reset password (iteration 2)
+# ---------------------------------------------------------------------------
+class TestForgotReset:
+    def test_forgot_unknown_email_generic(self):
+        r = requests.post(f"{BASE_URL}/api/auth/forgot-password",
+                          json={"email": "nobody_xyz@example.com", "origin_url": BASE_URL})
+        assert r.status_code == 200
+        data = r.json()
+        assert "message" in data
+        # Unknown email: no dev_reset_link
+        assert "dev_reset_link" not in data
+
+    def test_forgot_reset_full_cycle(self, mongo_db):
+        # Register a fresh TEST_ user
+        email = f"TEST_reset_{uuid.uuid4().hex[:6]}@example.com"
+        old_password = "OldPass123!"
+        new_password = "NewPass456!"
+        s = requests.Session()
+        r = s.post(f"{BASE_URL}/api/auth/register",
+                   json={"name": "Reset U", "email": email, "password": old_password})
+        assert r.status_code == 200
+
+        # Request reset
+        r = requests.post(f"{BASE_URL}/api/auth/forgot-password",
+                          json={"email": email, "origin_url": BASE_URL})
+        assert r.status_code == 200
+        data = r.json()
+        # Simulated email mode: dev_reset_link must be present
+        assert "dev_reset_link" in data, f"Expected dev_reset_link in simulated mode, got {data}"
+        link = data["dev_reset_link"]
+        assert "/reset-password?token=" in link
+        token = link.split("token=")[1]
+
+        # Reset password
+        r = requests.post(f"{BASE_URL}/api/auth/reset-password",
+                          json={"token": token, "password": new_password})
+        assert r.status_code == 200, r.text
+
+        # Login with NEW password
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": email, "password": new_password})
+        assert r.status_code == 200
+
+        # Old password rejected
+        r = requests.post(f"{BASE_URL}/api/auth/login",
+                          json={"email": email, "password": old_password})
+        assert r.status_code == 401
+
+        # Token reuse rejected
+        r = requests.post(f"{BASE_URL}/api/auth/reset-password",
+                          json={"token": token, "password": "AnotherPass789!"})
+        assert r.status_code == 400, r.text
+
+    def test_reset_invalid_token(self):
+        r = requests.post(f"{BASE_URL}/api/auth/reset-password",
+                          json={"token": "totally-invalid-token", "password": "Whatever1!"})
+        assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Proxy endpoints — Pexels & Transcribe (iteration 2)
+# ---------------------------------------------------------------------------
+class TestProxy:
+    def test_pexels_requires_auth(self):
+        r = requests.post(f"{BASE_URL}/api/proxy/pexels",
+                          json={"query": "neon city", "orientation": "portrait"})
+        assert r.status_code == 401
+
+    def test_transcribe_requires_auth(self):
+        # Don't actually send a file — auth must be checked first
+        r = requests.post(f"{BASE_URL}/api/proxy/transcribe",
+                          files={"file": ("test.wav", b"RIFF", "audio/wav")})
+        assert r.status_code == 401
+
+    def test_pexels_authenticated_returns_videos(self, demo_session):
+        r = demo_session.post(f"{BASE_URL}/api/proxy/pexels",
+                              json={"query": "neon city", "orientation": "portrait"})
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert "videos" in data
+        assert isinstance(data["videos"], list)
+
+
+# ---------------------------------------------------------------------------
+# Subscription reactivate (iteration 2)
+# ---------------------------------------------------------------------------
+class TestReactivate:
+    def test_reactivate_400_when_no_stripe_id(self, mongo_db):
+        # Register a TEST_ user and force a canceled local sub without stripe id
+        email = f"TEST_react_{uuid.uuid4().hex[:6]}@example.com"
+        s = requests.Session()
+        s.post(f"{BASE_URL}/api/auth/register",
+               json={"name": "ReactU", "email": email, "password": "Passw0rd!"})
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        mongo_db.users.update_one({"email": email}, {"$set": {"subscription": {
+            "status": "canceled",
+            "started_at": now.isoformat(),
+            "current_period_end": (now + timedelta(days=30)).isoformat(),
+        }}})
+        r = s.post(f"{BASE_URL}/api/subscription/reactivate")
+        assert r.status_code == 400, r.text
+
+
 # Module-level cleanup
 def test_zz_cleanup_demo(mongo_db):
     """Reset demo subscription to None so account stays in free state."""

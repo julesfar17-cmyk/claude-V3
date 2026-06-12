@@ -94,6 +94,20 @@ export default function Dashboard() {
     }
   };
 
+  const resubscribe = async () => {
+    setBusy(true);
+    try {
+      // Réactive le renouvellement automatique si l'abonnement Stripe est encore en période
+      const { data } = await api.post("/subscription/reactivate");
+      await refreshUser();
+      toast.success(data.message);
+      setBusy(false);
+    } catch {
+      // Abonnement non réactivable (expiré / sans Stripe) → nouveau paiement
+      startCheckout();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <Navbar />
@@ -218,12 +232,12 @@ export default function Dashboard() {
                   Après cette date, ton compte repassera automatiquement en gratuit. Tu peux te réabonner quand tu veux.
                 </p>
                 <button
-                  onClick={startCheckout}
+                  onClick={resubscribe}
                   disabled={busy}
                   data-testid="resubscribe-button"
                   className="mt-7 w-full bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
                 >
-                  {busy ? "Redirection…" : "Se réabonner — 9,99 €/mois"}
+                  {busy ? "…" : "Se réabonner — 9,99 €/mois"}
                 </button>
               </>
             )}

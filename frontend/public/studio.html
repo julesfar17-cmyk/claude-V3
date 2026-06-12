@@ -13,7 +13,7 @@
   --rouge:#ff3b30; --osd:#d9ffd0; --line:#332c3e;
   --radius:10px;
   --mono:'VT323', ui-monospace, 'Courier New', monospace;
-  --body:'Space Grotesk', system-ui, sans-serif;
+  --body:'DM Sans', 'Space Grotesk', system-ui, sans-serif;
   --display:'Archivo Black', Impact, sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -556,7 +556,7 @@ Une ligne = une phrase à l'écran." style="margin-top:10px"></textarea>
    restent dans le navigateur de l'utilisateur (mode libre).
 ===================================================================== */
 const APP_CONFIG = {
-  USE_PROXY: false,
+  USE_PROXY: true,   // clé-en-main : les clés Groq/Pexels vivent sur le serveur BEATCUT
   ACAPELLA_SERVER: false,
   PRICE_LABEL: '9,99 €/mois',
 };
@@ -565,53 +565,33 @@ const $  = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 
 /* ---------------------------------------------------------------
-   AUTH + ABONNEMENT (inactif si APP_CONFIG vide)
-   La vérité d'accès vit côté Supabase (table subscriptions remplie
-   par le webhook Stripe) — jamais uniquement dans ce fichier.
+   AUTH + ABONNEMENT — gérés par le site BEATCUT (API /api/auth/me).
+   La vérité d'accès vit côté serveur (MongoDB + Stripe).
 ---------------------------------------------------------------- */
-const AUTH={enabled:!!APP_CONFIG.SUPABASE_URL, sb:null, user:null, isPro:false};
+const AUTH={enabled:true, user:null, isPro:false};
 
 async function initAuth(){
-  if(!AUTH.enabled) return;
   if(APP_CONFIG.USE_PROXY){
-    // mode clé-en-main : les clés API vivent côté serveur, on masque les champs
+    // clé-en-main : les clés API vivent côté serveur, on masque les champs
     $('#cloudOpts').style.display='none';
     $('#pexelsKeyRow').style.display='none';
     $('#sepRow').style.display = APP_CONFIG.ACAPELLA_SERVER ? 'flex' : 'none';
     $('#iaInfo').textContent='Transcription whisper-large incluse — aucune clé à fournir. L\u2019audio est filtré avant envoi, langue précisable ci-dessous.';
+    $('#pexelsInfo').textContent='Tape une recherche (en anglais = plus de résultats) puis clique une vignette pour ajouter le clip — aucune clé à fournir.';
   }
   try{
-    const {createClient}=await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    AUTH.sb=createClient(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_ANON_KEY);
-    $('#priceLabel').textContent=APP_CONFIG.PRICE_LABEL;
-    AUTH.sb.auth.onAuthStateChange((_e,session)=>applySession(session));
-    const {data:{session}}=await AUTH.sb.auth.getSession();
-    applySession(session);
+    const r=await fetch('/api/auth/me',{credentials:'include'});
+    if(!r.ok) throw new Error('non connecté');
+    const u=await r.json();
+    AUTH.user=u; AUTH.isPro=!!u.is_pro;
+    $('#authOverlay').classList.remove('show');
+    $('#userBadge').style.display='inline';
+    $('#userBadge').textContent=(u.email||'compte')+' ⏻';
   }catch(e){
-    console.error('auth init', e);
-    $('#authMsg').textContent='⚠ Connexion au service impossible — réessaie plus tard.';
-    $('#authOverlay').classList.add('show');
-  }
-}
-async function applySession(session){
-  AUTH.user=session? session.user : null;
-  if(!AUTH.user){
-    AUTH.isPro=false;
-    $('#authOverlay').classList.add('show');
+    AUTH.user=null; AUTH.isPro=false;
     $('#userBadge').style.display='none';
-    return;
+    $('#authOverlay').classList.add('show');
   }
-  $('#authOverlay').classList.remove('show');
-  $('#userBadge').style.display='inline';
-  $('#userBadge').textContent=(AUTH.user.email||'compte')+' ⏻';
-  await refreshSub();
-}
-async function refreshSub(){
-  if(!AUTH.sb||!AUTH.user) return;
-  try{
-    const {data}=await AUTH.sb.from('subscriptions').select('status').eq('user_id',AUTH.user.id).maybeSingle();
-    AUTH.isPro = !!data && data.status==='active';
-  }catch(e){ AUTH.isPro=false; }
   updateProUI();
 }
 function updateProUI(){
@@ -620,33 +600,24 @@ function updateProUI(){
   if(typeof refreshStill==='function') try{ refreshStill(); }catch(e){}
 }
 function requirePro(){
-  if(!AUTH.enabled) return true;                 // mode libre : pas de config
   if(!AUTH.user){ $('#authOverlay').classList.add('show'); return false; }
   if(!AUTH.isPro){ $('#payOverlay').classList.add('show'); return false; }
   return true;
 }
 document.addEventListener('DOMContentLoaded',()=>{
-  $('#authGoogle').onclick=async()=>{
-    const {error}=await AUTH.sb.auth.signInWithOAuth({provider:'google', options:{redirectTo:location.origin+location.pathname}});
-    if(error) $('#authMsg').textContent='⚠ '+error.message;
+  $('#priceLabel').textContent=APP_CONFIG.PRICE_LABEL;
+  $('#authGoogle').onclick=()=>{ window.top.location.href='/login'; };
+  $('#userBadge').onclick=async()=>{
+    try{ await fetch('/api/auth/logout',{method:'POST',credentials:'include'}); }catch(e){}
+    window.top.location.href='/';
   };
-  $('#userBadge').onclick=async()=>{ await AUTH.sb.auth.signOut(); location.reload(); };
-  $('#payBtn').onclick=()=>{
-    if(!APP_CONFIG.STRIPE_PAYMENT_LINK){
-      $('#payMsg').textContent='Les abonnements ouvrent très bientôt — en attendant tout le studio est utilisable en gratuit.';
-      return;
-    }
-    const link=APP_CONFIG.STRIPE_PAYMENT_LINK + (APP_CONFIG.STRIPE_PAYMENT_LINK.includes('?')?'&':'?') +
-      'client_reference_id='+encodeURIComponent(AUTH.user?AUTH.user.id:'');
-    window.open(link,'_blank');
-    $('#payMsg').textContent='Une fois le paiement fait, reviens ici et clique « vérifier ».';
-  };
+  $('#payBtn').onclick=()=>{ window.top.location.href='/dashboard?upgrade=1'; };
   $('#goPro').onclick=()=>$('#payOverlay').classList.add('show');
   $('#payRefresh').onclick=async()=>{
     $('#payMsg').textContent='Vérification…';
-    await refreshSub();
+    await initAuth();
     if(AUTH.isPro){ $('#payOverlay').classList.remove('show'); $('#payMsg').textContent=''; }
-    else $('#payMsg').textContent='Pas encore actif — le paiement peut prendre ~1 min à se propager. Réessaie.';
+    else $('#payMsg').textContent='Pas encore actif — passe par « Mon compte » pour finaliser l\u2019abonnement.';
   };
   $('#payClose').onclick=()=>$('#payOverlay').classList.remove('show');
   initAuth();
@@ -983,15 +954,15 @@ async function searchPexels(){
   try{
     let r;
     if(AUTH.enabled && APP_CONFIG.USE_PROXY){
-      // --- clé-en-main : proxy serveur, la clé Pexels reste sur le serveur ---
+      // --- clé-en-main : proxy serveur BEATCUT, la clé Pexels reste sur le serveur ---
       if(!AUTH.user){ $('#authOverlay').classList.add('show'); info.textContent='Connecte-toi pour chercher des clips.'; return; }
-      const {data:{session}}=await AUTH.sb.auth.getSession();
-      r=await fetch(APP_CONFIG.SUPABASE_URL+'/functions/v1/pexels',{
+      r=await fetch('/api/proxy/pexels',{
         method:'POST',
-        headers:{Authorization:'Bearer '+session.access_token,'Content-Type':'application/json'},
+        credentials:'include',
+        headers:{'Content-Type':'application/json'},
         body:JSON.stringify({query:q, orientation:orient}),
       });
-      if(!r.ok){ let msg='erreur serveur ('+r.status+')'; try{const j=await r.json();msg=j.error||msg;}catch(e){} throw new Error(msg); }
+      if(!r.ok){ let msg='erreur serveur ('+r.status+')'; try{const j=await r.json();msg=j.detail||j.error||msg;}catch(e){} throw new Error(msg); }
     }else{
       // --- mode libre : clé Pexels personnelle ---
       const key=$('#pexelsKey').value.trim();
@@ -1144,7 +1115,7 @@ function markDirty(){ state.scheduleDirty=true; subs.dirty=true; }
 let whisper=null, transformersMod=null, whisperWordCapable=false, whisperSize='tiny', iaMode='cloud';
 segBind('#whisperSeg','m', m=>{ if(m!==whisperSize){ whisperSize=m; whisper=null; whisperWordCapable=false; } });
 segBind('#iaModeSeg','i', v=>{ iaMode=v;
-  $('#cloudOpts').style.display = v==='cloud'?'flex':'none';
+  $('#cloudOpts').style.display = (v==='cloud' && !APP_CONFIG.USE_PROXY)?'flex':'none';
   $('#localOpts').style.display = v==='local'?'flex':'none';
 });
 try{ const k=localStorage.getItem('groqKey'); if(k) $('#groqKey').value=k; }catch(e){}
@@ -1418,23 +1389,21 @@ async function transcribeCloud(audio16, setP){
   const wavBlob=new Blob([encodeWav(audio16,16000)],{type:'audio/wav'});
 
   if(AUTH.enabled && APP_CONFIG.USE_PROXY){
-    // --- clé-en-main : proxy Edge Function (la clé Groq reste sur le serveur) ---
+    // --- clé-en-main : proxy serveur BEATCUT (la clé Groq reste sur le serveur) ---
     if(!AUTH.user){ $('#authOverlay').classList.add('show'); throw new Error('connecte-toi pour lancer la détection'); }
-    const {data:{session}}=await AUTH.sb.auth.getSession();
-    if(!session) throw new Error('session expirée — reconnecte-toi');
     setP(60,'Envoi à whisper-large-v3 (serveur BEATCUT)…');
     const fd=new FormData();
     fd.append('file', wavBlob, 'extrait.wav');
     if(langCode) fd.append('language', langCode);
     let r;
     try{
-      r=await fetch(APP_CONFIG.SUPABASE_URL+'/functions/v1/transcribe',{
-        method:'POST', headers:{Authorization:'Bearer '+session.access_token}, body:fd,
+      r=await fetch('/api/proxy/transcribe',{
+        method:'POST', credentials:'include', body:fd,
       });
     }catch(e){ throw new Error('serveur de transcription injoignable — réessaie'); }
     if(!r.ok){
       let msg='erreur serveur ('+r.status+')';
-      try{ const j=await r.json(); msg=j.error||msg; }catch(e){}
+      try{ const j=await r.json(); msg=j.detail||j.error||msg; }catch(e){}
       throw new Error(msg);
     }
     setP(85,'Réponse reçue, calage des mots…');

@@ -103,6 +103,17 @@ export default function AuthPage() {
                 data-testid="auth-password-input"
                 className="w-full bg-background border border-border px-4 py-3 text-sm focus:border-[#d9ffd0] focus:outline-none transition-colors"
               />
+              {!isRegister && (
+                <div className="text-right">
+                  <Link
+                    to="/forgot-password"
+                    data-testid="forgot-password-link"
+                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+                  >
+                    Mot de passe oublié ?
+                  </Link>
+                </div>
+              )}
               {error && (
                 <p className="text-sm text-primary" data-testid="auth-error-message">
                   ⚠ {error}

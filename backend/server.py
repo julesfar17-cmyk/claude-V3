@@ -15,10 +15,11 @@ from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depend
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
-from emergentintegrations.payments.stripe.checkout import (
-    StripeCheckout,
-    CheckoutSessionRequest,
-)
+import asyncio
+import secrets
+import stripe
+import resend
+from fastapi import UploadFile, File, Form
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -34,9 +35,19 @@ JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_DAYS = 7
 
-PRO_PRICE = 9.99          # défini côté serveur uniquement — jamais depuis le front
+PRO_PRICE = 9.99            # 9,99 € — défini côté serveur uniquement, jamais depuis le front
+PRO_PRICE_CENTS = 999
 PRO_CURRENCY = "eur"
-SUBSCRIPTION_DAYS = 30
+SUBSCRIPTION_DAYS = 30      # filet de sécurité si Stripe est injoignable
+
+stripe.api_key = os.environ['STRIPE_API_KEY']
+
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+PEXELS_API_KEY = os.environ.get('PEXELS_API_KEY', '')
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 EMERGENT_SESSION_DATA_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
@@ -60,6 +71,72 @@ def parse_dt(value):
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value
+
+
+# ---------------------------------------------------------------------------
+# Emails (Resend si clé configurée, sinon mode simulé : log serveur)
+# ---------------------------------------------------------------------------
+def _fmt_date_fr(iso_str) -> str:
+    try:
+        return parse_dt(iso_str).strftime("%d/%m/%Y")
+    except Exception:
+        return ""
+
+
+def _email_html(title: str, body: str, cta_label: str = None, cta_url: str = None) -> str:
+    button = (
+        f'<tr><td style="padding:24px 0 8px"><a href="{cta_url}" '
+        f'style="background:#ff3b30;color:#ffffff;text-decoration:none;font-weight:bold;'
+        f'padding:14px 28px;display:inline-block">{cta_label}</a></td></tr>'
+    ) if cta_url else ""
+    return f"""<table width="100%" cellpadding="0" cellspacing="0" style="background:#121016;padding:32px 16px;font-family:Arial,Helvetica,sans-serif">
+<tr><td align="center"><table width="520" cellpadding="0" cellspacing="0" style="background:#1a1720;border:1px solid #2a2631;padding:36px">
+<tr><td style="font-size:20px;font-weight:bold;color:#ece6da;padding-bottom:6px">BEAT<span style="color:#ff3b30">CUT</span></td></tr>
+<tr><td style="font-size:17px;font-weight:bold;color:#ece6da;padding:18px 0 8px">{title}</td></tr>
+<tr><td style="font-size:14px;color:#9a93a6;line-height:1.6">{body}</td></tr>
+{button}
+<tr><td style="font-size:11px;color:#6b6478;padding-top:28px">BEATCUT — studio beat-sync. 9,99 €/mois, sans engagement.</td></tr>
+</table></td></tr></table>"""
+
+
+async def send_email(to: str, subject: str, html: str) -> bool:
+    """Retourne True si réellement envoyé, False en mode simulé ou en cas d'échec."""
+    if not RESEND_API_KEY:
+        logger.info("[EMAIL simulé] to=%s | subject=%s", to, subject)
+        return False
+    try:
+        params = {"from": SENDER_EMAIL, "to": [to], "subject": subject, "html": html}
+        await asyncio.to_thread(resend.Emails.send, params)
+        return True
+    except Exception as e:
+        logger.error("Envoi email échoué (%s): %s", to, e)
+        return False
+
+
+def reset_email_html(link: str) -> str:
+    return _email_html(
+        "Réinitialise ton mot de passe",
+        "Tu as demandé à réinitialiser ton mot de passe BEATCUT. Clique sur le bouton ci-dessous — le lien est valable 1 heure. Si tu n'es pas à l'origine de cette demande, ignore cet email.",
+        "Réinitialiser mon mot de passe", link,
+    )
+
+
+def sub_confirmed_email_html(period_end) -> str:
+    return _email_html(
+        "Bienvenue en PRO ✦",
+        f"Ton abonnement BEATCUT PRO est actif : export vidéo sans watermark et sous-titres .srt débloqués. "
+        f"Renouvellement automatique le {_fmt_date_fr(period_end)} (9,99 €/mois). "
+        f"Tu peux te désabonner à tout moment en 1 clic depuis ton compte.",
+    )
+
+
+def sub_canceled_email_html(period_end) -> str:
+    return _email_html(
+        "Abonnement annulé",
+        f"Ton abonnement BEATCUT PRO a bien été annulé — aucun prélèvement futur. "
+        f"Tu gardes l'accès PRO jusqu'au {_fmt_date_fr(period_end)}, puis ton compte repassera en gratuit. "
+        f"Tu peux te réabonner quand tu veux depuis ton compte.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -129,17 +206,68 @@ def public_user(user: dict) -> dict:
     }
 
 
-async def activate_subscription(user_id: str):
-    end = now_utc() + timedelta(days=SUBSCRIPTION_DAYS)
+def _extract_period_end(sub_obj) -> datetime:
+    """Stripe a déplacé current_period_end sur les items dans les versions récentes de l'API."""
+    try:
+        items = (sub_obj.get("items") or {}).get("data") or []
+        ts = (items[0].get("current_period_end") if items else None) or sub_obj.get("current_period_end")
+        if ts:
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+    except Exception:
+        pass
+    return now_utc() + timedelta(days=SUBSCRIPTION_DAYS)
+
+
+async def activate_subscription(user_id: str, customer_id: str = None, subscription_id: str = None):
+    sub_doc = {
+        "status": "active",
+        "started_at": iso(now_utc()),
+        "current_period_end": iso(now_utc() + timedelta(days=SUBSCRIPTION_DAYS)),
+        "stripe_customer_id": customer_id,
+        "stripe_subscription_id": subscription_id,
+        "synced_at": iso(now_utc()),
+    }
+    if subscription_id:
+        try:
+            s = await asyncio.to_thread(stripe.Subscription.retrieve, subscription_id)
+            sub_doc["current_period_end"] = iso(_extract_period_end(s))
+            if not customer_id:
+                sub_doc["stripe_customer_id"] = s.get("customer")
+        except Exception as e:
+            logger.warning("Stripe subscription retrieve failed: %s", e)
+    await db.users.update_one({"user_id": user_id}, {"$set": {"subscription": sub_doc}})
+    logger.info("Subscription PRO activated for %s (stripe sub: %s)", user_id, subscription_id)
+
+
+async def sync_stripe_subscription(user: dict) -> dict:
+    """Synchronise l'abonnement avec Stripe : renouvellement auto, annulation, expiration."""
+    sub = user.get("subscription") or {}
+    sub_id = sub.get("stripe_subscription_id")
+    if not sub_id:
+        return user
+    end = parse_dt(sub.get("current_period_end"))
+    synced = parse_dt(sub.get("synced_at"))
+    fresh = synced is not None and (now_utc() - synced) < timedelta(hours=12)
+    if end is not None and end > now_utc() and fresh:
+        return user
+    try:
+        s = await asyncio.to_thread(stripe.Subscription.retrieve, sub_id)
+    except Exception as e:
+        logger.warning("Stripe sync failed for %s: %s", sub_id, e)
+        return user
+    if s.get("status") in ("active", "trialing"):
+        status = "canceled" if s.get("cancel_at_period_end") else "active"
+    else:
+        status = "expired"
     await db.users.update_one(
-        {"user_id": user_id},
-        {"$set": {"subscription": {
-            "status": "active",
-            "started_at": iso(now_utc()),
-            "current_period_end": iso(end),
-        }}},
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "subscription.status": status,
+            "subscription.current_period_end": iso(_extract_period_end(s)),
+            "subscription.synced_at": iso(now_utc()),
+        }},
     )
-    logger.info("Subscription PRO activated for %s until %s", user_id, end)
+    return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +357,21 @@ class CheckoutIn(BaseModel):
     origin_url: str
 
 
+class ForgotPasswordIn(BaseModel):
+    email: str
+    origin_url: str
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    password: str = Field(min_length=6, max_length=128)
+
+
+class PexelsSearchIn(BaseModel):
+    query: str = Field(min_length=1, max_length=120)
+    orientation: str = "portrait"
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
@@ -313,7 +456,44 @@ async def google_session(data: GoogleSessionIn, response: Response):
 
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
+    user = await sync_stripe_subscription(user)
     return public_user(user)
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(data: ForgotPasswordIn):
+    email = data.email.strip().lower()
+    generic = {"message": "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé."}
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user or not user.get("password_hash"):
+        return generic
+    token = secrets.token_urlsafe(32)
+    await db.password_reset_tokens.insert_one({
+        "token": token,
+        "user_id": user["user_id"],
+        "expires_at": iso(now_utc() + timedelta(hours=1)),
+        "used": False,
+        "created_at": iso(now_utc()),
+    })
+    reset_link = f"{data.origin_url.rstrip('/')}/reset-password?token={token}"
+    sent = await send_email(email, "Réinitialise ton mot de passe — BEATCUT", reset_email_html(reset_link))
+    logger.info("Password reset link for %s: %s", email, reset_link)
+    if not sent:
+        # Mode simulé (pas encore de service email configuré) : le lien est renvoyé pour affichage à l'écran
+        return {**generic, "dev_reset_link": reset_link}
+    return generic
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(data: ResetPasswordIn):
+    doc = await db.password_reset_tokens.find_one({"token": data.token}, {"_id": 0})
+    if not doc or doc.get("used"):
+        raise HTTPException(status_code=400, detail="Lien invalide ou déjà utilisé")
+    if parse_dt(doc["expires_at"]) < now_utc():
+        raise HTTPException(status_code=400, detail="Lien expiré — refais une demande")
+    await db.users.update_one({"user_id": doc["user_id"]}, {"$set": {"password_hash": hash_password(data.password)}})
+    await db.password_reset_tokens.update_one({"token": data.token}, {"$set": {"used": True}})
+    return {"message": "Mot de passe mis à jour — tu peux te connecter."}
 
 
 @api_router.post("/auth/logout")
@@ -327,14 +507,9 @@ async def logout(request: Request, response: Response):
 
 
 # ---------------------------------------------------------------------------
-# Stripe payments — abonnement PRO
+# Stripe — abonnement PRO récurrent (renouvellement automatique réel)
 # ---------------------------------------------------------------------------
-def _stripe(request: Request) -> StripeCheckout:
-    host_url = str(request.base_url).rstrip("/")
-    return StripeCheckout(api_key=os.environ['STRIPE_API_KEY'], webhook_url=f"{host_url}/api/webhook/stripe")
-
-
-async def _claim_and_activate(session_id: str):
+async def _claim_and_activate(session_id: str, customer_id: str = None, subscription_id: str = None):
     """Idempotent : active l'abonnement une seule fois par session payée."""
     res = await db.payment_transactions.update_one(
         {"session_id": session_id, "processed": {"$ne": True}},
@@ -343,7 +518,11 @@ async def _claim_and_activate(session_id: str):
     if res.modified_count:
         tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
         if tx and tx.get("user_id"):
-            await activate_subscription(tx["user_id"])
+            await activate_subscription(tx["user_id"], customer_id, subscription_id)
+            user = await db.users.find_one({"user_id": tx["user_id"]}, {"_id": 0})
+            if user:
+                end = (user.get("subscription") or {}).get("current_period_end")
+                await send_email(user["email"], "Bienvenue en PRO ✦ BEATCUT", sub_confirmed_email_html(end))
 
 
 @api_router.post("/payments/checkout")
@@ -351,17 +530,38 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
     origin = data.origin_url.rstrip("/")
     success_url = f"{origin}/dashboard?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/dashboard"
-    stripe = _stripe(request)
-    checkout_req = CheckoutSessionRequest(
-        amount=PRO_PRICE,
-        currency=PRO_CURRENCY,
+    sub = user.get("subscription") or {}
+    params = dict(
+        mode="subscription",
+        payment_method_types=["card"],
+        line_items=[{
+            "price_data": {
+                "currency": PRO_CURRENCY,
+                "unit_amount": PRO_PRICE_CENTS,
+                "recurring": {"interval": "month"},
+                "product_data": {
+                    "name": "BEATCUT PRO",
+                    "description": "Export vidéo sans watermark + sous-titres .srt — sans engagement",
+                },
+            },
+            "quantity": 1,
+        }],
         success_url=success_url,
         cancel_url=cancel_url,
         metadata={"user_id": user["user_id"], "email": user["email"], "product": "beatcut_pro_monthly"},
+        subscription_data={"metadata": {"user_id": user["user_id"]}},
     )
-    session = await stripe.create_checkout_session(checkout_req)
+    if sub.get("stripe_customer_id"):
+        params["customer"] = sub["stripe_customer_id"]
+    else:
+        params["customer_email"] = user["email"]
+    try:
+        session = await asyncio.to_thread(lambda: stripe.checkout.Session.create(**params))
+    except Exception as e:
+        logger.error("Stripe checkout error: %s", e)
+        raise HTTPException(status_code=502, detail="Erreur Stripe lors de la création du paiement — réessaie")
     await db.payment_transactions.insert_one({
-        "session_id": session.session_id,
+        "session_id": session.id,
         "user_id": user["user_id"],
         "email": user["email"],
         "amount": PRO_PRICE,
@@ -372,36 +572,46 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         "processed": False,
         "created_at": iso(now_utc()),
     })
-    return {"url": session.url, "session_id": session.session_id}
+    return {"url": session.url, "session_id": session.id}
 
 
 @api_router.get("/payments/status/{session_id}")
-async def payment_status(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+async def payment_status(session_id: str, user: dict = Depends(get_current_user)):
     tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction introuvable")
-    stripe = _stripe(request)
-    checkout = await stripe.get_checkout_status(session_id)
+    if tx.get("user_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Transaction liée à un autre compte")
+    try:
+        session = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id)
+    except Exception as e:
+        logger.error("Stripe status error: %s", e)
+        raise HTTPException(status_code=502, detail="Impossible de vérifier le paiement")
     await db.payment_transactions.update_one(
         {"session_id": session_id},
-        {"$set": {"status": checkout.status, "payment_status": checkout.payment_status, "updated_at": iso(now_utc())}},
+        {"$set": {"status": session.status, "payment_status": session.payment_status, "updated_at": iso(now_utc())}},
     )
-    if checkout.payment_status == "paid":
-        await _claim_and_activate(session_id)
-    return {"status": checkout.status, "payment_status": checkout.payment_status}
+    if session.payment_status == "paid":
+        await _claim_and_activate(session_id, session.get("customer"), session.get("subscription"))
+    return {"status": session.status, "payment_status": session.payment_status}
 
 
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
-    body = await request.body()
-    stripe = _stripe(request)
+    secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+    if not secret:
+        # Pas de webhook configuré dans le dashboard Stripe : le renouvellement
+        # est synchronisé par polling (sync_stripe_subscription) — rien à faire ici.
+        return {"received": True}
+    payload = await request.body()
     try:
-        event = await stripe.handle_webhook(body, request.headers.get("Stripe-Signature"))
-    except Exception as e:
-        logger.warning("Webhook Stripe invalide: %s", e)
+        event = stripe.Webhook.construct_event(payload, request.headers.get("Stripe-Signature", ""), secret)
+    except Exception:
         raise HTTPException(status_code=400, detail="Webhook invalide")
-    if event.payment_status == "paid" and event.session_id:
-        await _claim_and_activate(event.session_id)
+    if event["type"] == "checkout.session.completed":
+        obj = event["data"]["object"]
+        if obj.get("payment_status") == "paid":
+            await _claim_and_activate(obj["id"], obj.get("customer"), obj.get("subscription"))
     return {"received": True}
 
 
@@ -410,24 +620,110 @@ async def stripe_webhook(request: Request):
 # ---------------------------------------------------------------------------
 @api_router.get("/subscription")
 async def get_subscription(user: dict = Depends(get_current_user)):
+    user = await sync_stripe_subscription(user)
     return sub_info(user)
 
 
 @api_router.post("/subscription/cancel")
 async def cancel_subscription(user: dict = Depends(get_current_user)):
+    user = await sync_stripe_subscription(user)
     info = sub_info(user)
+    sub = user.get("subscription") or {}
     if not info["is_pro"]:
         raise HTTPException(status_code=400, detail="Aucun abonnement actif à annuler")
     if info["cancel_at_period_end"]:
         raise HTTPException(status_code=400, detail="Ton abonnement est déjà annulé")
+    if sub.get("stripe_subscription_id"):
+        # Annulation RÉELLE côté Stripe : aucun prélèvement futur
+        try:
+            await asyncio.to_thread(
+                lambda: stripe.Subscription.modify(sub["stripe_subscription_id"], cancel_at_period_end=True)
+            )
+        except Exception as e:
+            logger.error("Stripe cancel error: %s", e)
+            raise HTTPException(status_code=502, detail="Erreur Stripe lors de l'annulation — réessaie")
     await db.users.update_one(
         {"user_id": user["user_id"]},
         {"$set": {"subscription.status": "canceled", "subscription.canceled_at": iso(now_utc())}},
     )
+    await send_email(user["email"], "Abonnement annulé — BEATCUT", sub_canceled_email_html(info["current_period_end"]))
     return {
-        "message": "Abonnement annulé. Tu gardes l'accès PRO jusqu'à la fin de la période en cours.",
+        "message": "Abonnement annulé — aucun prélèvement futur. Tu gardes l'accès PRO jusqu'à la fin de la période en cours.",
         "current_period_end": info["current_period_end"],
     }
+
+
+@api_router.post("/subscription/reactivate")
+async def reactivate_subscription(user: dict = Depends(get_current_user)):
+    user = await sync_stripe_subscription(user)
+    info = sub_info(user)
+    sub = user.get("subscription") or {}
+    if not (info["is_pro"] and info["cancel_at_period_end"] and sub.get("stripe_subscription_id")):
+        raise HTTPException(status_code=400, detail="Abonnement non réactivable — souscris à nouveau")
+    try:
+        await asyncio.to_thread(
+            lambda: stripe.Subscription.modify(sub["stripe_subscription_id"], cancel_at_period_end=False)
+        )
+    except Exception as e:
+        logger.error("Stripe reactivate error: %s", e)
+        raise HTTPException(status_code=502, detail="Erreur Stripe — réessaie")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"subscription.status": "active"}})
+    return {"message": "Abonnement réactivé — le renouvellement automatique reprend."}
+
+
+# ---------------------------------------------------------------------------
+# Proxy clé-en-main pour le studio : les clés Pexels & Groq restent serveur
+# ---------------------------------------------------------------------------
+@api_router.post("/proxy/pexels")
+async def proxy_pexels(data: PexelsSearchIn, user: dict = Depends(get_current_user)):
+    if not PEXELS_API_KEY:
+        raise HTTPException(status_code=503, detail="Banque de clips indisponible pour le moment")
+    orientation = data.orientation if data.orientation in ("portrait", "landscape", "square") else "portrait"
+    async with httpx.AsyncClient(timeout=20) as http:
+        r = await http.get(
+            "https://api.pexels.com/videos/search",
+            params={"query": data.query, "per_page": 12, "orientation": orientation},
+            headers={"Authorization": PEXELS_API_KEY},
+        )
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Banque de clips : erreur {r.status_code}")
+    return r.json()
+
+
+@api_router.post("/proxy/transcribe")
+async def proxy_transcribe(
+    file: UploadFile = File(...),
+    language: str = Form(None),
+    user: dict = Depends(get_current_user),
+):
+    if not GROQ_API_KEY:
+        raise HTTPException(status_code=503, detail="Transcription indisponible pour le moment")
+    content = await file.read()
+    if len(content) > 26_000_000:
+        raise HTTPException(status_code=413, detail="Extrait trop long — raccourcis la sélection")
+    form = {
+        "model": "whisper-large-v3-turbo",
+        "response_format": "verbose_json",
+        "timestamp_granularities[]": ["word", "segment"],
+    }
+    if language:
+        form["language"] = language
+    async with httpx.AsyncClient(timeout=120) as http:
+        r = await http.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            data=form,
+            files={"file": ("extrait.wav", content, "audio/wav")},
+        )
+    if r.status_code != 200:
+        detail = "Transcription échouée — réessaie"
+        try:
+            detail = r.json().get("error", {}).get("message", detail)
+        except Exception:
+            pass
+        logger.error("Groq transcribe error %s: %s", r.status_code, detail)
+        raise HTTPException(status_code=502, detail=detail)
+    return r.json()
 
 
 @api_router.get("/")
@@ -464,6 +760,7 @@ async def startup():
     await db.user_sessions.create_index("session_token")
     await db.login_attempts.create_index("identifier")
     await db.payment_transactions.create_index("session_id")
+    await db.password_reset_tokens.create_index("token")
     await seed_user(os.environ['ADMIN_EMAIL'], os.environ['ADMIN_PASSWORD'], "Admin", "admin")
     await seed_user("demo@beatcut.fr", "Demo1234!", "Démo", "user")
 
