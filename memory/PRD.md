@@ -17,28 +17,33 @@ Fichier fourni : `beatcut.html` — studio de montage beat-sync 100% client-side
 - Fonts : Cabinet Grotesk (display), DM Sans (body), JetBrains Mono (OSD)
 
 ## Modèle d'abonnement
-- Paiement Stripe test → 30 jours PRO (`subscription.status=active`)
-- "Se désabonner" → `status=canceled`, accès PRO conservé jusqu'à `current_period_end`, puis retour gratuit
-- Prix fixé côté serveur uniquement (9,99 € EUR)
+- Stripe RÉEL (clé sk_live du client) : checkout en mode `subscription` 9,99 €/mois récurrent
+- Renouvellement automatique géré par Stripe ; synchronisé par polling (`sync_stripe_subscription` sur /auth/me quand période expirée ou sync > 12h)
+- "Se désabonner" → `cancel_at_period_end=True` côté Stripe (aucun prélèvement futur), accès PRO conservé jusqu'à `current_period_end`
+- "Se réabonner" → réactivation Stripe si encore en période, sinon nouveau checkout
+- Prix fixé côté serveur uniquement (9,99 € EUR) ; webhook /api/webhook/stripe prêt (actif si STRIPE_WEBHOOK_SECRET configuré)
 
 ## Implémenté (12 juin 2026)
 - ✅ Landing page FR responsive (hero, marquee, 6 features, 4 étapes, tarifs Gratuit/PRO, CTA, footer)
-- ✅ Auth complète : register/login email+mdp, Google OAuth (Emergent), logout, routes protégées, brute force (5 essais/15 min, X-Forwarded-For)
-- ✅ Stripe checkout PRO 9,99 €/mois + polling statut + webhook + transactions idempotentes
+- ✅ Auth complète : register/login email+mdp, Google OAuth (Emergent), logout, routes protégées, brute force (X-Forwarded-For)
+- ✅ Mot de passe oublié : /forgot-password + /reset-password (token 1h, usage unique) — emails simulés tant que RESEND_API_KEY vide (lien affiché à l'écran)
+- ✅ Stripe LIVE récurrent : checkout subscription, annulation réelle, réactivation, sync renouvellement, transactions idempotentes
+- ✅ Emails transactionnels (structure Resend prête : reset, confirmation PRO, confirmation annulation) — mode simulé en attendant le domaine
+- ✅ Proxy clé-en-main : /api/proxy/pexels + /api/proxy/transcribe (clés Pexels/Groq côté serveur, champs masqués dans le studio)
 - ✅ Dashboard : badge plan, Passer en PRO, Se désabonner (AlertDialog), Se réabonner, infos compte
 - ✅ Studio intégral intégré (iframe), watermark gratuit / export PRO, lien retour compte
-- ✅ Tests E2E : backend 16/17 (1 env-only, corrigé), frontend 100%
+- ✅ Tests E2E itération 2 : backend 24/24, frontend 100%
 
 ## Comptes seedés
 Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 
 ## Backlog priorisé
-- **P1** : Renouvellement automatique réel (Stripe subscriptions natives au lieu de 30 jours par paiement) ; emails transactionnels (confirmation, fin d'abonnement)
-- **P1** : Mot de passe oublié (reset par email)
-- **P2** : Proxy serveur pour clés Groq/Pexels (l'utilisateur n'a plus à coller ses clés) — nécessite clés API
+- **P1** : Activer Resend dès que le domaine est prêt (remplir RESEND_API_KEY + SENDER_EMAIL dans backend/.env, redémarrer le backend — rien d'autre à faire)
+- **P1** : Configurer le webhook Stripe dans le dashboard (endpoint /api/webhook/stripe, remplir STRIPE_WEBHOOK_SECRET) pour une synchro instantanée des renouvellements
 - **P2** : Historique des paiements dans le dashboard ; page admin
-- **P2** : Galerie de vidéos exportées (object storage)
+- **P2** : Galerie de vidéos exportées (object storage) ; serveur d'extraction acapella (UVR)
 
 ## Notes
-- Les clés Groq (transcription cloud) et Pexels (banque de clips) restent côté navigateur de l'utilisateur (mode libre du studio d'origine)
-- Stripe en MODE TEST (sk_test_emergent) — passer une vraie clé pour la prod
+- ⚠️ STRIPE EN MODE LIVE : tout paiement complété débite une vraie carte
+- Les clés Groq/Pexels sont dans backend/.env, jamais exposées au navigateur
+- Emails : mode simulé (logs serveur + lien affiché) tant que RESEND_API_KEY est vide
