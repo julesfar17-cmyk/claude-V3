@@ -32,7 +32,8 @@ export default function AuthCallback() {
         setUser(data);
         window.history.replaceState(null, "", window.location.pathname);
         navigate("/dashboard", { replace: true, state: { user: data } });
-      } catch {
+      } catch (e) {
+        console.error("Échange session Google échoué", e);
         navigate("/login", { replace: true });
       }
     };

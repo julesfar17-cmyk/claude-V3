@@ -657,7 +657,7 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         session = await asyncio.to_thread(lambda: stripe.checkout.Session.create(**params))
     except Exception as e:
         logger.error("Stripe checkout error: %s", e)
-        raise HTTPException(status_code=502, detail="Erreur Stripe lors de la création du paiement — réessaie")
+        raise HTTPException(status_code=502, detail="Erreur Stripe lors de la création du paiement — réessaie") from e
     await db.payment_transactions.insert_one({
         "session_id": session.id,
         "user_id": user["user_id"],
@@ -685,7 +685,7 @@ async def payment_status(session_id: str, user: dict = Depends(get_current_user)
         session = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id)
     except Exception as e:
         logger.error("Stripe status error: %s", e)
-        raise HTTPException(status_code=502, detail="Impossible de vérifier le paiement")
+        raise HTTPException(status_code=502, detail="Impossible de vérifier le paiement") from e
     await db.payment_transactions.update_one(
         {"session_id": session_id},
         {"$set": {"status": session.status, "payment_status": session.payment_status, "updated_at": iso(now_utc())}},

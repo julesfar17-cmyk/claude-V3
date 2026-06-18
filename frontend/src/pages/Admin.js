@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
@@ -16,7 +16,7 @@ export default function Admin() {
   const [newDays, setNewDays] = useState(30);
   const [newMaxUses, setNewMaxUses] = useState("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const { data } = await api.get("/admin/stats");
       setStats(data);
@@ -25,11 +25,11 @@ export default function Admin() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (user?.role === "admin") load();
-  }, [user]);
+  }, [user, load]);
 
   const createPromo = async (e) => {
     e.preventDefault();

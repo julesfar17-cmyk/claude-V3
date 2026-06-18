@@ -49,8 +49,8 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await api.post("/auth/logout");
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("Logout endpoint failed (cookie cleared locally)", e);
     }
     setUser(null);
   };

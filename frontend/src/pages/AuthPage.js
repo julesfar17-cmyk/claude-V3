@@ -14,9 +14,9 @@ export default function AuthPage() {
   const refCode = (params.get("ref") || "").toUpperCase();
 
   useEffect(() => {
-    if (refCode) {
-      try { sessionStorage.setItem("beatcut_ref", refCode); } catch {}
-    }
+    // Ignore une éventuelle indisponibilité de sessionStorage (mode privé).
+    if (!refCode) return;
+    try { sessionStorage.setItem("beatcut_ref", refCode); } catch (e) { /* private mode */ }
   }, [refCode]);
 
   const [name, setName] = useState("");
