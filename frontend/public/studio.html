@@ -223,8 +223,8 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
   <div class="step">
     <div class="step-head"><span class="step-tag">[01]</span><span class="step-title">Le son</span></div>
     <div class="drop" id="audioDrop">
-      <strong>Dépose ton track ici</strong>
-      <span>mp3, wav, m4a — l'analyse BPM se lance toute seule</span>
+      <strong>Dépose ton track</strong>
+      <span>mp3, wav, m4a — BPM détecté automatiquement</span>
     </div>
     <input type="file" id="audioInput" accept="audio/*">
     <div class="card" id="bpmCard" style="display:none">
@@ -267,14 +267,14 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
     <div id="clipsZone">
       <div class="drop" id="clipDrop" style="margin-top:12px">
         <strong>Dépose tes clips vidéo</strong>
-        <span>mp4, webm, mov — rushs Pinterest, archives VHS, banques libres… plusieurs fichiers OK</span>
+        <span>mp4, webm, mov — plusieurs fichiers OK</span>
       </div>
       <input type="file" id="clipInput" accept="video/*" multiple>
       <div class="clip-list" id="clipList"></div>
       <div class="card" id="pexelsCard">
-        <div class="row"><label class="lbl">Banque de clips — Pexels (gratuit, libre d'utilisation)</label></div>
-        <div class="row" id="pexelsKeyRow">
-          <input type="text" id="pexelsKey" placeholder="Clé API Pexels — gratuite en 1 min sur pexels.com/api" style="flex:1;min-width:180px" autocomplete="off">
+        <div class="row"><label class="lbl">Banque de clips Pexels</label></div>
+        <div class="row" id="pexelsKeyRow" style="display:none">
+          <input type="text" id="pexelsKey" autocomplete="off">
         </div>
         <div class="row">
           <input type="text" id="pexelsQuery" placeholder="ex : vhs city night, smoke, neon rain, crowd…" style="flex:1;min-width:160px">
@@ -309,18 +309,20 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
       <label class="lbl">Source de détection</label>
       <div class="seg-group" id="srcSeg">
         <button data-src="mix" class="active">Mix brut</button>
-        <button data-src="acap">Acapella importée</button>
+        <button data-src="acap">Acapella</button>
       </div>
       <span class="hint" id="srcInfo" style="margin:0"></span>
     </div>
-    <p class="hint" style="margin:0 0 8px">whisper-large (cloud) est souvent très bon sur le <b>mix brut</b> — commence par ça. Pour une détection quasi parfaite, sors une vraie acapella avec <b>UVR5</b> sur ton PC (gratuit, ~30 s par track avec ta carte graphique) et dépose-la ci-dessous : calage automatique sur le son.</p>
-    <div class="row" id="sepRow" style="display:none;margin-bottom:8px">
-      <button class="primary" id="sepBtn" style="flex:1">🎙 Extraire l'acapella de l'extrait (serveur — Pro)</button>
-      <span class="hint" id="sepInfo" style="margin:0;flex-basis:100%"></span>
+    <div class="row" id="sepRow" style="margin-bottom:10px">
+      <button class="primary" id="sepBtn" style="flex:1">Extraire l'acapella (Pro)</button>
+      <a id="acapDownload" download="acapella.wav" style="display:none;text-decoration:none">
+        <button type="button" style="background:transparent;border:1px solid var(--line);color:var(--ivoire)">⬇ Télécharger</button>
+      </a>
     </div>
-    <div class="drop" id="acapDrop" style="padding:12px 16px">
-      <strong>+ Acapella (pour la source « Acapella importée »)</strong>
-      <span>dépose la voix seule (export UVR5) : détection quasi parfaite, calée automatiquement</span>
+    <p class="hint" id="sepInfo" style="margin:0 0 10px"></p>
+    <div class="drop" id="acapDrop" style="padding:10px 14px">
+      <strong>+ Acapella déjà prête</strong>
+      <span>optionnel — dépose la voix isolée</span>
     </div>
     <input type="file" id="acapInput" accept="audio/*">
     <div class="card" id="acapCard" style="display:none">
@@ -339,26 +341,24 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
         <button id="acapP10">+10 ms</button>
         <button id="acapP100">+100 ms</button>
       </div>
-      <p class="hint" id="acapInfo">Le décalage = où démarre l'acapella dans le track. « Caler automatiquement » le trouve tout seul ; affine à la main si besoin — les sous-titres déjà détectés se décalent en direct.</p>
+      <p class="hint" id="acapInfo">Décalage = position de l'acapella dans le track. « Caler » le trouve automatiquement.</p>
     </div>
 
-    <button class="primary" id="iaBtn" disabled>✨ Détecter les paroles automatiquement (IA)</button>
-    <div class="row" style="margin-top:8px">
+    <button class="primary" id="iaBtn" disabled>Détecter les paroles (IA)</button>
+    <div class="row" style="display:none">
       <div class="seg-group" id="iaModeSeg">
-        <button data-i="cloud" class="active">☁ Cloud — whisper-large (précis, ~5 s)</button>
-        <button data-i="local">💻 Local — sans clé</button>
+        <button data-i="cloud" class="active">cloud</button>
+        <button data-i="local">local</button>
       </div>
     </div>
-    <div class="row" id="cloudOpts">
-      <input type="text" id="groqKey" placeholder="Clé API Groq (gratuite) — gsk_…" style="flex:1;min-width:200px" autocomplete="off">
-      <span class="hint" style="margin:0">Clé gratuite en 30 s sur <b>console.groq.com/keys</b>. Le meilleur modèle Whisper (large-v3), résultat en quelques secondes. La clé reste dans ton navigateur.</span>
+    <div class="row" id="cloudOpts" style="display:none">
+      <input type="text" id="groqKey" placeholder="" style="display:none" autocomplete="off">
     </div>
     <div class="row" id="localOpts" style="display:none">
-      <label class="lbl">Modèle</label>
       <div class="seg-group" id="whisperSeg">
-        <button data-m="tiny" class="active">Rapide (~30 s)</button>
-        <button data-m="base">Précis (1-3 min)</button>
-        <button data-m="small">Max (long)</button>
+        <button data-m="tiny" class="active">tiny</button>
+        <button data-m="base">base</button>
+        <button data-m="small">small</button>
       </div>
     </div>
     <div class="row">
@@ -377,7 +377,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
       </select>
     </div>
     <div class="progress" id="iaProg"><i></i></div>
-    <p class="hint" id="iaInfo">L\u2019audio est filtré avant transcription (basses coupées, voix boostée). Cloud = whisper-large-v3, la référence sur la musique. Local = dépannage hors connexion, plus lent et moins précis.</p>
+    <p class="hint" id="iaInfo" style="margin-top:6px">Transcription whisper-large incluse — l'audio est nettoyé avant envoi.</p>
 
     <textarea id="lyrics" placeholder="…ou colle tes paroles ici — n'importe quelle langue.
 Une ligne = une phrase à l'écran." style="margin-top:10px"></textarea>
@@ -508,10 +508,10 @@ Une ligne = une phrase à l'écran." style="margin-top:10px"></textarea>
     <div class="row" style="margin-top:8px">
       <button id="srtBtn" style="flex:1">💬 Exporter les sous-titres (.srt)</button>
     </div>
-    <p class="hint" style="margin-top:4px">Le .srt contient tes paroles synchronisées (timings relatifs à l'extrait) — réutilisable tel quel dans CapCut, Premiere ou DaVinci.</p>
+    <p class="hint" style="margin-top:4px">Sous-titres .srt synchronisés — réutilisables dans CapCut, Premiere ou DaVinci.</p>
     <div class="progress" id="exportProg"><i></i></div>
     <a id="dlLink" download="beatcut.mp4">⬇ TÉLÉCHARGER LA VIDÉO</a>
-    <p class="hint" id="exportInfo">mp4 (H.264) si ton navigateur sait l'enregistrer — Chrome/Edge récents oui. Sinon webm en secours.</p>
+    <p class="hint" id="exportInfo">Export mp4 (H.264) sur Chrome/Edge récents — webm en secours.</p>
   </div>
 
 </section>
@@ -534,7 +534,7 @@ Une ligne = une phrase à l'écran." style="margin-top:10px"></textarea>
     <button id="stopBtn" disabled>■ Stop</button>
   </div>
   <div id="tapHud"></div>
-  <p class="hint" id="stageHint">Dépose ton son → BPM auto. Sélectionne l'extrait sur la waveform, lance la détection IA des paroles, ▶ Lecture.</p>
+  <p class="hint" id="stageHint">Dépose ton son → BPM auto. Lance la détection IA puis ▶ Lecture.</p>
 </section>
 </main>
 
@@ -575,9 +575,8 @@ async function initAuth(){
     // clé-en-main : les clés API vivent côté serveur, on masque les champs
     $('#cloudOpts').style.display='none';
     $('#pexelsKeyRow').style.display='none';
-    $('#sepRow').style.display = APP_CONFIG.ACAPELLA_SERVER ? 'flex' : 'none';
-    $('#iaInfo').textContent='Transcription whisper-large incluse — aucune clé à fournir. L\u2019audio est filtré avant envoi, langue précisable ci-dessous.';
-    $('#pexelsInfo').textContent='Tape une recherche (en anglais = plus de résultats) puis clique une vignette pour ajouter le clip — aucune clé à fournir.';
+    $('#iaInfo').textContent='Transcription whisper-large incluse — l\u2019audio est nettoyé avant envoi.';
+    $('#pexelsInfo').textContent='Clique une vignette pour ajouter le clip.';
   }
   try{
     const r=await fetch('/api/auth/me',{credentials:'include'});
@@ -1275,18 +1274,26 @@ $('#sepBtn').onclick=async()=>{
     r=await fetch('/api/separate/'+id+'/result',{credentials:'include'});
     if(!r.ok) throw new Error('résultat indisponible');
     const buf=await r.arrayBuffer();
+    // Lien de téléchargement direct du wav reçu
+    try{
+      const blob=new Blob([buf.slice(0)],{type:'audio/wav'});
+      const link=$('#acapDownload');
+      if(link.href) URL.revokeObjectURL(link.href);
+      link.href=URL.createObjectURL(blob);
+      link.style.display='inline-block';
+    }catch(e){}
     const ac=new (window.AudioContext||window.webkitAudioContext)();
     acap.buffer=await ac.decodeAudioData(buf); ac.close();
-    acap.env=null; acap.name='Acapella serveur (extrait)';
-    acap.offset=state.trimStart;                 // calée par construction
+    acap.env=null; acap.name='Acapella extraite';
+    acap.offset=state.trimStart;
     $('#acapOff').value=acap.offset.toFixed(2);
     $('#acapCard').style.display='block';
-    $('#acapName').textContent='🎙 Acapella extraite par le serveur — calée sur l\u2019extrait';
-    $('#acapInfo').textContent='Acapella prête. Lance la détection IA : précision maximale.';
+    $('#acapName').textContent='Acapella extraite — calée sur l\u2019extrait';
+    $('#acapInfo').textContent='Lance la détection IA pour une précision maximale.';
     det.src='acap';
     $$('#srcSeg button').forEach(b=>b.classList.toggle('active',b.dataset.src==='acap'));
-    $('#srcInfo').textContent='✓ acapella serveur';
-    info.textContent='✓ Acapella extraite en '+Math.round((performance.now()-t0)/1000)+' s. Détection IA → précision max.';
+    $('#srcInfo').textContent='✓ acapella prête';
+    info.textContent='✓ Extraite en '+Math.round((performance.now()-t0)/1000)+' s — disponible ci-dessus.';
     drawWave();
   }catch(e){
     info.textContent='⚠ '+e.message;

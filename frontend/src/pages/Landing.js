@@ -117,36 +117,21 @@ export default function Landing() {
             </p>
           </motion.div>
 
-          {/* Viseur mock */}
+          {/* Hero 3D — visuel pur, sans texte */}
           <motion.div
             className="lg:col-span-5 hidden sm:flex justify-center"
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
           >
-            <div className="relative w-[270px] aspect-[9/16] border border-border bg-black p-2 shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
-              <div
-                className="h-full w-full bg-cover bg-center"
-                style={{
-                  backgroundImage:
-                    "url(https://images.pexels.com/photos/11809800/pexels-photo-11809800.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940)",
-                }}
+            <div className="relative w-full max-w-md aspect-square">
+              <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full" aria-hidden="true" />
+              <img
+                src="https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&w=900&q=90"
+                alt=""
+                className="relative w-full h-full object-cover rounded-2xl shadow-[0_30px_100px_rgba(255,59,48,0.25)]"
+                style={{ filter: "saturate(1.15) contrast(1.05)" }}
               />
-              <div className="absolute inset-2 font-osd text-[11px] text-[#d9ffd0] pointer-events-none [text-shadow:0_0_6px_rgba(0,0,0,0.9)]">
-                <span className="absolute top-2 left-3 flex items-center gap-1.5">
-                  <span className="text-primary">●</span> REC
-                </span>
-                <span className="absolute top-2 right-3">9:16</span>
-                <span className="absolute bottom-2 left-3">TC 00:00:14:22</span>
-                <span className="absolute bottom-2 right-3">142 BPM</span>
-                <span className="absolute top-8 left-3 w-3.5 h-3.5 border-t-2 border-l-2 border-[#d9ffd0]/50" />
-                <span className="absolute top-8 right-3 w-3.5 h-3.5 border-t-2 border-r-2 border-[#d9ffd0]/50" />
-                <span className="absolute bottom-8 left-3 w-3.5 h-3.5 border-b-2 border-l-2 border-[#d9ffd0]/50" />
-                <span className="absolute bottom-8 right-3 w-3.5 h-3.5 border-b-2 border-r-2 border-[#d9ffd0]/50" />
-                <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center font-display text-3xl font-extrabold text-white [text-shadow:0_3px_0_rgba(0,0,0,0.6)]">
-                  CE SON<br /><span className="text-primary">CLAQUE</span>
-                </span>
-              </div>
             </div>
           </motion.div>
         </div>
