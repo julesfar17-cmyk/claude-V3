@@ -80,9 +80,9 @@ export default function Landing() {
           }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/85 to-background" />
-        <div className="relative mx-auto max-w-7xl px-5 sm:px-8 pt-20 pb-24 sm:pt-28 sm:pb-32 grid lg:grid-cols-12 gap-12 items-center">
-          <motion.div className="lg:col-span-7" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}>
-            <p className="font-osd text-xs tracking-[0.25em] text-[#d9ffd0] mb-6 flex items-center gap-3">
+        <div className="relative mx-auto max-w-4xl px-5 sm:px-8 pt-20 pb-24 sm:pt-28 sm:pb-32 text-center">
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }}>
+            <p className="font-osd text-xs tracking-[0.25em] text-[#d9ffd0] mb-6 flex items-center justify-center gap-3">
               <span className="rec-dot" /> STUDIO BEAT-SYNC — 100% DANS TON NAVIGATEUR
             </p>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05]">
@@ -92,11 +92,11 @@ export default function Landing() {
               <br />
               <span className="text-primary">En 60 secondes.</span>
             </h1>
-            <p className="mt-6 text-base text-muted-foreground max-w-xl leading-relaxed">
+            <p className="mt-6 text-base text-muted-foreground max-w-2xl mx-auto leading-relaxed">
               Dépose ton track, ajoute tes clips : BEATCUT détecte le BPM, coupe tes plans sur les temps,
               cale tes paroles à la milliseconde et exporte une vidéo 9:16 prête pour TikTok. Aucun logiciel à installer.
             </p>
-            <div className="mt-9 flex flex-wrap items-center gap-4">
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
               <Link
                 to={ctaTarget}
                 data-testid="hero-cta-button"
@@ -115,24 +115,6 @@ export default function Landing() {
             <p className="mt-5 font-osd text-xs text-muted-foreground">
               GRATUIT : STUDIO COMPLET AVEC WATERMARK • PRO : EXPORT SANS WATERMARK — 12,99 €/MOIS
             </p>
-          </motion.div>
-
-          {/* Hero 3D — visuel pur, sans texte */}
-          <motion.div
-            className="lg:col-span-5 hidden sm:flex justify-center"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-          >
-            <div className="relative w-full max-w-md aspect-square">
-              <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full" aria-hidden="true" />
-              <img
-                src="https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&w=900&q=90"
-                alt=""
-                className="relative w-full h-full object-cover rounded-2xl shadow-[0_30px_100px_rgba(255,59,48,0.25)]"
-                style={{ filter: "saturate(1.15) contrast(1.05)" }}
-              />
-            </div>
           </motion.div>
         </div>
       </section>
