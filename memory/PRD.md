@@ -17,11 +17,16 @@ Fichier fourni : `beatcut.html` — studio de montage beat-sync 100% client-side
 - Fonts : Cabinet Grotesk (display), DM Sans (body), JetBrains Mono (OSD)
 
 ## Modèle d'abonnement
-- Stripe RÉEL (clé sk_live du client) : checkout en mode `subscription` 9,99 €/mois récurrent
-- Renouvellement automatique géré par Stripe ; synchronisé par polling (`sync_stripe_subscription` sur /auth/me quand période expirée ou sync > 12h)
-- "Se désabonner" → `cancel_at_period_end=True` côté Stripe (aucun prélèvement futur), accès PRO conservé jusqu'à `current_period_end`
+- Stripe RÉEL (clé sk_live du client) : checkout en mode `subscription` 12,99 €/mois récurrent
+- Renouvellement automatique géré par Stripe ; synchronisé par polling (`sync_stripe_subscription` sur /auth/me)
+- "Se désabonner" → `cancel_at_period_end=True` côté Stripe, accès conservé jusqu'à fin de période
 - "Se réabonner" → réactivation Stripe si encore en période, sinon nouveau checkout
-- Prix fixé côté serveur uniquement (9,99 € EUR) ; webhook /api/webhook/stripe prêt (actif si STRIPE_WEBHOOK_SECRET configuré)
+
+## Séparation voix/instru (acapella)
+- **Replicate** + modèle **Demucs v4 (htdemucs)** via `cjwbw/demucs` — GPU à la demande, pay-per-use (~0,01-0,02 € par séparation)
+- Scale-to-zero : aucun coût quand personne ne sépare
+- Endpoint asynchrone : POST /api/separate → job_id, GET /api/separate/{id} statut, GET /api/separate/{id}/result wav
+- Réservé aux abonnés PRO (403 sinon)
 
 ## Implémenté (12 juin 2026)
 - ✅ Landing page FR responsive (hero, marquee, 6 features, 4 étapes, tarifs Gratuit/PRO, CTA, footer)

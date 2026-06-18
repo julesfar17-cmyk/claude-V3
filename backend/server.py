@@ -35,8 +35,8 @@ JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_DAYS = 7
 
-PRO_PRICE = 9.99            # 9,99 € — défini côté serveur uniquement, jamais depuis le front
-PRO_PRICE_CENTS = 999
+PRO_PRICE = 12.99           # 12,99 € — défini côté serveur uniquement, jamais depuis le front
+PRO_PRICE_CENTS = 1299
 PRO_CURRENCY = "eur"
 SUBSCRIPTION_DAYS = 30      # filet de sécurité si Stripe est injoignable
 
@@ -46,6 +46,9 @@ RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
 PEXELS_API_KEY = os.environ.get('PEXELS_API_KEY', '')
+REPLICATE_API_TOKEN = os.environ.get('REPLICATE_API_TOKEN', '')
+if REPLICATE_API_TOKEN:
+    os.environ['REPLICATE_API_TOKEN'] = REPLICATE_API_TOKEN
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
 
@@ -95,7 +98,7 @@ def _email_html(title: str, body: str, cta_label: str = None, cta_url: str = Non
 <tr><td style="font-size:17px;font-weight:bold;color:#ece6da;padding:18px 0 8px">{title}</td></tr>
 <tr><td style="font-size:14px;color:#9a93a6;line-height:1.6">{body}</td></tr>
 {button}
-<tr><td style="font-size:11px;color:#6b6478;padding-top:28px">BEATCUT — studio beat-sync. 9,99 €/mois, sans engagement.</td></tr>
+<tr><td style="font-size:11px;color:#6b6478;padding-top:28px">BEATCUT — studio beat-sync. 12,99 €/mois, sans engagement.</td></tr>
 </table></td></tr></table>"""
 
 
@@ -124,9 +127,9 @@ def reset_email_html(link: str) -> str:
 def sub_confirmed_email_html(period_end) -> str:
     return _email_html(
         "Bienvenue en PRO ✦",
-        f"Ton abonnement BEATCUT PRO est actif : export vidéo sans watermark et sous-titres .srt débloqués. "
-        f"Renouvellement automatique le {_fmt_date_fr(period_end)} (9,99 €/mois). "
-        f"Tu peux te désabonner à tout moment en 1 clic depuis ton compte.",
+        f"Ton abonnement BEATCUT PRO est actif : export vidéo sans watermark, sous-titres .srt et "
+        f"extraction d'acapella (GPU) débloqués. Renouvellement automatique le {_fmt_date_fr(period_end)} "
+        f"(12,99 €/mois). Tu peux te désabonner à tout moment en 1 clic depuis ton compte.",
     )
 
 
@@ -727,59 +730,88 @@ async def proxy_transcribe(
 
 
 # ---------------------------------------------------------------------------
-# Séparation vocale serveur (modèles UVR / MDX-Net) — extraction d'acapella
+# Séparation voix/instru — GPU à la demande via Replicate (Demucs v4)
+# Coût : payé à la seconde GPU (~0,01-0,02 € par séparation) — scale to zero.
 # ---------------------------------------------------------------------------
-import threading
+import replicate
 from fastapi.responses import FileResponse
 
 SEP_DIR = Path("/tmp/beatcut_sep")
 SEP_DIR.mkdir(parents=True, exist_ok=True)
-UVR_MODEL = "UVR-MDX-NET-Voc_FT.onnx"
-SEP_JOBS: dict = {}          # job_id -> {status, user_id, error, result_path, created_at}
-SEP_LOCK = threading.Lock()  # une séparation à la fois (RAM/CPU)
-_separator = None
+SEP_JOBS: dict = {}  # job_id -> {status, user_id, error, result_path, created_at}
+
+# Demucs v4 (htdemucs) sur Replicate — le standard pour séparer voix/instru
+DEMUCS_MODEL = (
+    "cjwbw/demucs:25a173108cff36ef9f80f854c162d01df9e6528be175794b81158fa03836d953"
+)
 
 
-def _get_separator():
-    global _separator
-    if _separator is None:
-        from audio_separator.separator import Separator
-        s = Separator(
-            output_dir=str(SEP_DIR),
-            model_file_dir=str(ROOT_DIR / "uvr_models"),
-            output_format="WAV",
-            log_level=logging.WARNING,
+def _coerce_url(value) -> str:
+    """Replicate renvoie soit une str, soit un FileOutput (avec .url)."""
+    if value is None:
+        return ""
+    if hasattr(value, "url"):
+        return value.url
+    return str(value)
+
+
+def _separate_with_replicate(input_path: str) -> str:
+    if not REPLICATE_API_TOKEN:
+        raise RuntimeError("séparation indisponible — clé Replicate manquante")
+    with open(input_path, "rb") as audio:
+        output = replicate.run(
+            DEMUCS_MODEL,
+            input={
+                "audio": audio,
+                "stem": "vocals",
+                "model_name": "htdemucs",
+                "output_format": "wav",
+            },
         )
-        s.load_model(model_filename=UVR_MODEL)
-        _separator = s
-    return _separator
-
-
-def _separate_sync(input_path: str) -> str:
-    with SEP_LOCK:
-        sep = _get_separator()
-        files = sep.separate(input_path)
-    for f in files:
-        full = f if os.path.isabs(f) else str(SEP_DIR / f)
-        if "(Vocals)" in os.path.basename(full):
-            return full
-    raise RuntimeError("piste vocale introuvable dans la sortie du modèle")
+    vocals_url = ""
+    if isinstance(output, dict):
+        for key in ("vocals", "vocals_only", "vocals_audio", "audio", "output"):
+            if output.get(key):
+                vocals_url = _coerce_url(output[key])
+                break
+        if not vocals_url:
+            for v in output.values():
+                if v:
+                    vocals_url = _coerce_url(v)
+                    break
+    elif isinstance(output, list) and output:
+        vocals_url = _coerce_url(output[0])
+    else:
+        vocals_url = _coerce_url(output)
+    if not vocals_url:
+        raise RuntimeError("sortie inattendue du modèle de séparation")
+    out_path = str(SEP_DIR / f"{uuid.uuid4().hex}_vocals.wav")
+    with httpx.Client(timeout=180, follow_redirects=True) as http:
+        r = http.get(vocals_url)
+        r.raise_for_status()
+        with open(out_path, "wb") as f:
+            f.write(r.content)
+    return out_path
 
 
 async def _run_separation(job_id: str, input_path: str):
     try:
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _separate_sync, input_path)
+        result = await loop.run_in_executor(None, _separate_with_replicate, input_path)
         SEP_JOBS[job_id].update(status="done", result_path=result)
     except Exception as e:
-        logger.error("Séparation %s échouée: %s", job_id, e)
-        SEP_JOBS[job_id].update(status="error", error="séparation échouée — réessaie avec un extrait plus court")
+        msg = str(e)
+        logger.error("Séparation %s échouée: %s", job_id, msg)
+        if "Insufficient credit" in msg or "402" in msg:
+            user_msg = "Service de séparation momentanément indisponible — réessaie plus tard."
+        else:
+            user_msg = "séparation échouée — réessaie"
+        SEP_JOBS[job_id].update(status="error", error=user_msg)
     finally:
         try:
             os.remove(input_path)
         except OSError:
             pass
-        # nettoyage des vieux jobs (> 1 h)
         cutoff = now_utc() - timedelta(hours=1)
         for jid in list(SEP_JOBS.keys()):
             job = SEP_JOBS[jid]

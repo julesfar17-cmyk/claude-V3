@@ -207,7 +207,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
 <div class="overlay" id="payOverlay">
   <div class="auth-card">
     <h2>Passe en <em>PRO</em></h2>
-    <p>En gratuit : tout le studio + aperçu (avec watermark BEATCUT, capture d'écran comprise). Le Pro débloque l'export vidéo et les sous-titres .srt sans watermark — <b id="priceLabel">9,99 €/mois</b>, sans engagement, désabonnement en 1 clic depuis ton compte.</p>
+    <p>En gratuit : tout le studio + aperçu (avec watermark BEATCUT, capture d'écran comprise). Le Pro débloque l'export vidéo sans watermark, l'extraction d'acapella et les sous-titres .srt — <b id="priceLabel">12,99 €/mois</b>, sans engagement, désabonnement en 1 clic depuis ton compte.</p>
     <button class="primary" id="payBtn" data-testid="studio-pay-button">S'abonner</button>
     <button id="payRefresh" data-testid="studio-pay-refresh">J'ai déjà payé → vérifier</button>
     <button id="payClose" style="background:transparent;border:none;color:var(--ivoire-dim)">Continuer en gratuit (avec watermark)</button>
@@ -558,7 +558,7 @@ Une ligne = une phrase à l'écran." style="margin-top:10px"></textarea>
 const APP_CONFIG = {
   USE_PROXY: true,   // clé-en-main : les clés Groq/Pexels vivent sur le serveur BEATCUT
   ACAPELLA_SERVER: true,  // extraction d'acapella sur le serveur (modèles UVR — Pro)
-  PRICE_LABEL: '9,99 €/mois',
+  PRICE_LABEL: '12,99 €/mois',
 };
 
 const $  = s => document.querySelector(s);

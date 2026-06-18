@@ -113,7 +113,7 @@ export default function Landing() {
               </a>
             </div>
             <p className="mt-5 font-osd text-xs text-muted-foreground">
-              GRATUIT : STUDIO COMPLET AVEC WATERMARK • PRO : EXPORT SANS WATERMARK — 9,99 €/MOIS
+              GRATUIT : STUDIO COMPLET AVEC WATERMARK • PRO : EXPORT SANS WATERMARK — 12,99 €/MOIS
             </p>
           </motion.div>
 
@@ -256,7 +256,7 @@ export default function Landing() {
             </span>
             <p className="font-osd text-xs tracking-[0.2em] text-primary mb-3">PRO</p>
             <p className="font-display text-4xl font-extrabold">
-              9,99 € <span className="text-base font-normal text-muted-foreground">/ mois</span>
+              12,99 € <span className="text-base font-normal text-muted-foreground">/ mois</span>
             </p>
             <ul className="mt-7 space-y-3 text-sm">
               {["Tout le plan gratuit", "Export vidéo mp4 sans watermark", "Export des sous-titres .srt", "Sans engagement — désabonnement en 1 clic"].map((f) => (

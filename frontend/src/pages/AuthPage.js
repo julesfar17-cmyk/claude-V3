@@ -148,7 +148,7 @@ export default function AuthPage() {
             </p>
           </div>
           <p className="mt-5 font-osd text-[11px] text-muted-foreground text-center tracking-wider">
-            GRATUIT POUR TOUJOURS • PRO 9,99 €/MOIS SANS ENGAGEMENT
+            GRATUIT POUR TOUJOURS • PRO 12,99 €/MOIS SANS ENGAGEMENT
           </p>
         </div>
       </div>

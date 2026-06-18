@@ -158,7 +158,7 @@ export default function Dashboard() {
                   Passe en PRO pour exporter tes vidéos sans watermark et récupérer tes .srt.
                 </p>
                 <p className="mt-5 font-display text-3xl font-extrabold">
-                  9,99 € <span className="text-sm font-normal text-muted-foreground">/ mois — sans engagement</span>
+                  12,99 € <span className="text-sm font-normal text-muted-foreground">/ mois — sans engagement</span>
                 </p>
                 <button
                   onClick={startCheckout}
@@ -237,7 +237,7 @@ export default function Dashboard() {
                   data-testid="resubscribe-button"
                   className="mt-7 w-full bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
                 >
-                  {busy ? "…" : "Se réabonner — 9,99 €/mois"}
+                  {busy ? "…" : "Se réabonner — 12,99 €/mois"}
                 </button>
               </>
             )}
