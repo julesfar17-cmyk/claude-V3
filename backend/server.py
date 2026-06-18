@@ -1207,7 +1207,7 @@ async def startup():
     await seed_user(os.environ['ADMIN_EMAIL'], os.environ['ADMIN_PASSWORD'], "Admin", "admin")
     await seed_user("demo@beatcut.fr", "Demo1234!", "Démo", "user")
     # Codes promo par défaut
-    for code, days in (("BIENVENUE50", 15), ("LAUNCH30", 30)):
+    for code, days in (("BIENVENUE50", 15), ("LAUNCH30", 30), ("BEATCUTSTART", 30)):
         existing = await db.promo_codes.find_one({"code": code})
         if not existing:
             await db.promo_codes.insert_one({
