@@ -52,6 +52,12 @@ if REPLICATE_API_TOKEN:
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
 
+PRO_WHITELIST = {
+    e.strip().lower()
+    for e in os.environ.get('PRO_WHITELIST', '').split(',')
+    if e.strip()
+}
+
 EMERGENT_SESSION_DATA_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -184,6 +190,14 @@ def set_session_cookie(response: Response, token: str):
 # Subscription helpers
 # ---------------------------------------------------------------------------
 def sub_info(user: dict) -> dict:
+    # Comptes en liste blanche : PRO permanent, hors Stripe
+    if (user.get("email") or "").lower() in PRO_WHITELIST:
+        return {
+            "is_pro": True,
+            "status": "vip",
+            "current_period_end": None,
+            "cancel_at_period_end": False,
+        }
     sub = user.get("subscription") or {}
     status = sub.get("status")
     end = parse_dt(sub.get("current_period_end"))
@@ -244,6 +258,8 @@ async def activate_subscription(user_id: str, customer_id: str = None, subscript
 
 async def sync_stripe_subscription(user: dict) -> dict:
     """Synchronise l'abonnement avec Stripe : renouvellement auto, annulation, expiration."""
+    if (user.get("email") or "").lower() in PRO_WHITELIST:
+        return user        # comptes VIP : pas de Stripe à synchroniser
     sub = user.get("subscription") or {}
     sub_id = sub.get("stripe_subscription_id")
     if not sub_id:
@@ -530,6 +546,8 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
 
 @api_router.post("/payments/checkout")
 async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depends(get_current_user)):
+    if (user.get("email") or "").lower() in PRO_WHITELIST:
+        raise HTTPException(status_code=400, detail="Compte VIP — déjà PRO")
     origin = data.origin_url.rstrip("/")
     success_url = f"{origin}/dashboard?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/dashboard"
@@ -629,6 +647,8 @@ async def get_subscription(user: dict = Depends(get_current_user)):
 
 @api_router.post("/subscription/cancel")
 async def cancel_subscription(user: dict = Depends(get_current_user)):
+    if (user.get("email") or "").lower() in PRO_WHITELIST:
+        raise HTTPException(status_code=400, detail="Compte VIP — pas d'abonnement à annuler")
     user = await sync_stripe_subscription(user)
     info = sub_info(user)
     sub = user.get("subscription") or {}

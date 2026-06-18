@@ -33,6 +33,7 @@ export default function Dashboard() {
 
   const sub = user?.subscription || {};
   const isPro = !!user?.is_pro;
+  const isVip = sub.status === "vip";
   const canceled = !!sub.cancel_at_period_end;
 
   // Vérification du paiement au retour de Stripe
@@ -136,20 +137,33 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="font-display text-lg font-bold">Abonnement</h2>
               {isPro ? (
-                <span
-                  className={`font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 ${
-                    canceled ? "bg-secondary text-muted-foreground" : "bg-primary text-white"
-                  }`}
-                  data-testid="plan-badge"
-                >
-                  {canceled ? "PRO — ANNULÉ" : "PRO ✦"}
-                </span>
-              ) : (
+              <span
+                className={`font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 ${
+                  isVip ? "bg-[#d9ffd0] text-background" : canceled ? "bg-secondary text-muted-foreground" : "bg-primary text-white"
+                }`}
+                data-testid="plan-badge"
+              >
+                {isVip ? "VIP ✦" : canceled ? "PRO — ANNULÉ" : "PRO ✦"}
+              </span>
+            ) : (
                 <span className="font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 bg-secondary text-muted-foreground" data-testid="plan-badge">
                   GRATUIT
                 </span>
               )}
             </div>
+
+            {isVip && (
+              <div data-testid="vip-section">
+                <div className="flex items-center gap-2.5 text-sm">
+                  <BadgeCheck size={17} className="text-[#d9ffd0]" />
+                  <span data-testid="subscription-status-text">Compte VIP — accès PRO illimité ✦</span>
+                </div>
+                <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
+                  Export sans watermark, sous-titres .srt et extraction d'acapella — tout est débloqué à vie,
+                  sans abonnement ni paiement. Profite bien ✦
+                </p>
+              </div>
+            )}
 
             {!isPro && (
               <>
@@ -174,7 +188,7 @@ export default function Dashboard() {
               </>
             )}
 
-            {isPro && !canceled && (
+            {isPro && !canceled && !isVip && (
               <>
                 <div className="flex items-center gap-2.5 text-sm">
                   <BadgeCheck size={17} className="text-[#d9ffd0]" />
