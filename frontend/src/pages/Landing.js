@@ -188,7 +188,7 @@ export default function Landing() {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 gap-6 max-w-4xl">
+        <div className="grid md:grid-cols-3 gap-6 max-w-6xl">
           {/* Gratuit */}
           <motion.div {...fadeUp} className="bg-card border border-border p-9" data-testid="pricing-free-card">
             <p className="font-osd text-xs tracking-[0.2em] text-muted-foreground mb-3">GRATUIT</p>
@@ -211,7 +211,7 @@ export default function Landing() {
             </Link>
           </motion.div>
 
-          {/* PRO */}
+          {/* PRO mensuel */}
           <motion.div
             {...fadeUp}
             transition={{ duration: 0.55, delay: 0.1 }}
@@ -221,12 +221,12 @@ export default function Landing() {
             <span className="absolute -top-3 left-9 bg-primary text-white font-osd text-[10px] tracking-[0.2em] px-3 py-1">
               RECOMMANDÉ
             </span>
-            <p className="font-osd text-xs tracking-[0.2em] text-primary mb-3">PRO</p>
+            <p className="font-osd text-xs tracking-[0.2em] text-primary mb-3">PRO MENSUEL</p>
             <p className="font-display text-4xl font-extrabold">
               12,99 € <span className="text-base font-normal text-muted-foreground">/ mois</span>
             </p>
             <ul className="mt-7 space-y-3 text-sm">
-              {["Tout le plan gratuit", "Export vidéo mp4 sans watermark", "Export des sous-titres .srt", "Sans engagement — désabonnement en 1 clic"].map((f) => (
+              {["Tout le plan gratuit", "Export mp4 sans watermark", "Sous-titres .srt", "Extraction d'acapella (IA)", "Sans engagement"].map((f) => (
                 <li key={f} className="flex items-start gap-2.5">
                   <Check size={16} className="text-primary mt-0.5 shrink-0" /> {f}
                 </li>
@@ -240,6 +240,80 @@ export default function Landing() {
               Passer en PRO
             </Link>
           </motion.div>
+
+          {/* PRO annuel */}
+          <motion.div
+            {...fadeUp}
+            transition={{ duration: 0.55, delay: 0.2 }}
+            className="relative bg-card border border-[#d9ffd0]/40 p-9"
+            data-testid="pricing-yearly-card"
+          >
+            <span className="absolute -top-3 left-9 bg-[#d9ffd0] text-background font-osd text-[10px] tracking-[0.2em] px-3 py-1">
+              2 MOIS OFFERTS
+            </span>
+            <p className="font-osd text-xs tracking-[0.2em] text-[#d9ffd0] mb-3">PRO ANNUEL</p>
+            <p className="font-display text-4xl font-extrabold">
+              99 € <span className="text-base font-normal text-muted-foreground">/ an</span>
+            </p>
+            <p className="mt-1 font-osd text-[11px] text-muted-foreground">soit 8,25 €/mois</p>
+            <ul className="mt-7 space-y-3 text-sm">
+              {["Tout le plan PRO mensuel", "Économise 56 € sur l'année", "Priorité sur les nouveautés"].map((f) => (
+                <li key={f} className="flex items-start gap-2.5">
+                  <Check size={16} className="text-[#d9ffd0] mt-0.5 shrink-0" /> {f}
+                </li>
+              ))}
+            </ul>
+            <Link
+              to={proTarget + "&plan=yearly"}
+              data-testid="pricing-yearly-button"
+              className="mt-9 block text-center border border-[#d9ffd0]/50 bg-[#d9ffd0]/5 text-foreground font-bold px-6 py-3.5 hover:bg-[#d9ffd0]/10 transition-all hover:-translate-y-0.5"
+            >
+              Passer en PRO annuel
+            </Link>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ============ GALERIE ============ */}
+      <section className="border-y border-border bg-[#0d0b11]">
+        <div className="mx-auto max-w-7xl px-5 sm:px-8 py-24 sm:py-32">
+          <motion.div {...fadeUp} className="max-w-2xl mb-12">
+            <p className="font-osd text-xs tracking-[0.25em] text-primary mb-4">[ GALERIE ]</p>
+            <h2 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight">
+              Ce que tu peux sortir aujourd'hui.
+            </h2>
+            <p className="mt-4 text-sm text-muted-foreground">Vidéos exportées en moins de 60 secondes, prêtes pour TikTok.</p>
+          </motion.div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            {[
+              "https://videos.pexels.com/video-files/3045163/3045163-hd_1080_1920_30fps.mp4",
+              "https://videos.pexels.com/video-files/4980296/4980296-hd_1080_1920_25fps.mp4",
+              "https://videos.pexels.com/video-files/3209828/3209828-hd_1080_1920_25fps.mp4",
+              "https://videos.pexels.com/video-files/5377684/5377684-hd_1080_1920_25fps.mp4",
+            ].map((src, i) => (
+              <motion.div
+                key={src}
+                {...fadeUp}
+                transition={{ duration: 0.5, delay: i * 0.08 }}
+                className="relative aspect-[9/16] bg-black border border-border overflow-hidden group"
+                data-testid={`gallery-clip-${i}`}
+              >
+                <video
+                  src={src}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+                <span className="absolute bottom-3 left-3 font-osd text-[10px] tracking-wider text-[#d9ffd0]">
+                  EXPORT 9:16 • {130 + i * 4} BPM
+                </span>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 

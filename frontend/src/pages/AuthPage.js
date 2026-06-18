@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiErrorDetail } from "@/lib/api";
@@ -8,8 +8,16 @@ import { Logo } from "@/components/Navbar";
 export default function AuthPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { login, register, loginWithGoogle } = useAuth();
   const isRegister = location.pathname === "/register";
+  const refCode = (params.get("ref") || "").toUpperCase();
+
+  useEffect(() => {
+    if (refCode) {
+      try { sessionStorage.setItem("beatcut_ref", refCode); } catch {}
+    }
+  }, [refCode]);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -23,7 +31,7 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (isRegister) {
-        await register(name, email, password);
+        await register(name, email, password, refCode || null);
         toast.success("Compte créé — bienvenue sur BEATCUT !");
       } else {
         await login(email, password);
@@ -53,6 +61,11 @@ export default function AuthPage() {
             <h1 className="font-display text-2xl font-extrabold tracking-tight mb-7">
               {isRegister ? "Rejoins le studio." : "Content de te revoir."}
             </h1>
+            {refCode && isRegister && (
+              <div className="mb-5 border border-[#d9ffd0]/40 bg-[#d9ffd0]/5 px-4 py-3 font-osd text-[11px] tracking-wider text-[#d9ffd0]" data-testid="ref-banner">
+                ✦ Parrainage actif : code <b>{refCode}</b> — +1 mois offert dès ton 1er paiement
+              </div>
+            )}
 
             <button
               onClick={loginWithGoogle}

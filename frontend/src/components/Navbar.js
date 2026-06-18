@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Menu, X, Clapperboard, LogOut } from "lucide-react";
+import { Menu, X, Clapperboard, LogOut, Languages } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n } from "@/i18n";
 
 export const Logo = ({ className = "" }) => (
   <Link to="/" data-testid="nav-logo" className={`font-display text-xl font-extrabold tracking-tight text-foreground ${className}`}>
@@ -11,6 +12,7 @@ export const Logo = ({ className = "" }) => (
 
 export default function Navbar({ landing = false }) {
   const { user, logout } = useAuth();
+  const { lang, setLang, t } = useI18n();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -21,11 +23,22 @@ export default function Navbar({ landing = false }) {
 
   const links = landing
     ? [
-        { href: "#fonctionnalites", label: "Fonctionnalités" },
-        { href: "#comment", label: "Comment ça marche" },
-        { href: "#tarifs", label: "Tarifs" },
+        { href: "#fonctionnalites", label: t("nav.features") },
+        { href: "#comment", label: t("nav.how") },
+        { href: "#tarifs", label: t("nav.pricing") },
       ]
     : [];
+
+  const LangToggle = (
+    <button
+      onClick={() => setLang(lang === "fr" ? "en" : "fr")}
+      data-testid="lang-toggle"
+      title={lang === "fr" ? "Switch to English" : "Passer en français"}
+      className="flex items-center gap-1.5 font-osd text-[11px] tracking-wider text-muted-foreground hover:text-foreground transition-colors px-2 py-1 border border-border"
+    >
+      <Languages size={12} /> {lang.toUpperCase()}
+    </button>
+  );
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -44,6 +57,7 @@ export default function Navbar({ landing = false }) {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
+          {LangToggle}
           {user ? (
             <>
               <Link
@@ -51,19 +65,19 @@ export default function Navbar({ landing = false }) {
                 data-testid="nav-dashboard-link"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                Mon compte
+                {t("nav.account")}
               </Link>
               <Link
                 to="/studio"
                 data-testid="nav-studio-link"
                 className="inline-flex items-center gap-2 bg-primary text-white text-sm font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_15px_rgba(255,59,48,0.35)]"
               >
-                <Clapperboard size={16} /> Ouvrir le studio
+                <Clapperboard size={16} /> {t("nav.openStudio")}
               </Link>
               <button
                 onClick={handleLogout}
                 data-testid="nav-logout-button"
-                title="Se déconnecter"
+                title={t("nav.logout")}
                 className="text-muted-foreground hover:text-foreground transition-colors p-2"
               >
                 <LogOut size={16} />
@@ -72,14 +86,14 @@ export default function Navbar({ landing = false }) {
           ) : (
             <>
               <Link to="/login" data-testid="nav-login-link" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                Se connecter
+                {t("nav.login")}
               </Link>
               <Link
                 to="/register"
                 data-testid="nav-register-link"
                 className="bg-primary text-white text-sm font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_15px_rgba(255,59,48,0.35)]"
               >
-                Commencer gratuitement
+                {t("nav.register")}
               </Link>
             </>
           )}

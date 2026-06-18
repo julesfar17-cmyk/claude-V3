@@ -37,8 +37,12 @@ ACCESS_TOKEN_DAYS = 7
 
 PRO_PRICE = 12.99           # 12,99 € — défini côté serveur uniquement, jamais depuis le front
 PRO_PRICE_CENTS = 1299
+PRO_PRICE_YEAR = 99.00
+PRO_PRICE_YEAR_CENTS = 9900
 PRO_CURRENCY = "eur"
 SUBSCRIPTION_DAYS = 30      # filet de sécurité si Stripe est injoignable
+SUBSCRIPTION_DAYS_YEAR = 365
+REFERRAL_BONUS_DAYS = 30    # +1 mois offert pour le parrain ET le parrainé après 1er paiement
 
 stripe.api_key = os.environ['STRIPE_API_KEY']
 
@@ -218,8 +222,10 @@ def public_user(user: dict) -> dict:
         "name": user.get("name", ""),
         "picture": user.get("picture"),
         "auth_provider": user.get("auth_provider", "password"),
+        "role": user.get("role", "user"),
         "is_pro": info["is_pro"],
         "subscription": info,
+        "ref_code": user.get("ref_code", ""),
     }
 
 
@@ -235,11 +241,13 @@ def _extract_period_end(sub_obj) -> datetime:
     return now_utc() + timedelta(days=SUBSCRIPTION_DAYS)
 
 
-async def activate_subscription(user_id: str, customer_id: str = None, subscription_id: str = None):
+async def activate_subscription(user_id: str, customer_id: str = None, subscription_id: str = None, plan: str = "monthly"):
+    days = SUBSCRIPTION_DAYS_YEAR if plan == "yearly" else SUBSCRIPTION_DAYS
     sub_doc = {
         "status": "active",
+        "plan": plan,
         "started_at": iso(now_utc()),
-        "current_period_end": iso(now_utc() + timedelta(days=SUBSCRIPTION_DAYS)),
+        "current_period_end": iso(now_utc() + timedelta(days=days)),
         "stripe_customer_id": customer_id,
         "stripe_subscription_id": subscription_id,
         "synced_at": iso(now_utc()),
@@ -253,7 +261,46 @@ async def activate_subscription(user_id: str, customer_id: str = None, subscript
         except Exception as e:
             logger.warning("Stripe subscription retrieve failed: %s", e)
     await db.users.update_one({"user_id": user_id}, {"$set": {"subscription": sub_doc}})
-    logger.info("Subscription PRO activated for %s (stripe sub: %s)", user_id, subscription_id)
+    await _apply_referral_bonus(user_id)
+    logger.info("Subscription PRO activated for %s (plan=%s stripe sub: %s)", user_id, plan, subscription_id)
+
+
+async def _apply_referral_bonus(referee_id: str):
+    """Crédit +1 mois au parrain ET au parrainé lors du 1er paiement validé."""
+    referee = await db.users.find_one({"user_id": referee_id}, {"_id": 0})
+    if not referee:
+        return
+    ref_code = referee.get("referred_by")
+    if not ref_code or referee.get("referral_credited"):
+        return
+    referrer = await db.users.find_one({"ref_code": ref_code}, {"_id": 0})
+    if not referrer or referrer["user_id"] == referee_id:
+        return
+    # Bonus pour le parrain (+30j sur sa fin de période)
+    rsub = referrer.get("subscription") or {}
+    end_curr = parse_dt(rsub.get("current_period_end")) or now_utc()
+    if end_curr < now_utc():
+        end_curr = now_utc()
+    new_end = end_curr + timedelta(days=REFERRAL_BONUS_DAYS)
+    await db.users.update_one(
+        {"user_id": referrer["user_id"]},
+        {"$set": {
+            "subscription.bonus_until": iso(new_end),
+            "subscription.referral_count": (rsub.get("referral_count") or 0) + 1,
+        }},
+    )
+    # Bonus pour le parrainé (+30j sur sa fin de période)
+    sub = referee.get("subscription") or {}
+    end_referee = parse_dt(sub.get("current_period_end")) or now_utc()
+    new_end_referee = end_referee + timedelta(days=REFERRAL_BONUS_DAYS)
+    await db.users.update_one(
+        {"user_id": referee_id},
+        {"$set": {
+            "subscription.current_period_end": iso(new_end_referee),
+            "referral_credited": True,
+        }},
+    )
+    logger.info("Bonus parrainage : +30j à %s et %s", referrer["email"], referee["email"])
 
 
 async def sync_stripe_subscription(user: dict) -> dict:
@@ -361,6 +408,7 @@ class RegisterIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     email: str = Field(min_length=5, max_length=120)
     password: str = Field(min_length=6, max_length=128)
+    ref_code: str | None = None
 
 
 class LoginIn(BaseModel):
@@ -370,10 +418,12 @@ class LoginIn(BaseModel):
 
 class GoogleSessionIn(BaseModel):
     session_id: str
+    ref_code: str | None = None
 
 
 class CheckoutIn(BaseModel):
     origin_url: str
+    plan: str = "monthly"   # "monthly" ou "yearly"
 
 
 class ForgotPasswordIn(BaseModel):
@@ -391,6 +441,15 @@ class PexelsSearchIn(BaseModel):
     orientation: str = "portrait"
 
 
+class PromoApplyIn(BaseModel):
+    code: str = Field(min_length=2, max_length=40)
+
+
+class TemplateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    style: dict
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
@@ -402,6 +461,12 @@ async def register(data: RegisterIn, response: Response):
     existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="Un compte existe déjà avec cet email")
+    referred_by = None
+    if data.ref_code:
+        rc = data.ref_code.strip().upper()
+        sponsor = await db.users.find_one({"ref_code": rc}, {"_id": 0})
+        if sponsor and sponsor["email"] != email:
+            referred_by = rc
     user = {
         "user_id": f"user_{uuid.uuid4().hex[:12]}",
         "email": email,
@@ -410,6 +475,8 @@ async def register(data: RegisterIn, response: Response):
         "auth_provider": "password",
         "role": "user",
         "subscription": None,
+        "ref_code": f"REF{uuid.uuid4().hex[:6].upper()}",
+        "referred_by": referred_by,
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(user)
@@ -452,6 +519,8 @@ async def google_session(data: GoogleSessionIn, response: Response):
             "auth_provider": "google",
             "role": "user",
             "subscription": None,
+            "ref_code": f"REF{uuid.uuid4().hex[:6].upper()}",
+            "referred_by": (data.ref_code or "").strip().upper() or None,
             "created_at": iso(now_utc()),
         }
         await db.users.insert_one({**user})
@@ -537,7 +606,7 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
     if res.modified_count:
         tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
         if tx and tx.get("user_id"):
-            await activate_subscription(tx["user_id"], customer_id, subscription_id)
+            await activate_subscription(tx["user_id"], customer_id, subscription_id, plan=tx.get("plan", "monthly"))
             user = await db.users.find_one({"user_id": tx["user_id"]}, {"_id": 0})
             if user:
                 end = (user.get("subscription") or {}).get("current_period_end")
@@ -552,25 +621,33 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
     success_url = f"{origin}/dashboard?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/dashboard"
     sub = user.get("subscription") or {}
+    plan = "yearly" if data.plan == "yearly" else "monthly"
+    if plan == "yearly":
+        amount_cents = PRO_PRICE_YEAR_CENTS
+        interval = "year"
+        product_name = "BEATCUT PRO — annuel"
+        product_desc = "Export sans watermark + .srt + extraction acapella — 99 €/an (2 mois offerts)"
+    else:
+        amount_cents = PRO_PRICE_CENTS
+        interval = "month"
+        product_name = "BEATCUT PRO"
+        product_desc = "Export vidéo sans watermark + sous-titres .srt + acapella — sans engagement"
     params = dict(
         mode="subscription",
         payment_method_types=["card"],
         line_items=[{
             "price_data": {
                 "currency": PRO_CURRENCY,
-                "unit_amount": PRO_PRICE_CENTS,
-                "recurring": {"interval": "month"},
-                "product_data": {
-                    "name": "BEATCUT PRO",
-                    "description": "Export vidéo sans watermark + sous-titres .srt — sans engagement",
-                },
+                "unit_amount": amount_cents,
+                "recurring": {"interval": interval},
+                "product_data": {"name": product_name, "description": product_desc},
             },
             "quantity": 1,
         }],
         success_url=success_url,
         cancel_url=cancel_url,
-        metadata={"user_id": user["user_id"], "email": user["email"], "product": "beatcut_pro_monthly"},
-        subscription_data={"metadata": {"user_id": user["user_id"]}},
+        metadata={"user_id": user["user_id"], "email": user["email"], "product": f"beatcut_pro_{plan}"},
+        subscription_data={"metadata": {"user_id": user["user_id"], "plan": plan}},
     )
     if sub.get("stripe_customer_id"):
         params["customer"] = sub["stripe_customer_id"]
@@ -585,9 +662,10 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         "session_id": session.id,
         "user_id": user["user_id"],
         "email": user["email"],
-        "amount": PRO_PRICE,
+        "amount": amount_cents / 100.0,
         "currency": PRO_CURRENCY,
-        "product": "beatcut_pro_monthly",
+        "product": f"beatcut_pro_{plan}",
+        "plan": plan,
         "status": "open",
         "payment_status": "initiated",
         "processed": False,
@@ -865,6 +943,10 @@ async def start_separation(file: UploadFile = File(...), user: dict = Depends(ge
         "status": "processing", "user_id": user["user_id"],
         "error": None, "result_path": None, "created_at": iso(now_utc()),
     }
+    await db.separation_logs.insert_one({
+        "user_id": user["user_id"], "job_id": job_id,
+        "size": len(content), "created_at": iso(now_utc()),
+    })
     asyncio.create_task(_run_separation(job_id, input_path))
     return {"id": job_id, "status": "processing"}
 
@@ -890,6 +972,191 @@ async def separation_result(job_id: str, user: dict = Depends(get_current_user))
     return FileResponse(job["result_path"], media_type="audio/wav", filename="acapella.wav")
 
 
+# ---------------------------------------------------------------------------
+# Codes promo + parrainage + templates + admin
+# ---------------------------------------------------------------------------
+async def require_admin(user: dict) -> dict:
+    if (user.get("role") or "") != "admin":
+        raise HTTPException(status_code=403, detail="Réservé à l'administration")
+    return user
+
+
+def _normalize_promo(code: str) -> str:
+    return code.strip().upper()
+
+
+@api_router.get("/promo/me")
+async def promo_me(user: dict = Depends(get_current_user)):
+    """Code de parrainage de l'utilisateur + stats."""
+    rsub = user.get("subscription") or {}
+    return {
+        "ref_code": user.get("ref_code") or "",
+        "referral_count": rsub.get("referral_count") or 0,
+        "bonus_until": rsub.get("bonus_until"),
+    }
+
+
+@api_router.post("/promo/apply")
+async def promo_apply(data: PromoApplyIn, user: dict = Depends(get_current_user)):
+    code = _normalize_promo(data.code)
+    promo = await db.promo_codes.find_one({"code": code}, {"_id": 0})
+    if not promo:
+        raise HTTPException(status_code=404, detail="Code invalide")
+    if promo.get("expires_at") and parse_dt(promo["expires_at"]) < now_utc():
+        raise HTTPException(status_code=400, detail="Code expiré")
+    max_uses = promo.get("max_uses")
+    if max_uses and (promo.get("used_count") or 0) >= max_uses:
+        raise HTTPException(status_code=400, detail="Code épuisé")
+    if user["user_id"] in (promo.get("used_by") or []):
+        raise HTTPException(status_code=400, detail="Code déjà utilisé sur ce compte")
+    days = int(promo.get("bonus_days") or 30)
+    sub = user.get("subscription") or {}
+    end = parse_dt(sub.get("current_period_end")) or now_utc()
+    if end < now_utc():
+        end = now_utc()
+    new_end = end + timedelta(days=days)
+    new_sub = {
+        **sub,
+        "status": sub.get("status") or "active",
+        "current_period_end": iso(new_end),
+        "promo_applied": code,
+    }
+    if not sub.get("started_at"):
+        new_sub["started_at"] = iso(now_utc())
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"subscription": new_sub}},
+    )
+    await db.promo_codes.update_one(
+        {"code": code},
+        {"$inc": {"used_count": 1}, "$push": {"used_by": user["user_id"]}},
+    )
+    return {"message": f"Code appliqué : +{days} jours offerts ✦", "current_period_end": iso(new_end)}
+
+
+@api_router.get("/templates")
+async def list_templates(user: dict = Depends(get_current_user)):
+    docs = await db.templates.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return docs
+
+
+@api_router.post("/templates")
+async def save_template(data: TemplateIn, user: dict = Depends(get_current_user)):
+    doc = {
+        "template_id": uuid.uuid4().hex[:12],
+        "user_id": user["user_id"],
+        "name": data.name.strip()[:80],
+        "style": data.style,
+        "created_at": iso(now_utc()),
+    }
+    await db.templates.insert_one({**doc})
+    return doc
+
+
+@api_router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, user: dict = Depends(get_current_user)):
+    res = await db.templates.delete_one({"template_id": template_id, "user_id": user["user_id"]})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Template introuvable")
+    return {"message": "supprimé"}
+
+
+@api_router.get("/admin/stats")
+async def admin_stats(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    total_users = await db.users.count_documents({})
+    google_users = await db.users.count_documents({"auth_provider": "google"})
+    pwd_users = await db.users.count_documents({"auth_provider": "password"})
+    paid_users = await db.users.count_documents({
+        "subscription.status": {"$in": ["active", "canceled"]},
+        "subscription.current_period_end": {"$gt": iso(now_utc())},
+    })
+    canceled = await db.users.count_documents({"subscription.status": "canceled"})
+    yearly = await db.users.count_documents({"subscription.plan": "yearly"})
+    monthly = max(0, paid_users - yearly)
+    # MRR : annuels comptés au prorata mensuel
+    mrr = round(monthly * PRO_PRICE + yearly * (PRO_PRICE_YEAR / 12), 2)
+    # Séparations du mois
+    start_month = iso(now_utc().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+    sep_count = await db.separation_logs.count_documents({"created_at": {"$gt": start_month}})
+    est_sep_cost = round(sep_count * 0.015, 2)
+    last_users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).limit(10).to_list(10)
+    promos = await db.promo_codes.find({}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    return {
+        "total_users": total_users,
+        "paid_users": paid_users,
+        "canceled": canceled,
+        "google_users": google_users,
+        "password_users": pwd_users,
+        "monthly_subscribers": monthly,
+        "yearly_subscribers": yearly,
+        "mrr": mrr,
+        "separations_this_month": sep_count,
+        "estimated_separation_cost_eur": est_sep_cost,
+        "recent_users": last_users,
+        "promo_codes": promos,
+    }
+
+
+@api_router.post("/admin/promo")
+async def admin_create_promo(payload: dict, user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    code = _normalize_promo(payload.get("code") or "")
+    if len(code) < 3:
+        raise HTTPException(status_code=400, detail="Code trop court (3 min)")
+    days = int(payload.get("bonus_days") or 30)
+    max_uses = payload.get("max_uses") or None
+    if max_uses is not None:
+        max_uses = int(max_uses)
+    expires_at = None
+    if payload.get("expires_at"):
+        expires_at = payload["expires_at"]
+    existing = await db.promo_codes.find_one({"code": code})
+    if existing:
+        raise HTTPException(status_code=400, detail="Code déjà existant")
+    doc = {
+        "code": code, "bonus_days": days, "max_uses": max_uses,
+        "expires_at": expires_at, "used_count": 0, "used_by": [],
+        "created_at": iso(now_utc()),
+    }
+    await db.promo_codes.insert_one({**doc})
+    return doc
+
+
+# ---------------------------------------------------------------------------
+# Emails de relance automatique pour les comptes gratuits (J+3, J+7)
+# ---------------------------------------------------------------------------
+def reengage_email_html(days_since: int) -> str:
+    title = "Toujours là ?" if days_since >= 7 else "Tu as essayé BEATCUT ?"
+    body = (
+        "Une vidéo postée sur TikTok cette semaine vaut 100 fois celle du mois prochain. "
+        "On t'offre 50 % sur ton premier mois avec le code <b>BIENVENUE50</b> — direct dans ton compte."
+    )
+    return _email_html(title, body, "Activer mon code", "https://pro-mailer-2.preview.emergentagent.com/dashboard")
+
+
+async def _reengage_loop():
+    """Toutes les 6 h, envoie un email aux comptes gratuits inscrits il y a 3 et 7 jours."""
+    while True:
+        try:
+            for days in (3, 7):
+                lo = now_utc() - timedelta(days=days, hours=6)
+                hi = now_utc() - timedelta(days=days)
+                async for u in db.users.find({
+                    "created_at": {"$gt": iso(lo), "$lt": iso(hi)},
+                    f"reengage_d{days}_sent": {"$ne": True},
+                }, {"_id": 0}):
+                    if (u.get("email") or "").lower() in PRO_WHITELIST:
+                        continue
+                    if (u.get("subscription") or {}).get("status") == "active":
+                        continue
+                    await send_email(u["email"], "BEATCUT — un coup de pouce ?", reengage_email_html(days))
+                    await db.users.update_one({"user_id": u["user_id"]}, {"$set": {f"reengage_d{days}_sent": True}})
+        except Exception as e:
+            logger.error("Relance loop error: %s", e)
+        await asyncio.sleep(6 * 3600)
+
+
 @api_router.get("/")
 async def root():
     return {"message": "BEATCUT API", "status": "ok"}
@@ -909,24 +1176,43 @@ async def seed_user(email: str, password: str, name: str, role: str):
             "auth_provider": "password",
             "role": role,
             "subscription": None,
+            "ref_code": f"REF{uuid.uuid4().hex[:6].upper()}",
             "created_at": iso(now_utc()),
         })
         logger.info("Seeded %s account: %s", role, email)
-    elif not verify_password(password, existing.get("password_hash") or ""):
-        await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password(password)}})
-        logger.info("Updated password for %s", email)
+    else:
+        updates = {"role": role}
+        if not verify_password(password, existing.get("password_hash") or ""):
+            updates["password_hash"] = hash_password(password)
+        if not existing.get("ref_code"):
+            updates["ref_code"] = f"REF{uuid.uuid4().hex[:6].upper()}"
+        await db.users.update_one({"email": email}, {"$set": updates})
+        logger.info("Updated %s account: %s", role, email)
 
 
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
     await db.users.create_index("user_id")
+    await db.users.create_index("ref_code")
     await db.user_sessions.create_index("session_token")
     await db.login_attempts.create_index("identifier")
     await db.payment_transactions.create_index("session_id")
     await db.password_reset_tokens.create_index("token")
+    await db.promo_codes.create_index("code", unique=True)
+    await db.templates.create_index([("user_id", 1), ("created_at", -1)])
     await seed_user(os.environ['ADMIN_EMAIL'], os.environ['ADMIN_PASSWORD'], "Admin", "admin")
     await seed_user("demo@beatcut.fr", "Demo1234!", "Démo", "user")
+    # Codes promo par défaut
+    for code, days in (("BIENVENUE50", 15), ("LAUNCH30", 30)):
+        existing = await db.promo_codes.find_one({"code": code})
+        if not existing:
+            await db.promo_codes.insert_one({
+                "code": code, "bonus_days": days, "max_uses": None,
+                "expires_at": None, "used_count": 0, "used_by": [],
+                "created_at": iso(now_utc()),
+            })
+    asyncio.create_task(_reengage_loop())
 
 
 app.include_router(api_router)

@@ -319,6 +319,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
         <button type="button" style="background:transparent;border:1px solid var(--line);color:var(--ivoire)">⬇ Télécharger</button>
       </a>
     </div>
+    <audio id="acapPlayer" controls style="display:none;width:100%;margin-bottom:8px;filter:invert(0.9) hue-rotate(180deg)"></audio>
     <p class="hint" id="sepInfo" style="margin:0 0 10px"></p>
     <div class="drop" id="acapDrop" style="padding:10px 14px">
       <strong>+ Acapella déjà prête</strong>
@@ -1274,13 +1275,17 @@ $('#sepBtn').onclick=async()=>{
     r=await fetch('/api/separate/'+id+'/result',{credentials:'include'});
     if(!r.ok) throw new Error('résultat indisponible');
     const buf=await r.arrayBuffer();
-    // Lien de téléchargement direct du wav reçu
+    // Lien de téléchargement + lecteur audio inline
     try{
       const blob=new Blob([buf.slice(0)],{type:'audio/wav'});
+      const url=URL.createObjectURL(blob);
       const link=$('#acapDownload');
       if(link.href) URL.revokeObjectURL(link.href);
-      link.href=URL.createObjectURL(blob);
+      link.href=url;
       link.style.display='inline-block';
+      const player=$('#acapPlayer');
+      player.src=url;
+      player.style.display='block';
     }catch(e){}
     const ac=new (window.AudioContext||window.webkitAudioContext)();
     acap.buffer=await ac.decodeAudioData(buf); ac.close();

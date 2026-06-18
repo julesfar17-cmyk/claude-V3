@@ -28,15 +28,21 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const register = async (name, email, password) => {
-    const { data } = await api.post("/auth/register", { name, email, password });
+  const register = async (name, email, password, refCode = null) => {
+    const payload = { name, email, password };
+    if (refCode) payload.ref_code = refCode;
+    const { data } = await api.post("/auth/register", payload);
     setUser(data);
     return data;
   };
 
   const loginWithGoogle = () => {
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + "/dashboard";
+    let redirectUrl = window.location.origin + "/dashboard";
+    try {
+      const ref = sessionStorage.getItem("beatcut_ref");
+      if (ref) redirectUrl += `?ref=${encodeURIComponent(ref)}`;
+    } catch {}
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   };
 

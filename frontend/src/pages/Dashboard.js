@@ -71,14 +71,50 @@ export default function Dashboard() {
     poll();
   }, [sessionId, refreshUser, navigate]);
 
-  const startCheckout = async () => {
+  const startCheckout = async (plan = "monthly") => {
     setBusy(true);
     try {
-      const { data } = await api.post("/payments/checkout", { origin_url: window.location.origin });
+      const { data } = await api.post("/payments/checkout", { origin_url: window.location.origin, plan });
       window.location.href = data.url;
     } catch (e) {
       toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Erreur lors de la création du paiement");
       setBusy(false);
+    }
+  };
+
+  const [promoCode, setPromoCode] = useState("");
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [refInfo, setRefInfo] = useState(null);
+
+  useEffect(() => {
+    if (!user) return;
+    api.get("/promo/me").then(({ data }) => setRefInfo(data)).catch(() => {});
+  }, [user]);
+
+  const applyPromo = async (e) => {
+    e.preventDefault();
+    if (!promoCode.trim()) return;
+    setPromoBusy(true);
+    try {
+      const { data } = await api.post("/promo/apply", { code: promoCode.trim() });
+      await refreshUser();
+      toast.success(data.message);
+      setPromoCode("");
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Code invalide");
+    } finally {
+      setPromoBusy(false);
+    }
+  };
+
+  const copyRef = async () => {
+    if (!refInfo?.ref_code) return;
+    const link = `${window.location.origin}/register?ref=${refInfo.ref_code}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Lien de parrainage copié !");
+    } catch {
+      toast.error("Copie impossible — sélectionne le lien manuellement");
     }
   };
 
@@ -174,14 +210,27 @@ export default function Dashboard() {
                 <p className="mt-5 font-display text-3xl font-extrabold">
                   12,99 € <span className="text-sm font-normal text-muted-foreground">/ mois — sans engagement</span>
                 </p>
-                <button
-                  onClick={startCheckout}
-                  disabled={busy}
-                  data-testid="subscribe-pro-button"
-                  className="mt-6 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
-                >
-                  <Crown size={17} /> {busy ? "Redirection…" : "Passer en PRO"}
-                </button>
+                <div className="grid sm:grid-cols-2 gap-3 mt-5">
+                  <button
+                    onClick={() => startCheckout("monthly")}
+                    disabled={busy}
+                    data-testid="subscribe-pro-button"
+                    className="inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-5 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
+                  >
+                    <Crown size={16} /> Mensuel — 12,99 €
+                  </button>
+                  <button
+                    onClick={() => startCheckout("yearly")}
+                    disabled={busy}
+                    data-testid="subscribe-pro-yearly-button"
+                    className="relative inline-flex items-center justify-center gap-2 border border-[#d9ffd0]/50 bg-[#d9ffd0]/5 text-foreground font-bold px-5 py-3.5 hover:bg-[#d9ffd0]/10 transition-all hover:-translate-y-0.5"
+                  >
+                    <span className="absolute -top-2.5 right-2 bg-[#d9ffd0] text-background font-osd text-[9px] tracking-wider px-2 py-0.5">
+                      2 MOIS OFFERTS
+                    </span>
+                    Annuel — 99 €
+                  </button>
+                </div>
                 <p className="mt-3 text-xs text-muted-foreground text-center">
                   Paiement sécurisé par Stripe. Désabonnement en 1 clic.
                 </p>
@@ -297,6 +346,69 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
+
+        {/* ===== Parrainage + Promo ===== */}
+        <section className="mt-6 grid md:grid-cols-2 gap-6">
+          <div className="bg-card border border-border p-8" data-testid="referral-card">
+            <h2 className="font-display text-lg font-bold mb-3">Parrainage ✦</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Invite un ami : <b>+1 mois offert</b> pour lui ET pour toi dès qu'il prend un abonnement payant.
+            </p>
+            {refInfo?.ref_code && (
+              <>
+                <div className="mt-5 bg-background border border-border px-4 py-3 flex items-center gap-3 overflow-hidden">
+                  <code className="font-osd text-xs text-[#d9ffd0] truncate flex-1" data-testid="referral-link">
+                    {window.location.origin}/register?ref={refInfo.ref_code}
+                  </code>
+                  <button
+                    onClick={copyRef}
+                    data-testid="copy-referral-button"
+                    className="font-osd text-[11px] tracking-wider text-foreground border border-border px-3 py-1.5 hover:border-foreground transition-colors"
+                  >
+                    COPIER
+                  </button>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground" data-testid="referral-count">
+                  {refInfo.referral_count > 0
+                    ? `${refInfo.referral_count} ami${refInfo.referral_count > 1 ? "s" : ""} parrainé${refInfo.referral_count > 1 ? "s" : ""} ✦`
+                    : "Aucun parrainage pour l'instant."}
+                </p>
+              </>
+            )}
+          </div>
+
+          <div className="bg-card border border-border p-8" data-testid="promo-card">
+            <h2 className="font-display text-lg font-bold mb-3">Code promo</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Tu as un code (lancement, créateur, événement) ? Active-le pour des jours offerts en PRO.
+            </p>
+            <form onSubmit={applyPromo} className="mt-5 flex gap-3">
+              <input
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                placeholder="EX: LAUNCH30"
+                data-testid="promo-input"
+                className="flex-1 bg-background border border-border px-4 py-2.5 text-sm font-osd tracking-wider focus:border-[#d9ffd0] focus:outline-none transition-colors"
+              />
+              <button
+                type="submit"
+                disabled={promoBusy || !promoCode.trim()}
+                data-testid="promo-submit"
+                className="bg-primary text-white font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
+              >
+                {promoBusy ? "…" : "Activer"}
+              </button>
+            </form>
+          </div>
+        </section>
+
+        {user?.role === "admin" && (
+          <p className="mt-8 text-xs text-muted-foreground">
+            <Link to="/admin" data-testid="admin-link" className="underline underline-offset-4">
+              → Tableau de bord admin
+            </Link>
+          </p>
+        )}
       </main>
 
       <Footer />

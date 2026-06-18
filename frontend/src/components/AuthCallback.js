@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const { user, setUser } = useAuth();
   const hasProcessed = useRef(false);
 
   useEffect(() => {
@@ -20,7 +20,15 @@ export default function AuthCallback() {
         return;
       }
       try {
-        const { data } = await api.post("/auth/google/session", { session_id: match[1] });
+        const payload = { session_id: match[1] };
+        try {
+          const ref = sessionStorage.getItem("beatcut_ref");
+          if (ref) {
+            payload.ref_code = ref;
+            sessionStorage.removeItem("beatcut_ref");
+          }
+        } catch {}
+        const { data } = await api.post("/auth/google/session", payload);
         setUser(data);
         window.history.replaceState(null, "", window.location.pathname);
         navigate("/dashboard", { replace: true, state: { user: data } });
