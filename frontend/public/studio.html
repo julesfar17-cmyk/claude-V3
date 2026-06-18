@@ -1242,9 +1242,10 @@ async function sliceForSeparation(){
   const d=(await oc.startRendering()).getChannelData(0);
   return new Blob([encodeWav(d,sr)],{type:'audio/wav'});
 }
-$('#sepBtn').onclick=async()=>{
-  if(!state.audioBuffer){ $('#sepInfo').textContent='Charge d\u2019abord un son.'; return; }
-  if(!requirePro()) return;
+async function runSeparation(silent){
+  // Extrait l'acapella sur le serveur. Renvoie true si OK, false si échec.
+  if(!state.audioBuffer){ if(!silent) $('#sepInfo').textContent='Charge d\u2019abord un son.'; return false; }
+  if(!requirePro()) return false;
   const btn=$('#sepBtn'), info=$('#sepInfo');
   btn.disabled=true;
   const t0=performance.now();
@@ -1259,23 +1260,21 @@ $('#sepBtn').onclick=async()=>{
     if(!r.ok){ let m='erreur '+r.status; try{const j=await r.json();m=j.detail||j.error||m;}catch(e){} throw new Error(m); }
     const {id}=await r.json();
 
-    // polling jusqu'à la fin du job
     let status='processing';
     while(status==='processing'){
       await new Promise(res=>setTimeout(res,3000));
-      info.textContent='Séparation en cours (modèle UVR)…'+elapsed();
+      info.textContent='Séparation IA en cours (modèle htdemucs_ft, haute qualité)…'+elapsed();
       r=await fetch('/api/separate/'+id,{credentials:'include'});
       const j=await r.json();
       status=j.status;
       if(status==='error') throw new Error(j.error||'échec de la séparation');
-      if((performance.now()-t0)>5*60*1000) throw new Error('délai dépassé — le serveur est peut-être surchargé');
+      if((performance.now()-t0)>8*60*1000) throw new Error('délai dépassé — réessaie');
     }
 
     info.textContent='Récupération de l\u2019acapella…'+elapsed();
     r=await fetch('/api/separate/'+id+'/result',{credentials:'include'});
     if(!r.ok) throw new Error('résultat indisponible');
     const buf=await r.arrayBuffer();
-    // Lien de téléchargement + lecteur audio inline
     try{
       const blob=new Blob([buf.slice(0)],{type:'audio/wav'});
       const url=URL.createObjectURL(blob);
@@ -1294,18 +1293,22 @@ $('#sepBtn').onclick=async()=>{
     $('#acapOff').value=acap.offset.toFixed(2);
     $('#acapCard').style.display='block';
     $('#acapName').textContent='Acapella extraite — calée sur l\u2019extrait';
-    $('#acapInfo').textContent='Lance la détection IA pour une précision maximale.';
+    $('#acapInfo').textContent='Voix isolée prête : précision IA maximale.';
     det.src='acap';
     $$('#srcSeg button').forEach(b=>b.classList.toggle('active',b.dataset.src==='acap'));
     $('#srcInfo').textContent='✓ acapella prête';
-    info.textContent='✓ Extraite en '+Math.round((performance.now()-t0)/1000)+' s — disponible ci-dessus.';
+    info.textContent='✓ Extraite en '+Math.round((performance.now()-t0)/1000)+' s.';
     drawWave();
+    return true;
   }catch(e){
     info.textContent='⚠ '+e.message;
+    return false;
   }finally{
     btn.disabled=false;
   }
-};
+}
+
+$('#sepBtn').onclick=async()=>{ await runSeparation(false); };
 
 async function loadTransformers(){
   if(transformersMod) return transformersMod;
@@ -1495,14 +1498,22 @@ $('#iaBtn').onclick = async ()=>{
   if(state.playing) stopPlayback();
   const btn=$('#iaBtn'), prog=$('#iaProg'), info=$('#iaInfo');
   btn.disabled=true; prog.style.display='block';
-  // chrono visible pour que ça n'ait jamais l'air figé
   let phase='Préparation…';
   const t0=performance.now();
   const setP=(p,txt)=>{ prog.querySelector('i').style.width=clamp(p,0,100)+'%'; if(txt) phase=txt; };
   const ticker=setInterval(()=>{ info.textContent=phase+' ('+Math.round((performance.now()-t0)/1000)+' s)'; },500);
   try{
-    const srcLabel = det.src==='acap'&&acap.buffer ? 'acapella (décalage '+acap.offset.toFixed(2)+' s)' : 'mix brut';
-    setP(4,'Extraction depuis : '+srcLabel+'…');
+    // Auto-extraction de l'acapella avant la détection si possible (Pro + pas encore extraite)
+    if(!acap.buffer && AUTH.user && AUTH.isPro){
+      setP(2,'Extraction automatique de la voix (htdemucs_ft)…');
+      const ok=await runSeparation(true);
+      if(!ok){
+        // l'acapella n'a pas pu être extraite, on continue sur le mix sans bloquer
+        setP(8,'Continue sur le mix brut…');
+      }
+    }
+    const srcLabel = det.src==='acap'&&acap.buffer ? 'acapella isolée' : 'mix brut';
+    setP(10,'Extraction depuis : '+srcLabel+'…');
     const usedAcap = det.src==='acap' && !!acap.buffer;
     const audio16=await sliceTo16k();
 

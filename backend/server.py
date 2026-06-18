@@ -862,7 +862,10 @@ def _separate_with_replicate(input_path: str) -> str:
             input={
                 "audio": audio,
                 "stem": "vocals",
-                "model_name": "htdemucs",
+                # Réglages qualité maximale (style UVR5) :
+                "model_name": "htdemucs_ft",  # fine-tuned, bien supérieur à htdemucs
+                "shifts": 2,                  # réduit les artefacts (2× plus long mais propre)
+                "overlap": 0.5,               # plus de chevauchement = transitions plus douces
                 "output_format": "wav",
             },
         )
