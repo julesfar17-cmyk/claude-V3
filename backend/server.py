@@ -726,6 +726,118 @@ async def proxy_transcribe(
     return r.json()
 
 
+# ---------------------------------------------------------------------------
+# Séparation vocale serveur (modèles UVR / MDX-Net) — extraction d'acapella
+# ---------------------------------------------------------------------------
+import threading
+from fastapi.responses import FileResponse
+
+SEP_DIR = Path("/tmp/beatcut_sep")
+SEP_DIR.mkdir(parents=True, exist_ok=True)
+UVR_MODEL = "UVR-MDX-NET-Voc_FT.onnx"
+SEP_JOBS: dict = {}          # job_id -> {status, user_id, error, result_path, created_at}
+SEP_LOCK = threading.Lock()  # une séparation à la fois (RAM/CPU)
+_separator = None
+
+
+def _get_separator():
+    global _separator
+    if _separator is None:
+        from audio_separator.separator import Separator
+        s = Separator(
+            output_dir=str(SEP_DIR),
+            model_file_dir=str(ROOT_DIR / "uvr_models"),
+            output_format="WAV",
+            log_level=logging.WARNING,
+        )
+        s.load_model(model_filename=UVR_MODEL)
+        _separator = s
+    return _separator
+
+
+def _separate_sync(input_path: str) -> str:
+    with SEP_LOCK:
+        sep = _get_separator()
+        files = sep.separate(input_path)
+    for f in files:
+        full = f if os.path.isabs(f) else str(SEP_DIR / f)
+        if "(Vocals)" in os.path.basename(full):
+            return full
+    raise RuntimeError("piste vocale introuvable dans la sortie du modèle")
+
+
+async def _run_separation(job_id: str, input_path: str):
+    try:
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, _separate_sync, input_path)
+        SEP_JOBS[job_id].update(status="done", result_path=result)
+    except Exception as e:
+        logger.error("Séparation %s échouée: %s", job_id, e)
+        SEP_JOBS[job_id].update(status="error", error="séparation échouée — réessaie avec un extrait plus court")
+    finally:
+        try:
+            os.remove(input_path)
+        except OSError:
+            pass
+        # nettoyage des vieux jobs (> 1 h)
+        cutoff = now_utc() - timedelta(hours=1)
+        for jid in list(SEP_JOBS.keys()):
+            job = SEP_JOBS[jid]
+            if parse_dt(job["created_at"]) < cutoff:
+                if job.get("result_path"):
+                    try:
+                        os.remove(job["result_path"])
+                    except OSError:
+                        pass
+                SEP_JOBS.pop(jid, None)
+
+
+async def require_pro(user: dict) -> dict:
+    user = await sync_stripe_subscription(user)
+    if not sub_info(user)["is_pro"]:
+        raise HTTPException(status_code=403, detail="Fonction réservée aux abonnés PRO")
+    return user
+
+
+@api_router.post("/separate")
+async def start_separation(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    user = await require_pro(user)
+    content = await file.read()
+    if len(content) > 30_000_000:
+        raise HTTPException(status_code=413, detail="Extrait trop long — raccourcis la sélection")
+    job_id = uuid.uuid4().hex[:16]
+    input_path = str(SEP_DIR / f"{job_id}.wav")
+    with open(input_path, "wb") as f:
+        f.write(content)
+    SEP_JOBS[job_id] = {
+        "status": "processing", "user_id": user["user_id"],
+        "error": None, "result_path": None, "created_at": iso(now_utc()),
+    }
+    asyncio.create_task(_run_separation(job_id, input_path))
+    return {"id": job_id, "status": "processing"}
+
+
+def _get_job(job_id: str, user: dict) -> dict:
+    job = SEP_JOBS.get(job_id)
+    if not job or job["user_id"] != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Job introuvable")
+    return job
+
+
+@api_router.get("/separate/{job_id}")
+async def separation_status(job_id: str, user: dict = Depends(get_current_user)):
+    job = _get_job(job_id, user)
+    return {"id": job_id, "status": job["status"], "error": job["error"]}
+
+
+@api_router.get("/separate/{job_id}/result")
+async def separation_result(job_id: str, user: dict = Depends(get_current_user)):
+    job = _get_job(job_id, user)
+    if job["status"] != "done" or not job.get("result_path") or not os.path.exists(job["result_path"]):
+        raise HTTPException(status_code=404, detail="Résultat indisponible")
+    return FileResponse(job["result_path"], media_type="audio/wav", filename="acapella.wav")
+
+
 @api_router.get("/")
 async def root():
     return {"message": "BEATCUT API", "status": "ok"}

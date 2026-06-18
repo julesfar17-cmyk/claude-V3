@@ -557,7 +557,7 @@ Une ligne = une phrase à l'écran." style="margin-top:10px"></textarea>
 ===================================================================== */
 const APP_CONFIG = {
   USE_PROXY: true,   // clé-en-main : les clés Groq/Pexels vivent sur le serveur BEATCUT
-  ACAPELLA_SERVER: false,
+  ACAPELLA_SERVER: true,  // extraction d'acapella sur le serveur (modèles UVR — Pro)
   PRICE_LABEL: '9,99 €/mois',
 };
 
@@ -1252,13 +1252,11 @@ $('#sepBtn').onclick=async()=>{
   try{
     info.textContent='Préparation de l\u2019extrait…';
     const wav=await sliceForSeparation();
-    const {data:{session}}=await AUTH.sb.auth.getSession();
-    const headers={Authorization:'Bearer '+session.access_token};
 
     info.textContent='Envoi au serveur de séparation…';
     const fd=new FormData(); fd.append('file', wav, 'extrait.wav');
-    let r=await fetch(APP_CONFIG.SUPABASE_URL+'/functions/v1/separate',{method:'POST',headers,body:fd});
-    if(!r.ok){ let m='erreur '+r.status; try{const j=await r.json();m=j.error||m;}catch(e){} throw new Error(m); }
+    let r=await fetch('/api/separate',{method:'POST',credentials:'include',body:fd});
+    if(!r.ok){ let m='erreur '+r.status; try{const j=await r.json();m=j.detail||j.error||m;}catch(e){} throw new Error(m); }
     const {id}=await r.json();
 
     // polling jusqu'à la fin du job
@@ -1266,10 +1264,7 @@ $('#sepBtn').onclick=async()=>{
     while(status==='processing'){
       await new Promise(res=>setTimeout(res,3000));
       info.textContent='Séparation en cours (modèle UVR)…'+elapsed();
-      r=await fetch(APP_CONFIG.SUPABASE_URL+'/functions/v1/separate',{
-        method:'POST', headers:{...headers,'Content-Type':'application/json'},
-        body:JSON.stringify({action:'status', id}),
-      });
+      r=await fetch('/api/separate/'+id,{credentials:'include'});
       const j=await r.json();
       status=j.status;
       if(status==='error') throw new Error(j.error||'échec de la séparation');
@@ -1277,10 +1272,7 @@ $('#sepBtn').onclick=async()=>{
     }
 
     info.textContent='Récupération de l\u2019acapella…'+elapsed();
-    r=await fetch(APP_CONFIG.SUPABASE_URL+'/functions/v1/separate',{
-      method:'POST', headers:{...headers,'Content-Type':'application/json'},
-      body:JSON.stringify({action:'result', id}),
-    });
+    r=await fetch('/api/separate/'+id+'/result',{credentials:'include'});
     if(!r.ok) throw new Error('résultat indisponible');
     const buf=await r.arrayBuffer();
     const ac=new (window.AudioContext||window.webkitAudioContext)();
