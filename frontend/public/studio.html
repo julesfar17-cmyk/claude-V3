@@ -41,20 +41,8 @@ main{display:grid;grid-template-columns:minmax(340px,470px) 1fr;min-height:calc(
 @media (max-width:980px){
   main{grid-template-columns:1fr}
   .panel{order:2}
-  /* Aperçu compact en haut, sans sticky : il scroll avec le reste */
-  .stage{order:1;position:static !important;top:auto !important;padding:14px 12px !important;gap:8px !important;min-height:auto}
-  .stage .viewfinder{padding:6px;border-radius:10px}
-  .stage #cv{max-height:38vh !important;max-width:min(60vw,260px) !important}
-  .stage .hint{max-width:100% !important;font-size:12px;padding:0 8px}
-  .stage .transport{flex-wrap:wrap;justify-content:center}
-  /* Padding panel réduit pour gagner de l'espace */
-  .panel{padding:14px 12px !important}
-  .card{padding:12px !important;margin-bottom:10px !important}
-}
-@media (max-width:480px){
-  .stage #cv{max-height:32vh !important;max-width:min(55vw,220px) !important}
-  .card .row{flex-wrap:wrap;gap:8px}
-  .sub-styles, .fx-grid{grid-template-columns:1fr !important}
+  /* Mobile : aperçu en haut, mais non-sticky pour laisser scroller vers les outils */
+  .stage{order:1;position:static !important;top:auto !important}
 }
 .panel{border-right:1px solid var(--line);padding:22px;overflow-y:auto;max-height:calc(100vh - 61px)}
 @media (max-width:980px){.panel{max-height:none;border-right:none;border-top:1px solid var(--line)}}
@@ -203,15 +191,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
   </div>
 </header>
 
-<!-- Connexion (active uniquement si APP_CONFIG est rempli) -->
-<div class="overlay" id="authOverlay">
-  <div class="auth-card">
-    <h2>BEAT<em>CUT</em></h2>
-    <p>Connecte-toi pour créer tes vidéos promo beat-sync.</p>
-    <button class="primary" id="authGoogle" data-testid="studio-login-button">Se connecter / Créer un compte</button>
-    <div class="auth-msg" id="authMsg"></div>
-  </div>
-</div>
+<!-- Overlay de connexion retiré : la route React /studio est déjà protégée -->
 
 <!-- Abonnement -->
 <div class="overlay" id="payOverlay">
@@ -594,13 +574,13 @@ async function initAuth(){
     if(!r.ok) throw new Error('non connecté');
     const u=await r.json();
     AUTH.user=u; AUTH.isPro=!!u.is_pro;
-    $('#authOverlay').classList.remove('show');
     $('#userBadge').style.display='inline';
     $('#userBadge').textContent=(u.email||'compte')+' ⏻';
   }catch(e){
+    // L'iframe est chargée depuis la route protégée /studio : si /api/auth/me échoue
+    // ici, c'est juste un souci de cookies — on n'affiche pas d'overlay (résidu v1).
     AUTH.user=null; AUTH.isPro=false;
     $('#userBadge').style.display='none';
-    $('#authOverlay').classList.add('show');
   }
   updateProUI();
 }
@@ -610,13 +590,12 @@ function updateProUI(){
   if(typeof refreshStill==='function') try{ refreshStill(); }catch(e){}
 }
 function requirePro(){
-  if(!AUTH.user){ $('#authOverlay').classList.add('show'); return false; }
+  if(!AUTH.user){ window.top.location.href='/login'; return false; }
   if(!AUTH.isPro){ $('#payOverlay').classList.add('show'); return false; }
   return true;
 }
 document.addEventListener('DOMContentLoaded',()=>{
   $('#priceLabel').textContent=APP_CONFIG.PRICE_LABEL;
-  $('#authGoogle').onclick=()=>{ window.top.location.href='/login'; };
   $('#userBadge').onclick=async()=>{
     try{ await fetch('/api/auth/logout',{method:'POST',credentials:'include'}); }catch(e){}
     window.top.location.href='/';
@@ -965,7 +944,7 @@ async function searchPexels(){
     let r;
     if(AUTH.enabled && APP_CONFIG.USE_PROXY){
       // --- clé-en-main : proxy serveur BEATCUT, la clé Pexels reste sur le serveur ---
-      if(!AUTH.user){ $('#authOverlay').classList.add('show'); info.textContent='Connecte-toi pour chercher des clips.'; return; }
+      if(!AUTH.user){ window.top.location.href='/login'; info.textContent='Connecte-toi pour chercher des clips.'; return; }
       r=await fetch('/api/proxy/pexels',{
         method:'POST',
         credentials:'include',
@@ -1407,7 +1386,7 @@ async function transcribeCloud(audio16, setP){
 
   if(AUTH.enabled && APP_CONFIG.USE_PROXY){
     // --- clé-en-main : proxy serveur BEATCUT (la clé Groq reste sur le serveur) ---
-    if(!AUTH.user){ $('#authOverlay').classList.add('show'); throw new Error('connecte-toi pour lancer la détection'); }
+    if(!AUTH.user){ window.top.location.href='/login'; throw new Error('connecte-toi pour lancer la détection'); }
     setP(60,'Envoi à whisper-large-v3 (serveur BEATCUT)…');
     const fd=new FormData();
     fd.append('file', wavBlob, 'extrait.wav');
