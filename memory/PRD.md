@@ -39,6 +39,18 @@ Fichier fourni : `beatcut.html` — studio de montage beat-sync 100% client-side
 - ✅ Studio intégral intégré (iframe), watermark gratuit / export PRO, lien retour compte
 - ✅ Tests E2E itération 2 : backend 24/24, frontend 100%
 
+## Implémenté (24 juin 2026)
+- ✅ **6 nouveaux presets de sous-titres dynamiques** dans le Studio :
+  - **TIKTOK NEON** : mot par mot, couleurs arc-en-ciel pulsantes + halo néon
+  - **WORD POP 3D** : ombre stack 3D extrudée + rotation + scale sur le beat
+  - **HANDWRITE** : écriture manuscrite révélée gauche-droite + trait fluo sous le mot
+  - **BOUNCE RAINBOW** : chaque mot rebondit dans une couleur différente
+  - **CINÉMA** : barres noires + sous-titre épuré centré (look pro/film)
+  - **BIG IMPACT** : un mot massif occupe tout, drop shadow brutal, tilt et couleurs variables
+- ✅ **9 nouvelles polices** ajoutées au dropdown (Anton, Bangers, Bungee, Righteous, Fredoka, Luckiest Guy, Permanent Marker, Rubik Mono One, Press Start 2P)
+- ✅ **Texte derrière le sujet (IA)** : MediaPipe Selfie Segmentation chargé à la demande, masque la silhouette de la personne et réinjecte au-dessus du texte → le sous-titre passe DERRIÈRE le sujet
+- ✅ Toggle "Derrière le sujet" dans la section Sous-titres, chargement lazy de l'IA au premier clic
+
 ## Comptes seedés
 Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 
@@ -47,6 +59,8 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - **P1** : Configurer le webhook Stripe dans le dashboard (endpoint /api/webhook/stripe, remplir STRIPE_WEBHOOK_SECRET) pour une synchro instantanée des renouvellements
 - **P2** : Historique des paiements dans le dashboard ; page admin
 - **P2** : Galerie de vidéos exportées (object storage) ; serveur d'extraction acapella (UVR)
+- **P2** : Tester perfs MediaPipe sur mobile (Safari iOS / Chrome Android) — peut être lourd pour les vieux appareils
+- **P3** : Tester l'export MP4 avec "Derrière le sujet" actif (vérifier que le MediaRecorder capture bien la composition)
 
 ## Notes
 - ⚠️ STRIPE EN MODE LIVE : tout paiement complété débite une vraie carte

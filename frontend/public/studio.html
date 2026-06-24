@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BEATCUT — Studio beat-sync</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Caveat:wght@700&family=Space+Grotesk:ital,wght@0,400;0,500;0,700;1,500&family=VT323&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Caveat:wght@700&family=Space+Grotesk:ital,wght@0,400;0,500;0,700;1,500&family=VT323&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Anton&family=Bangers&family=Bungee&family=Permanent+Marker&family=Righteous&family=Fredoka:wght@600;700&family=Luckiest+Guy&family=Press+Start+2P&family=Rubik+Mono+One&display=swap" rel="stylesheet">
 <style>
 :root{
   --noir:#121016; --noir2:#1a1720; --noir3:#241f2c;
@@ -411,8 +411,17 @@ Une ligne = une phrase à l'écran." style="margin-top:10px"></textarea>
         <select id="fontSel" style="background:var(--noir);color:var(--ivoire);border:1px solid var(--line);border-radius:8px;padding:7px 8px;font-family:var(--body)">
           <option value="archivo" selected>Archivo Black — impact</option>
           <option value="bebas">Bebas Neue — condensé TikTok</option>
+          <option value="anton">Anton — ultra condensé</option>
+          <option value="bangers">Bangers — comic punch</option>
+          <option value="bungee">Bungee — urbain pop</option>
+          <option value="righteous">Righteous — geometric</option>
+          <option value="fredoka">Fredoka — rond doux</option>
+          <option value="lucky">Luckiest Guy — cartoon</option>
+          <option value="marker">Permanent Marker — graffiti</option>
+          <option value="rubik">Rubik Mono — bloc</option>
           <option value="grotesk">Space Grotesk — clean</option>
           <option value="vt">VT323 — terminal</option>
+          <option value="press">Press Start 2P — pixel 8bit</option>
           <option value="caveat">Caveat — manuscrit</option>
         </select>
         <label class="lbl" style="margin-left:6px">Casse</label>
@@ -433,6 +442,7 @@ Une ligne = une phrase à l'écran." style="margin-top:10px"></textarea>
         <label class="lbl">Contour</label>
         <input type="range" id="outlineRange" min="0" max="2" step="0.1" value="1" style="width:100px">
         <label class="fx" style="padding:7px 10px;margin-left:4px"><input type="checkbox" id="shadowChk" checked> Ombre portée</label>
+        <label class="fx" style="padding:7px 10px;margin-left:4px" title="Place le texte derrière les personnes détectées dans la vidéo (IA navigateur)"><input type="checkbox" id="behindChk"> Derrière le sujet <b style="color:var(--accent);font-size:10px;margin-left:3px">IA</b></label>
       </div>
       <div class="row">
         <label class="lbl">Hauteur</label>
@@ -632,6 +642,7 @@ const subs = {
   style:0, pos:'bottom', size:1, dirty:true,
   font:'archivo', casse:'auto', customCol:false, colText:'#ffffff', colAcc:'#ff3b30',
   outline:1, shadow:true, posY:0.76, anim:'pop',
+  behindSubject:false,
   anchors:null,        // mots horodatés (IA / TAP / fichier) — absolus, en s
   anchorSource:null,   // 'ai' | 'tap' | 'file'
   anchorsFromAcap:false,
@@ -1036,6 +1047,10 @@ $('#colText').oninput = e=>{ subs.colText=e.target.value; refreshStill(); };
 $('#colAcc').oninput  = e=>{ subs.colAcc=e.target.value; refreshStill(); };
 $('#outlineRange').oninput = e=>{ subs.outline=parseFloat(e.target.value); refreshStill(); };
 $('#shadowChk').onchange = e=>{ subs.shadow=e.target.checked; refreshStill(); };
+$('#behindChk').onchange = e=>{ subs.behindSubject=e.target.checked;
+  if(e.target.checked){ initSegmenter().catch(err=>uiError("Impossible de charger l'IA de segmentation : "+err.message)); }
+  refreshStill();
+};
 $('#posRange').oninput = e=>{ subs.posY=parseFloat(e.target.value); refreshStill(); };
 $('#sizeRange').oninput = e=>{ subs.size=parseFloat(e.target.value); refreshStill(); };
 $('#lyrics').addEventListener('input', ()=>{ subs.raw=$('#lyrics').value; subs.dirty=true; });
@@ -1087,6 +1102,12 @@ const SUB_STYLES = [
   {id:'neon',    name:'Néon',          desc:"Halo lumineux qui pulse sur le beat.", sw:'néon'},
   {id:'minimal', name:'Minimal track', desc:"Petit, espacé, soulignement qui suit le mot. Très clean.", sw:'minimal'},
   {id:'full',    name:'Plein écran',   desc:"Un mot = tout l'écran. Rotations, blocs, couleurs.", sw:'FULL'},
+  {id:'tiktokneon', name:'TIKTOK NEON', desc:"Mot par mot, couleurs arc-en-ciel pulsantes + halo néon. Énergie pure.", sw:'NEON'},
+  {id:'wordpop3d',  name:'WORD POP 3D', desc:"Ombre stack 3D, rotation, le mot saute à chaque syllabe.", sw:'3D!'},
+  {id:'handwrite',  name:'Handwrite',   desc:"Écriture manuscrite révélée + trait fluo qui suit la voix.", sw:'écrit'},
+  {id:'bouncerainbow', name:'BOUNCE RAINBOW', desc:"Chaque mot rebondit dans une couleur différente. Très kid-core.", sw:'BOUNCE'},
+  {id:'cinemabar',  name:'Cinéma',      desc:"Barres noires + sous-titre épuré. Très pro / film.", sw:'cinéma'},
+  {id:'bigimpact',  name:'BIG IMPACT',  desc:"Un mot massif occupe tout. Tilt + drop shadow brutal.", sw:'BIG'},
 ];
 SUB_STYLES.forEach((s,i)=>{
   const b=document.createElement('button');
@@ -1979,6 +2000,111 @@ const off=document.createElement('canvas');
 const offCtx=off.getContext('2d');
 const eqData=new Uint8Array(32);
 
+/* ---------------------------------------------------------------
+   4bis. SEGMENTATION IA — "Texte derrière le sujet"
+   Utilise MediaPipe Selfie Segmentation (chargement à la demande)
+---------------------------------------------------------------- */
+let segmenter=null;
+let segMaskCanvas=null, segMaskCtx=null;
+let segReady=false, segBusy=false, segLastSent=0, segInitializing=false;
+let personBuf=null, personBufCtx=null;
+const SEG_VERSION='0.1.1675465747';
+const SEG_BASE='https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@'+SEG_VERSION;
+
+function loadSegScript(){
+  return new Promise((resolve, reject)=>{
+    if(window.SelfieSegmentation){resolve();return;}
+    const s=document.createElement('script');
+    s.src=SEG_BASE+'/selfie_segmentation.js';
+    s.crossOrigin='anonymous';
+    s.onload=()=>resolve();
+    s.onerror=()=>reject(new Error('CDN MediaPipe inaccessible'));
+    document.head.appendChild(s);
+  });
+}
+
+async function initSegmenter(){
+  if(segReady) return;
+  if(segInitializing){
+    // Wait for ongoing init
+    let tries=0;
+    while(segInitializing && !segReady && tries<200){ await new Promise(r=>setTimeout(r,50)); tries++; }
+    return;
+  }
+  segInitializing=true;
+  uiHint('🤖 Chargement de l\u2019IA de segmentation\u2026');
+  try{
+    await loadSegScript();
+    segMaskCanvas=document.createElement('canvas');
+    segMaskCanvas.width=256; segMaskCanvas.height=256;
+    segMaskCtx=segMaskCanvas.getContext('2d');
+    segmenter=new SelfieSegmentation({locateFile: f=>SEG_BASE+'/'+f});
+    segmenter.setOptions({modelSelection:1, selfieMode:false});
+    segmenter.onResults(res=>{
+      try{
+        const m=res.segmentationMask;
+        if(m){
+          if(segMaskCanvas.width!==m.width||segMaskCanvas.height!==m.height){
+            segMaskCanvas.width=m.width; segMaskCanvas.height=m.height;
+          }
+          segMaskCtx.clearRect(0,0,segMaskCanvas.width,segMaskCanvas.height);
+          segMaskCtx.drawImage(m,0,0);
+        }
+      }catch(e){/* ignore */}
+      segBusy=false;
+    });
+    if(segmenter.initialize) await segmenter.initialize();
+    segReady=true;
+    segInitializing=false;
+    uiHint('✓ IA prête — le texte passera derrière les personnages détectés.');
+  }catch(e){
+    segInitializing=false;
+    segReady=false;
+    throw e;
+  }
+}
+
+function sendSegFrame(){
+  if(!segReady||segBusy||!state.currentEl||state.currentEl.readyState<2) return;
+  const vw=state.currentEl.videoWidth, vh=state.currentEl.videoHeight;
+  if(!vw||!vh) return;
+  const now=performance.now();
+  if(now-segLastSent<55) return; // ~18 fps max
+  segLastSent=now;
+  segBusy=true;
+  try{
+    const r=segmenter.send({image: state.currentEl});
+    if(r&&r.catch) r.catch(()=>{ segBusy=false; });
+  }catch(e){ segBusy=false; }
+}
+
+function applyBehindSubjectMask(o, video, W, H, scale, dx, dy){
+  if(!segReady||!segMaskCanvas||segMaskCanvas.width<2) return;
+  const vw=video.videoWidth, vh=video.videoHeight;
+  if(!vw||!vh) return;
+  if(!personBuf){ personBuf=document.createElement('canvas'); personBufCtx=personBuf.getContext('2d'); }
+  if(personBuf.width!==W||personBuf.height!==H){ personBuf.width=W; personBuf.height=H; }
+  const pc=personBufCtx;
+  pc.save();
+  pc.setTransform(1,0,0,1,0,0);
+  pc.clearRect(0,0,W,H);
+  // Cover-draw video to fill canvas
+  const s=Math.max(W/vw,H/vh);
+  const ox=(W-vw*s)/2, oy=(H-vh*s)/2;
+  pc.drawImage(video, ox, oy, vw*s, vh*s);
+  // Apply mask (only person visible)
+  pc.globalCompositeOperation='destination-in';
+  pc.drawImage(segMaskCanvas, ox, oy, vw*s, vh*s);
+  pc.restore();
+  // Composite onto main offscreen with same fx transform as video
+  o.save();
+  o.translate(W/2+dx,H/2+dy);
+  o.scale(scale,scale);
+  o.translate(-W/2,-H/2);
+  o.drawImage(personBuf, 0, 0);
+  o.restore();
+}
+
 function drawFrame(t){
   lastDrawT=t;
   const W=cv.width,H=cv.height;
@@ -2020,7 +2146,15 @@ function drawFrame(t){
   }
 
   if(tap.active) drawTapOverlay(o,W,H);
-  else drawSubs(o,t,W,H,pal,phase);
+  else {
+    // Push a new mask frame to the segmenter (rate-limited)
+    if(subs.behindSubject && state.mode==='clips') sendSegFrame();
+    drawSubs(o,t,W,H,pal,phase);
+    // Re-draw the masked person on top of the subtitles so the text appears BEHIND
+    if(subs.behindSubject && state.mode==='clips' && state.currentEl && state.currentEl.readyState>=2){
+      applyBehindSubjectMask(o, state.currentEl, W, H, scale, dx, dy);
+    }
+  }
 
   if(state.hook&&tl<2.6){
     const p=clamp(tl/0.25,0,1);
@@ -2162,8 +2296,17 @@ function fitFont(c,text,family,weight,target,maxW){
 const FONT_FAMS={
   archivo:"'Archivo Black', Impact, sans-serif",
   bebas:"'Bebas Neue', Impact, sans-serif",
+  anton:"'Anton', Impact, sans-serif",
+  bangers:"'Bangers', 'Bebas Neue', Impact, sans-serif",
+  bungee:"'Bungee', 'Archivo Black', sans-serif",
+  righteous:"'Righteous', 'Archivo Black', sans-serif",
+  fredoka:"'Fredoka', sans-serif",
+  lucky:"'Luckiest Guy', 'Archivo Black', sans-serif",
+  marker:"'Permanent Marker', 'Bangers', cursive",
+  rubik:"'Rubik Mono One', monospace",
   grotesk:"'Space Grotesk', sans-serif",
   vt:"'VT323', monospace",
+  press:"'Press Start 2P', monospace",
   caveat:"'Caveat', cursive",
 };
 function famFor(){ return FONT_FAMS[subs.font]||FONT_FAMS.archivo; }
@@ -2384,6 +2527,228 @@ function drawSubs(o,t,W,H,pal,phase){
       o.fillStyle=(seed%2===0)?inkFlat:accC;
       o.fillText(text,0,0);
     }
+
+  }else if(styleId==='tiktokneon'){
+    // Mot par mot, halo néon, couleurs arc-en-ciel qui pulsent
+    const words=[];for(let i=L.start;i<L.end;i++)words.push(U[i]);
+    const fsT=W*0.075*sz;
+    o.font=`${fsT}px ${FAM}`;
+    const space=o.measureText(' ').width;
+    // wrap
+    const rows=[];let row=[],rw=0;
+    for(const w of words){
+      const ww=o.measureText(caseFn(w.text,'upper')).width;
+      if(rw+ww>W*0.86&&row.length){rows.push(row);row=[];rw=0;}
+      row.push({w,ww});rw+=ww+space;
+    }
+    if(row.length)rows.push(row);
+    const lh=fsT*1.25,y0=baseY-(rows.length-1)*lh/2;
+    const RAINBOW=['#ff3b30','#ffcc00','#34c759','#00d4ff','#5e5ce6','#ff2d92','#ff9500'];
+    let wIdxN=0;
+    rows.forEach((r,ri)=>{
+      const total=r.reduce((a,x)=>a+x.ww,0)+space*(r.length-1);
+      let x=W/2-total/2;
+      for(const {w,ww} of r){
+        const active=t>=w.t0&&t<w.t1, done=t>=w.t1;
+        const cx=x+ww/2, cy=y0+ri*lh;
+        const txt=caseFn(w.text,'upper');
+        const cIdx=hash32(L.start+wIdxN)%RAINBOW.length;
+        const col=subs.customCol?(wIdxN%2?accC:inkC):RAINBOW[cIdx];
+        wIdxN++;
+        o.save();
+        if(active){
+          const p=easeOutBack(clamp((t-w.t0)/0.18,0,1));
+          const beatPulse=1+0.08*Math.sin((t-w.t0)*18);
+          o.translate(cx,cy);o.scale((0.9+0.25*p)*beatPulse,(0.9+0.25*p)*beatPulse);o.translate(-cx,-cy);
+          o.shadowColor=col;o.shadowBlur=fsT*0.7;
+        }else if(done){
+          o.shadowColor=col;o.shadowBlur=fsT*0.25;
+        }else{
+          // upcoming: dim
+          o.globalAlpha=0.35;
+        }
+        if(ow>0){o.lineWidth=fsT*0.16*ow;o.strokeStyle='#000';o.strokeText(txt,cx,cy);}
+        o.fillStyle=col;
+        o.fillText(txt,cx,cy);
+        o.shadowBlur=0;o.globalAlpha=1;
+        o.restore();
+        x+=ww+space;
+      }
+    });
+
+  }else if(styleId==='wordpop3d'){
+    // Le mot actif énorme + stack de 4 ombres décalées (effet 3D extrudé)
+    const text=caseFn(u.text,'upper');
+    const fs=fitFont(o,text,FAM,'',W*0.17*sz,W*0.86);
+    const tsBeat=(t-u.t0);
+    const pop=easeOutBack(clamp(tsU/0.22,0,1));
+    const tilt=((seed%9)-4)*0.018;
+    o.translate(W/2,baseY);
+    o.rotate(tilt*pop);
+    o.scale(0.7+0.35*pop,0.7+0.35*pop);
+    // 4 stacked shadows (depth)
+    const depthCol=subs.customCol?subs.colAcc:'#ff3b30';
+    for(let i=8;i>=1;i--){
+      o.fillStyle=depthCol;
+      o.globalAlpha=0.18+0.07*i;
+      o.fillText(text, i*fs*0.025, i*fs*0.025);
+    }
+    o.globalAlpha=1;
+    // Outline
+    if(ow>0){o.lineWidth=fs*0.16*ow;o.strokeStyle='#000';o.strokeText(text,0,0);}
+    // Main fill — pulse couleur sur le beat
+    const cyc=(Math.sin(tsBeat*9)+1)/2;
+    o.fillStyle=subs.customCol?inkC:(cyc>0.5?'#ffffff':'#fff5d6');
+    o.fillText(text,0,0);
+
+  }else if(styleId==='handwrite'){
+    // Police manuscrite avec révélation gauche-droite et trait fluo qui suit
+    const handFam=(subs.font==='caveat'||subs.font==='marker')?FAM:"'Permanent Marker','Caveat',cursive";
+    const fsT=W*0.085*sz;
+    o.font=`${fsT}px ${handFam}`;
+    const words=[];for(let i=L.start;i<L.end;i++)words.push(U[i]);
+    const space=o.measureText(' ').width;
+    const rows=[];let row=[],rw=0;
+    for(const w of words){
+      const ww=o.measureText(w.text).width;
+      if(rw+ww>W*0.84&&row.length){rows.push(row);row=[];rw=0;}
+      row.push({w,ww});rw+=ww+space;
+    }
+    if(row.length)rows.push(row);
+    const lh=fsT*1.15,y0=baseY-(rows.length-1)*lh/2;
+    rows.forEach((r,ri)=>{
+      const total=r.reduce((a,x)=>a+x.ww,0)+space*(r.length-1);
+      let x=W/2-total/2;
+      for(const {w,ww} of r){
+        const active=t>=w.t0&&t<w.t1;
+        const done=t>=w.t1;
+        const ax=x, cy=y0+ri*lh;
+        // Progress for active word (left-to-right reveal)
+        const prog = done?1: active?clamp((t-w.t0)/Math.max(0.001,w.t1-w.t0),0,1):0;
+        if(prog<=0){ x+=ww+space; continue; }
+        const visW = ww*prog;
+        o.save();
+        // Clip to revealed portion
+        o.beginPath();o.rect(ax-2, cy-fsT*0.7, visW+4, fsT*1.4);o.clip();
+        if(shadowOn){o.shadowColor='rgba(0,0,0,.5)';o.shadowBlur=6;o.shadowOffsetY=fsT*0.04;}
+        if(ow>0){o.lineWidth=fsT*0.1*ow;o.strokeStyle='#000';o.strokeText(w.text, ax+ww/2, cy);}
+        o.shadowBlur=0;o.shadowOffsetY=0;
+        o.fillStyle=active?accC:inkC;
+        o.fillText(w.text, ax+ww/2, cy);
+        o.restore();
+        // Underline highlighter
+        if(active||done){
+          o.save();
+          o.globalAlpha = done?0.55:0.85;
+          o.fillStyle=accC;
+          const uy=cy+fsT*0.42, uh=fsT*0.18;
+          o.fillRect(ax, uy, visW, uh);
+          o.restore();
+        }
+        x+=ww+space;
+      }
+    });
+
+  }else if(styleId==='bouncerainbow'){
+    // Chaque mot rebondit dans une couleur arc-en-ciel sur le beat
+    const words=[];for(let i=L.start;i<L.end;i++)words.push(U[i]);
+    const fsT=W*0.082*sz;
+    o.font=`${fsT}px ${FAM}`;
+    const space=o.measureText(' ').width;
+    const rows=[];let row=[],rw=0;
+    for(const w of words){
+      const ww=o.measureText(caseFn(w.text,'upper')).width;
+      if(rw+ww>W*0.84&&row.length){rows.push(row);row=[];rw=0;}
+      row.push({w,ww});rw+=ww+space;
+    }
+    if(row.length)rows.push(row);
+    const lh=fsT*1.25,y0=baseY-(rows.length-1)*lh/2;
+    const COLS=['#ff3b30','#ff9500','#ffd60a','#34c759','#00d4ff','#bf5af2','#ff2d92'];
+    let wIdxB=0;
+    rows.forEach((r,ri)=>{
+      const total=r.reduce((a,x)=>a+x.ww,0)+space*(r.length-1);
+      let x=W/2-total/2;
+      for(const {w,ww} of r){
+        const active=t>=w.t0&&t<w.t1, done=t>=w.t1;
+        const cx=x+ww/2, cy=y0+ri*lh;
+        const txt=caseFn(w.text,'upper');
+        const idx=L.start+wIdxB;
+        const col=subs.customCol?(wIdxB%2===0?inkC:accC):COLS[Math.abs(hash32(idx))%COLS.length];
+        wIdxB++;
+        o.save();
+        let by=0, sc=1;
+        if(active){
+          const lp=clamp((t-w.t0)/0.16,0,1);
+          sc=easeOutBack(lp);
+          by=-Math.abs(Math.sin((t-w.t0)*14))*fsT*0.18;
+        }else if(!done){
+          // upcoming: dimmed in place
+          o.globalAlpha=0.35;
+        }
+        o.translate(cx,cy+by);o.scale(sc,sc);o.translate(-cx,-cy);
+        if(shadowOn){o.shadowColor='rgba(0,0,0,.55)';o.shadowOffsetY=fsT*0.06;o.shadowBlur=0;}
+        if(ow>0){o.lineWidth=fsT*0.16*ow;o.strokeStyle='#000';o.strokeText(txt,cx,cy);}
+        o.shadowOffsetY=0;o.shadowBlur=0;
+        o.fillStyle=col;
+        o.fillText(txt,cx,cy);
+        o.globalAlpha=1;
+        o.restore();
+        x+=ww+space;
+      }
+    });
+
+  }else if(styleId==='cinemabar'){
+    // Sous-titre cinéma : barres noires + texte épuré centré
+    const fsT=W*0.038*sz;
+    const fam=subs.font==='archivo'?"'Space Grotesk', sans-serif":FAM;
+    o.font=`500 ${fsT}px ${fam}`;
+    try{o.letterSpacing=(fsT*0.05)+'px';}catch(e){}
+    const words=[];for(let i=L.start;i<L.end;i++)words.push(U[i]);
+    const full=caseFn(words.map(w=>w.text).join(' '),'lower');
+    const rows=wrapText(o,full,W*0.78);
+    const lh=fsT*1.35;
+    const totalH=rows.length*lh + fsT*0.6;
+    const y0=baseY-(rows.length-1)*lh/2;
+    // Letterbox-style soft black panel
+    o.save();
+    o.fillStyle='rgba(0,0,0,0.55)';
+    const panY=y0-fsT*0.85, panH=rows.length*lh+fsT*0.4;
+    o.fillRect(0,panY,W,panH);
+    // Thin accent bars
+    o.fillStyle=accC;
+    o.fillRect(0,panY,W,2);
+    o.fillRect(0,panY+panH-2,W,2);
+    o.restore();
+    // Text
+    o.fillStyle=inkC;
+    rows.forEach((r,i)=>{
+      o.fillText(r, W/2, y0+i*lh);
+    });
+    try{o.letterSpacing='0px';}catch(e){}
+
+  }else if(styleId==='bigimpact'){
+    // Un mot massif occupe tout l'écran à chaque syllabe, drop shadow + tilt
+    const text=caseFn(u.text,'upper');
+    const r=mulberry32(seed);
+    const fs=fitFont(o,text,FAM,'',Math.min(W*0.92,H*0.32),W*0.92);
+    const tilt=(r()-0.5)*0.18;
+    const offX=(r()-0.5)*W*0.04;
+    o.translate(W/2+offX,baseY);
+    o.rotate(tilt);
+    enterFx(o,tsU);
+    // Hard drop shadow
+    const dropCol=subs.customCol?subs.colAcc:'#000000';
+    o.fillStyle=dropCol;
+    for(let i=1;i<=6;i++){
+      o.globalAlpha=0.55-i*0.07;
+      o.fillText(text, fs*0.014*i, fs*0.014*i);
+    }
+    o.globalAlpha=1;
+    if(ow>0){o.lineWidth=fs*0.13*ow;o.strokeStyle='#000';o.strokeText(text,0,0);}
+    // Color cycle per word
+    const palCols=[accC, inkC, '#ffd60a', '#00d4ff', '#ff2d92'];
+    o.fillStyle = subs.customCol ? inkC : palCols[seed%palCols.length];
+    o.fillText(text,0,0);
   }
   o.restore();
 }
