@@ -216,7 +216,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
       <strong>Dépose ton track</strong>
       <span>mp3, wav, m4a — BPM détecté automatiquement</span>
     </div>
-    <input type="file" id="audioInput" accept="audio/*,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/flac,.mp3,.wav,.m4a,.aac,.ogg,.flac">
+    <input type="file" id="audioInput">
     <div class="card" id="bpmCard" style="display:none">
       <div class="row" style="justify-content:space-between">
         <div class="bpm-big"><span id="bpmVal">—</span><small>BPM</small></div>
@@ -259,7 +259,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
         <strong>Dépose tes clips vidéo</strong>
         <span>mp4, webm, mov — plusieurs fichiers OK</span>
       </div>
-      <input type="file" id="clipInput" accept="video/*,video/mp4,video/quicktime,video/webm,video/x-m4v,.mp4,.mov,.webm,.m4v,.mkv" multiple>
+      <input type="file" id="clipInput" multiple>
       <div class="clip-list" id="clipList"></div>
       <div class="card" id="pexelsCard">
         <div class="row"><label class="lbl">Banque de clips Pexels</label></div>
@@ -315,7 +315,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
       <strong>+ Acapella déjà prête</strong>
       <span>optionnel — dépose la voix isolée</span>
     </div>
-    <input type="file" id="acapInput" accept="audio/*,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/flac,.mp3,.wav,.m4a,.aac,.ogg,.flac">
+    <input type="file" id="acapInput">
     <div class="card" id="acapCard" style="display:none">
       <div class="row" style="justify-content:space-between">
         <span class="hint" style="margin:0" id="acapName"></span>
@@ -690,7 +690,10 @@ let wavePeaks=null;
 
 bindDrop($('#audioDrop'), $('#audioInput'), async files=>{
   const f = files.find(f=>f.type.startsWith('audio')||/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name));
-  if(!f) return;
+  if(!f){
+    if(files.length){ uiError('Fichier non-audio — sélectionne un .mp3, .wav, .m4a, .aac, .ogg ou .flac.'); }
+    return;
+  }
   if(state.playing) stopPlayback();
   $('#audioDrop').querySelector('strong').textContent = 'Analyse en cours…';
   try{
@@ -1138,7 +1141,10 @@ let mixEnv=null;
 
 bindDrop($('#acapDrop'), $('#acapInput'), async files=>{
   const f=files.find(f=>f.type.startsWith('audio')||/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name));
-  if(!f) return;
+  if(!f){
+    if(files.length){ uiError('Fichier non-audio — sélectionne un .mp3, .wav, .m4a, .aac, .ogg ou .flac.'); }
+    return;
+  }
   $('#acapDrop').querySelector('strong').textContent='Analyse de l\u2019acapella…';
   try{
     const buf=await f.arrayBuffer();
