@@ -39,6 +39,9 @@ PRO_PRICE = 12.99           # 12,99 € — défini côté serveur uniquement, j
 PRO_PRICE_CENTS = 1299
 PRO_PRICE_YEAR = 99.00
 PRO_PRICE_YEAR_CENTS = 9900
+BASIC_PRICE = 6.99          # plan Basic — 10 vidéos/mois, sans acapella
+BASIC_PRICE_CENTS = 699
+BASIC_MONTHLY_EXPORTS = 10
 PRO_CURRENCY = "eur"
 SUBSCRIPTION_DAYS = 30      # filet de sécurité si Stripe est injoignable
 SUBSCRIPTION_DAYS_YEAR = 365
@@ -198,6 +201,8 @@ def sub_info(user: dict) -> dict:
     if (user.get("email") or "").lower() in PRO_WHITELIST:
         return {
             "is_pro": True,
+            "tier": "pro",
+            "plan": "vip",
             "status": "vip",
             "current_period_end": None,
             "cancel_at_period_end": False,
@@ -206,8 +211,12 @@ def sub_info(user: dict) -> dict:
     status = sub.get("status")
     end = parse_dt(sub.get("current_period_end"))
     active = status in ("active", "canceled") and end is not None and end > now_utc()
+    plan = sub.get("plan") or "monthly"
+    tier = ("basic" if plan == "basic" else "pro") if active else "free"
     return {
         "is_pro": bool(active),
+        "tier": tier,
+        "plan": plan if active else None,
         "status": status if active else None,
         "current_period_end": end.isoformat() if (active and end) else None,
         "cancel_at_period_end": (status == "canceled") if active else False,
@@ -243,6 +252,16 @@ def _extract_period_end(sub_obj) -> datetime:
 
 async def activate_subscription(user_id: str, customer_id: str = None, subscription_id: str = None, plan: str = "monthly"):
     days = SUBSCRIPTION_DAYS_YEAR if plan == "yearly" else SUBSCRIPTION_DAYS
+    # Changement de plan (ex: Basic → PRO) : annule l'ancien abonnement Stripe
+    # pour éviter la double facturation.
+    existing = await db.users.find_one({"user_id": user_id}, {"_id": 0, "subscription": 1})
+    old_sub_id = ((existing or {}).get("subscription") or {}).get("stripe_subscription_id")
+    if old_sub_id and subscription_id and old_sub_id != subscription_id:
+        try:
+            await asyncio.to_thread(stripe.Subscription.cancel, old_sub_id)
+            logger.info("Ancien abonnement Stripe %s annulé (changement de plan)", old_sub_id)
+        except Exception as e:
+            logger.warning("Annulation ancien abonnement %s impossible: %s", old_sub_id, e)
     sub_doc = {
         "status": "active",
         "plan": plan,
@@ -606,11 +625,13 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
     if res.modified_count:
         tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
         if tx and tx.get("user_id"):
-            await activate_subscription(tx["user_id"], customer_id, subscription_id, plan=tx.get("plan", "monthly"))
+            plan = tx.get("plan", "monthly")
+            await activate_subscription(tx["user_id"], customer_id, subscription_id, plan=plan)
             user = await db.users.find_one({"user_id": tx["user_id"]}, {"_id": 0})
             if user:
                 end = (user.get("subscription") or {}).get("current_period_end")
-                await send_email(user["email"], "Bienvenue en PRO ✦ BEATCUT", sub_confirmed_email_html(end))
+                label = "BASIC" if plan == "basic" else "PRO"
+                await send_email(user["email"], f"Bienvenue en {label} ✦ BEATCUT", sub_confirmed_email_html(end))
 
 
 @api_router.post("/payments/checkout")
@@ -621,12 +642,17 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
     success_url = f"{origin}/dashboard?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/dashboard"
     sub = user.get("subscription") or {}
-    plan = "yearly" if data.plan == "yearly" else "monthly"
+    plan = data.plan if data.plan in ("yearly", "basic") else "monthly"
     if plan == "yearly":
         amount_cents = PRO_PRICE_YEAR_CENTS
         interval = "year"
         product_name = "BEATCUT PRO — annuel"
         product_desc = "Export sans watermark + .srt + extraction acapella — 99 €/an (2 mois offerts)"
+    elif plan == "basic":
+        amount_cents = BASIC_PRICE_CENTS
+        interval = "month"
+        product_name = "BEATCUT BASIC"
+        product_desc = f"Export sans watermark — {BASIC_MONTHLY_EXPORTS} vidéos/mois, sous-titres .srt — sans acapella, sans engagement"
     else:
         amount_cents = PRO_PRICE_CENTS
         interval = "month"
@@ -646,7 +672,7 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         }],
         success_url=success_url,
         cancel_url=cancel_url,
-        metadata={"user_id": user["user_id"], "email": user["email"], "product": f"beatcut_pro_{plan}"},
+        metadata={"user_id": user["user_id"], "email": user["email"], "product": f"beatcut_{plan}"},
         subscription_data={"metadata": {"user_id": user["user_id"], "plan": plan}},
     )
     if sub.get("stripe_customer_id"):
@@ -664,7 +690,7 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         "email": user["email"],
         "amount": amount_cents / 100.0,
         "currency": PRO_CURRENCY,
-        "product": f"beatcut_pro_{plan}",
+        "product": f"beatcut_{plan}",
         "plan": plan,
         "status": "open",
         "payment_status": "initiated",
@@ -919,10 +945,56 @@ async def _run_separation(job_id: str, input_path: str):
 
 
 async def require_pro(user: dict) -> dict:
+    """Extraction acapella : réservée au plan PRO (pas Basic)."""
     user = await sync_stripe_subscription(user)
-    if not sub_info(user)["is_pro"]:
+    info = sub_info(user)
+    if info["tier"] != "pro":
+        if info["tier"] == "basic":
+            raise HTTPException(status_code=403, detail="Extraction acapella réservée au plan PRO — passe en PRO depuis Mon compte")
         raise HTTPException(status_code=403, detail="Fonction réservée aux abonnés PRO")
     return user
+
+
+def _month_start_iso() -> str:
+    return iso(now_utc().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+
+
+@api_router.post("/export/register")
+async def register_export(user: dict = Depends(get_current_user)):
+    """Appelé par le studio au lancement d'un export vidéo.
+    Basic : quota mensuel. PRO/VIP : illimité. Gratuit : refusé."""
+    user = await sync_stripe_subscription(user)
+    info = sub_info(user)
+    if info["tier"] == "free":
+        raise HTTPException(status_code=403, detail="Export réservé aux abonnés — passe en Basic ou PRO")
+    if info["tier"] == "basic":
+        used = await db.export_logs.count_documents({
+            "user_id": user["user_id"], "created_at": {"$gte": _month_start_iso()},
+        })
+        if used >= BASIC_MONTHLY_EXPORTS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Quota atteint : {BASIC_MONTHLY_EXPORTS} vidéos/mois avec le plan Basic. Passe en PRO pour exporter en illimité.",
+            )
+        await db.export_logs.insert_one({
+            "user_id": user["user_id"], "tier": "basic", "created_at": iso(now_utc()),
+        })
+        return {"allowed": True, "used": used + 1, "quota": BASIC_MONTHLY_EXPORTS}
+    await db.export_logs.insert_one({
+        "user_id": user["user_id"], "tier": info["tier"], "created_at": iso(now_utc()),
+    })
+    return {"allowed": True, "used": None, "quota": None}
+
+
+@api_router.get("/export/quota")
+async def export_quota(user: dict = Depends(get_current_user)):
+    info = sub_info(user)
+    if info["tier"] != "basic":
+        return {"tier": info["tier"], "used": None, "quota": None}
+    used = await db.export_logs.count_documents({
+        "user_id": user["user_id"], "created_at": {"$gte": _month_start_iso()},
+    })
+    return {"tier": "basic", "used": used, "quota": BASIC_MONTHLY_EXPORTS}
 
 
 @api_router.post("/separate")
@@ -1084,10 +1156,15 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "subscription.current_period_end": {"$gt": iso(now_utc())},
     })
     canceled = await db.users.count_documents({"subscription.status": "canceled"})
-    yearly = await db.users.count_documents({"subscription.plan": "yearly"})
-    monthly = max(0, paid_users - yearly)
+    active_paid = {
+        "subscription.status": {"$in": ["active", "canceled"]},
+        "subscription.current_period_end": {"$gt": iso(now_utc())},
+    }
+    yearly = await db.users.count_documents({**active_paid, "subscription.plan": "yearly"})
+    basic = await db.users.count_documents({**active_paid, "subscription.plan": "basic"})
+    monthly = max(0, paid_users - yearly - basic)
     # MRR : annuels comptés au prorata mensuel
-    mrr = round(monthly * PRO_PRICE + yearly * (PRO_PRICE_YEAR / 12), 2)
+    mrr = round(monthly * PRO_PRICE + basic * BASIC_PRICE + yearly * (PRO_PRICE_YEAR / 12), 2)
     # Séparations du mois
     start_month = iso(now_utc().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
     sep_count = await db.separation_logs.count_documents({"created_at": {"$gt": start_month}})
@@ -1101,6 +1178,7 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "google_users": google_users,
         "password_users": pwd_users,
         "monthly_subscribers": monthly,
+        "basic_subscribers": basic,
         "yearly_subscribers": yearly,
         "mrr": mrr,
         "separations_this_month": sep_count,

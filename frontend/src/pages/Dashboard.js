@@ -35,6 +35,14 @@ export default function Dashboard() {
   const isPro = !!user?.is_pro;
   const isVip = sub.status === "vip";
   const canceled = !!sub.cancel_at_period_end;
+  const tier = sub.tier || (isPro ? "pro" : "free");
+  const isBasic = tier === "basic";
+  const [quota, setQuota] = useState(null);
+
+  useEffect(() => {
+    if (!isBasic) return;
+    api.get("/export/quota").then(({ data }) => setQuota(data)).catch(() => {});
+  }, [isBasic]);
 
   // Vérification du paiement au retour de Stripe
   useEffect(() => {
@@ -53,7 +61,7 @@ export default function Dashboard() {
         if (data.payment_status === "paid") {
           await refreshUser();
           setCheckingPayment(false);
-          toast.success("Paiement confirmé — bienvenue en PRO ! 🎉");
+          toast.success("Paiement confirmé — ton abonnement est actif ! 🎉");
           navigate("/dashboard", { replace: true });
           return;
         }
@@ -175,11 +183,11 @@ export default function Dashboard() {
               {isPro ? (
               <span
                 className={`font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 ${
-                  isVip ? "bg-[#d9ffd0] text-background" : canceled ? "bg-secondary text-muted-foreground" : "bg-primary text-white"
+                  isVip ? "bg-[#d9ffd0] text-background" : canceled ? "bg-secondary text-muted-foreground" : isBasic ? "bg-[#8f9bff] text-background" : "bg-primary text-white"
                 }`}
                 data-testid="plan-badge"
               >
-                {isVip ? "VIP ✦" : canceled ? "PRO — ANNULÉ" : "PRO ✦"}
+                {isVip ? "VIP ✦" : canceled ? (isBasic ? "BASIC — ANNULÉ" : "PRO — ANNULÉ") : isBasic ? "BASIC" : "PRO ✦"}
               </span>
             ) : (
                 <span className="font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 bg-secondary text-muted-foreground" data-testid="plan-badge">
@@ -205,30 +213,41 @@ export default function Dashboard() {
               <>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Tu utilises la version gratuite : tout le studio est dispo, avec un watermark BEATCUT sur l'aperçu.
-                  Passe en PRO pour exporter tes vidéos sans watermark et récupérer tes .srt.
+                  Choisis ton plan pour exporter tes vidéos sans watermark.
                 </p>
-                <p className="mt-5 font-display text-3xl font-extrabold">
-                  12,99 € <span className="text-sm font-normal text-muted-foreground">/ mois — sans engagement</span>
-                </p>
-                <div className="grid sm:grid-cols-2 gap-3 mt-5">
+                <div className="grid gap-3 mt-6">
+                  <button
+                    onClick={() => startCheckout("basic")}
+                    disabled={busy}
+                    data-testid="subscribe-basic-button"
+                    className="inline-flex items-center justify-between gap-2 border border-[#8f9bff]/60 bg-[#8f9bff]/10 text-foreground font-bold px-5 py-3.5 hover:bg-[#8f9bff]/20 transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                  >
+                    <span>BASIC — 10 vidéos/mois</span>
+                    <span className="font-display">6,99 €/mois</span>
+                  </button>
                   <button
                     onClick={() => startCheckout("monthly")}
                     disabled={busy}
                     data-testid="subscribe-pro-button"
-                    className="inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-5 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
+                    className="relative inline-flex items-center justify-between gap-2 bg-primary text-white font-bold px-5 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
                   >
-                    <Crown size={16} /> Mensuel — 12,99 €
+                    <span className="absolute -top-2.5 right-2 bg-white text-primary font-osd text-[9px] tracking-wider px-2 py-0.5">
+                      RECOMMANDÉ
+                    </span>
+                    <span className="inline-flex items-center gap-2"><Crown size={16} /> PRO — illimité + acapella</span>
+                    <span className="font-display">12,99 €/mois</span>
                   </button>
                   <button
                     onClick={() => startCheckout("yearly")}
                     disabled={busy}
                     data-testid="subscribe-pro-yearly-button"
-                    className="relative inline-flex items-center justify-center gap-2 border border-[#d9ffd0]/50 bg-[#d9ffd0]/5 text-foreground font-bold px-5 py-3.5 hover:bg-[#d9ffd0]/10 transition-all hover:-translate-y-0.5"
+                    className="relative inline-flex items-center justify-between gap-2 border border-[#d9ffd0]/50 bg-[#d9ffd0]/5 text-foreground font-bold px-5 py-3.5 hover:bg-[#d9ffd0]/10 transition-all hover:-translate-y-0.5 disabled:opacity-50"
                   >
                     <span className="absolute -top-2.5 right-2 bg-[#d9ffd0] text-background font-osd text-[9px] tracking-wider px-2 py-0.5">
                       2 MOIS OFFERTS
                     </span>
-                    Annuel — 99 €
+                    <span>PRO annuel</span>
+                    <span className="font-display">99 €/an</span>
                   </button>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground text-center">
@@ -241,15 +260,53 @@ export default function Dashboard() {
               <>
                 <div className="flex items-center gap-2.5 text-sm">
                   <BadgeCheck size={17} className="text-[#d9ffd0]" />
-                  <span data-testid="subscription-status-text">Abonnement PRO actif</span>
+                  <span data-testid="subscription-status-text">
+                    {isBasic ? "Abonnement BASIC actif" : "Abonnement PRO actif"}
+                  </span>
                 </div>
                 <div className="mt-3 flex items-center gap-2.5 text-sm text-muted-foreground">
                   <CalendarClock size={17} />
                   <span data-testid="subscription-renewal-date">Accès jusqu'au {fmtDate(sub.current_period_end)}</span>
                 </div>
-                <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
-                  Export sans watermark, sous-titres .srt — tout est débloqué. Merci de soutenir BEATCUT ✦
-                </p>
+                {isBasic ? (
+                  <>
+                    {quota && (
+                      <div className="mt-5" data-testid="basic-quota-section">
+                        <div className="flex items-center justify-between text-sm mb-2">
+                          <span className="text-muted-foreground">Vidéos exportées ce mois-ci</span>
+                          <span className="font-osd text-[#8f9bff]" data-testid="basic-quota-count">
+                            {quota.used} / {quota.quota}
+                          </span>
+                        </div>
+                        <div className="h-2 bg-secondary overflow-hidden">
+                          <div
+                            className="h-full bg-[#8f9bff] transition-all"
+                            style={{ width: `${Math.min(100, (quota.used / quota.quota) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
+                      Export sans watermark et .srt inclus — 10 vidéos par mois. Passe en PRO pour exporter en
+                      illimité et débloquer l'extraction d'acapella (IA).
+                    </p>
+                    <button
+                      onClick={() => startCheckout("monthly")}
+                      disabled={busy}
+                      data-testid="upgrade-to-pro-button"
+                      className="mt-6 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
+                    >
+                      <Crown size={16} /> Passer en PRO — 12,99 €/mois
+                    </button>
+                    <p className="mt-2 text-xs text-muted-foreground text-center">
+                      Ton abonnement BASIC sera automatiquement remplacé.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
+                    Export sans watermark, sous-titres .srt, acapella — tout est débloqué. Merci de soutenir BEATCUT ✦
+                  </p>
+                )}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <button
@@ -262,9 +319,11 @@ export default function Dashboard() {
                   </AlertDialogTrigger>
                   <AlertDialogContent className="bg-card border-border">
                     <AlertDialogHeader>
-                      <AlertDialogTitle className="font-display">Se désabonner de BEATCUT PRO ?</AlertDialogTitle>
+                      <AlertDialogTitle className="font-display">
+                        Se désabonner de BEATCUT {isBasic ? "BASIC" : "PRO"} ?
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
-                        Tu garderas l'accès PRO jusqu'au {fmtDate(sub.current_period_end)}. Ensuite, ton compte
+                        Tu garderas l'accès {isBasic ? "BASIC" : "PRO"} jusqu'au {fmtDate(sub.current_period_end)}. Ensuite, ton compte
                         repassera en gratuit (studio complet, aperçu avec watermark). Tu pourras te réabonner à tout moment.
                       </AlertDialogDescription>
                     </AlertDialogHeader>

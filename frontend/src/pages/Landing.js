@@ -65,6 +65,7 @@ export default function Landing() {
   const { user } = useAuth();
   const ctaTarget = user ? "/studio" : "/register";
   const proTarget = user ? "/dashboard?upgrade=1" : "/register";
+  const proLink = (plan) => (user ? `/dashboard?upgrade=1&plan=${plan}` : "/register");
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -113,7 +114,7 @@ export default function Landing() {
               </a>
             </div>
             <p className="mt-5 font-osd text-xs text-muted-foreground">
-              GRATUIT : STUDIO COMPLET AVEC WATERMARK • PRO : EXPORT SANS WATERMARK — 12,99 €/MOIS
+              GRATUIT : STUDIO AVEC WATERMARK • BASIC : 10 VIDÉOS/MOIS — 6,99 € • PRO : ILLIMITÉ + ACAPELLA — 12,99 €/MOIS
             </p>
           </motion.div>
         </div>
@@ -188,26 +189,57 @@ export default function Landing() {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-6 max-w-6xl">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Gratuit */}
-          <motion.div {...fadeUp} className="bg-card border border-border p-9" data-testid="pricing-free-card">
+          <motion.div {...fadeUp} className="bg-card border border-border p-8" data-testid="pricing-free-card">
             <p className="font-osd text-xs tracking-[0.2em] text-muted-foreground mb-3">GRATUIT</p>
-            <p className="font-display text-4xl font-extrabold">
-              0 € <span className="text-base font-normal text-muted-foreground">/ pour toujours</span>
+            <p className="font-display text-3xl font-extrabold">
+              0 € <span className="text-sm font-normal text-muted-foreground">/ pour toujours</span>
             </p>
-            <ul className="mt-7 space-y-3 text-sm">
+            <ul className="mt-6 space-y-2.5 text-sm">
               {["Studio complet : BPM, cuts, IA, styles", "Aperçu illimité dans le navigateur", "Banque de clips Pexels intégrée", "Aperçu avec watermark BEATCUT"].map((f) => (
                 <li key={f} className="flex items-start gap-2.5 text-muted-foreground">
-                  <Check size={16} className="text-[#d9ffd0] mt-0.5 shrink-0" /> {f}
+                  <Check size={15} className="text-[#d9ffd0] mt-0.5 shrink-0" /> {f}
                 </li>
               ))}
             </ul>
             <Link
               to={ctaTarget}
               data-testid="pricing-free-button"
-              className="mt-9 block text-center border border-border px-6 py-3.5 hover:border-foreground transition-colors"
+              className="mt-8 block text-center border border-border px-5 py-3 text-sm hover:border-foreground transition-colors"
             >
               Commencer gratuitement
+            </Link>
+          </motion.div>
+
+          {/* BASIC */}
+          <motion.div
+            {...fadeUp}
+            transition={{ duration: 0.55, delay: 0.05 }}
+            className="relative bg-card border border-[#8f9bff]/50 p-8"
+            data-testid="pricing-basic-card"
+          >
+            <span className="absolute -top-3 left-8 bg-[#8f9bff] text-background font-osd text-[10px] tracking-[0.2em] px-3 py-1">
+              NOUVEAU
+            </span>
+            <p className="font-osd text-xs tracking-[0.2em] text-[#8f9bff] mb-3">BASIC</p>
+            <p className="font-display text-3xl font-extrabold">
+              6,99 € <span className="text-sm font-normal text-muted-foreground">/ mois</span>
+            </p>
+            <ul className="mt-6 space-y-2.5 text-sm">
+              {["Tout le plan gratuit", "Export mp4 sans watermark", "10 vidéos par mois", "Sous-titres .srt", "Sans engagement"].map((f) => (
+                <li key={f} className="flex items-start gap-2.5">
+                  <Check size={15} className="text-[#8f9bff] mt-0.5 shrink-0" /> {f}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-muted-foreground">Sans extraction d'acapella</p>
+            <Link
+              to={proLink("basic")}
+              data-testid="pricing-basic-button"
+              className="mt-6 block text-center border border-[#8f9bff]/60 bg-[#8f9bff]/10 text-foreground font-bold px-5 py-3 text-sm hover:bg-[#8f9bff]/20 transition-all hover:-translate-y-0.5"
+            >
+              Passer en BASIC
             </Link>
           </motion.div>
 
@@ -215,27 +247,27 @@ export default function Landing() {
           <motion.div
             {...fadeUp}
             transition={{ duration: 0.55, delay: 0.1 }}
-            className="relative bg-card border border-primary p-9 shadow-[0_0_40px_rgba(255,59,48,0.15)]"
+            className="relative bg-card border border-primary p-8 shadow-[0_0_40px_rgba(255,59,48,0.15)]"
             data-testid="pricing-pro-card"
           >
-            <span className="absolute -top-3 left-9 bg-primary text-white font-osd text-[10px] tracking-[0.2em] px-3 py-1">
+            <span className="absolute -top-3 left-8 bg-primary text-white font-osd text-[10px] tracking-[0.2em] px-3 py-1">
               RECOMMANDÉ
             </span>
-            <p className="font-osd text-xs tracking-[0.2em] text-primary mb-3">PRO MENSUEL</p>
-            <p className="font-display text-4xl font-extrabold">
-              12,99 € <span className="text-base font-normal text-muted-foreground">/ mois</span>
+            <p className="font-osd text-xs tracking-[0.2em] text-primary mb-3">PRO</p>
+            <p className="font-display text-3xl font-extrabold">
+              12,99 € <span className="text-sm font-normal text-muted-foreground">/ mois</span>
             </p>
-            <ul className="mt-7 space-y-3 text-sm">
-              {["Tout le plan gratuit", "Export mp4 sans watermark", "Sous-titres .srt", "Extraction d'acapella (IA)", "Sans engagement"].map((f) => (
+            <ul className="mt-6 space-y-2.5 text-sm">
+              {["Tout le plan BASIC", "Vidéos illimitées", "Extraction d'acapella (IA)", "Paroles calées à la milliseconde", "Sans engagement"].map((f) => (
                 <li key={f} className="flex items-start gap-2.5">
-                  <Check size={16} className="text-primary mt-0.5 shrink-0" /> {f}
+                  <Check size={15} className="text-primary mt-0.5 shrink-0" /> {f}
                 </li>
               ))}
             </ul>
             <Link
               to={proTarget}
               data-testid="pricing-pro-button"
-              className="mt-9 block text-center bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
+              className="mt-8 block text-center bg-primary text-white font-bold px-5 py-3 text-sm hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
             >
               Passer en PRO
             </Link>
@@ -245,33 +277,79 @@ export default function Landing() {
           <motion.div
             {...fadeUp}
             transition={{ duration: 0.55, delay: 0.2 }}
-            className="relative bg-card border border-[#d9ffd0]/40 p-9"
+            className="relative bg-card border border-[#d9ffd0]/40 p-8"
             data-testid="pricing-yearly-card"
           >
-            <span className="absolute -top-3 left-9 bg-[#d9ffd0] text-background font-osd text-[10px] tracking-[0.2em] px-3 py-1">
+            <span className="absolute -top-3 left-8 bg-[#d9ffd0] text-background font-osd text-[10px] tracking-[0.2em] px-3 py-1">
               2 MOIS OFFERTS
             </span>
             <p className="font-osd text-xs tracking-[0.2em] text-[#d9ffd0] mb-3">PRO ANNUEL</p>
-            <p className="font-display text-4xl font-extrabold">
-              99 € <span className="text-base font-normal text-muted-foreground">/ an</span>
+            <p className="font-display text-3xl font-extrabold">
+              99 € <span className="text-sm font-normal text-muted-foreground">/ an</span>
             </p>
             <p className="mt-1 font-osd text-[11px] text-muted-foreground">soit 8,25 €/mois</p>
-            <ul className="mt-7 space-y-3 text-sm">
+            <ul className="mt-6 space-y-2.5 text-sm">
               {["Tout le plan PRO mensuel", "Économise 56 € sur l'année", "Priorité sur les nouveautés"].map((f) => (
                 <li key={f} className="flex items-start gap-2.5">
-                  <Check size={16} className="text-[#d9ffd0] mt-0.5 shrink-0" /> {f}
+                  <Check size={15} className="text-[#d9ffd0] mt-0.5 shrink-0" /> {f}
                 </li>
               ))}
             </ul>
             <Link
-              to={proTarget + "&plan=yearly"}
+              to={proLink("yearly")}
               data-testid="pricing-yearly-button"
-              className="mt-9 block text-center border border-[#d9ffd0]/50 bg-[#d9ffd0]/5 text-foreground font-bold px-6 py-3.5 hover:bg-[#d9ffd0]/10 transition-all hover:-translate-y-0.5"
+              className="mt-8 block text-center border border-[#d9ffd0]/50 bg-[#d9ffd0]/5 text-foreground font-bold px-5 py-3 text-sm hover:bg-[#d9ffd0]/10 transition-all hover:-translate-y-0.5"
             >
               Passer en PRO annuel
             </Link>
           </motion.div>
         </div>
+
+        {/* ===== Tableau comparatif ===== */}
+        <motion.div {...fadeUp} className="mt-16 overflow-x-auto" data-testid="pricing-comparison-table">
+          <p className="font-osd text-xs tracking-[0.25em] text-primary mb-5">[ COMPARER LES PLANS ]</p>
+          <table className="w-full min-w-[560px] border border-border text-sm">
+            <thead>
+              <tr className="bg-secondary/60">
+                <th className="text-left font-display font-bold px-5 py-4 border-b border-border w-[40%]">Fonctionnalité</th>
+                <th className="text-center font-osd text-xs tracking-[0.15em] px-4 py-4 border-b border-border text-muted-foreground">GRATUIT</th>
+                <th className="text-center font-osd text-xs tracking-[0.15em] px-4 py-4 border-b border-border text-[#8f9bff]">BASIC<br /><span className="normal-case font-sans text-[11px]">6,99 €/mois</span></th>
+                <th className="text-center font-osd text-xs tracking-[0.15em] px-4 py-4 border-b border-border text-primary">PRO<br /><span className="normal-case font-sans text-[11px]">12,99 €/mois</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ["Studio complet (BPM auto, cuts sur le beat, effets)", true, true, true],
+                ["Détection des paroles par IA", true, true, true],
+                ["Banque de clips Pexels intégrée", true, true, true],
+                ["14 styles de sous-titres animés", true, true, true],
+                ["Export mp4 sans watermark", false, true, true],
+                ["Vidéos par mois", "Aperçu seul", "10 vidéos", "Illimité"],
+                ["Sous-titres .srt téléchargeables", false, true, true],
+                ["Extraction d'acapella (IA GPU)", false, false, true],
+                ["Paroles calées sur la voix isolée", false, false, true],
+              ].map(([label, free, basic, pro]) => {
+                const cell = (v, color) =>
+                  typeof v === "boolean" ? (
+                    v ? <Check size={16} className={`inline ${color}`} /> : <span className="text-muted-foreground/50">—</span>
+                  ) : (
+                    <span className="text-xs">{v}</span>
+                  );
+                return (
+                  <tr key={label} className="border-b border-border/60 hover:bg-secondary/30 transition-colors">
+                    <td className="px-5 py-3.5 text-muted-foreground">{label}</td>
+                    <td className="text-center px-4 py-3.5">{cell(free, "text-[#d9ffd0]")}</td>
+                    <td className="text-center px-4 py-3.5">{cell(basic, "text-[#8f9bff]")}</td>
+                    <td className="text-center px-4 py-3.5">{cell(pro, "text-primary")}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Tous les plans sont sans engagement — désabonnement en 1 clic depuis ton compte. Paiement sécurisé par Stripe.
+          </p>
+        </motion.div>
       </section>
 
       {/* ============ GALERIE ============ */}

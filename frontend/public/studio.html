@@ -569,7 +569,7 @@ const $$ = s => [...document.querySelectorAll(s)];
    AUTH + ABONNEMENT — gérés par le site BEATCUT (API /api/auth/me).
    La vérité d'accès vit côté serveur (MongoDB + Stripe).
 ---------------------------------------------------------------- */
-const AUTH={enabled:true, user:null, isPro:false};
+const AUTH={enabled:true, user:null, isPro:false, tier:'free'};
 
 async function initAuth(){
   if(APP_CONFIG.USE_PROXY){
@@ -584,12 +584,13 @@ async function initAuth(){
     if(!r.ok) throw new Error('non connecté');
     const u=await r.json();
     AUTH.user=u; AUTH.isPro=!!u.is_pro;
+    AUTH.tier=(u.subscription&&u.subscription.tier)||(u.is_pro?'pro':'free');
     $('#userBadge').style.display='inline';
     $('#userBadge').textContent=(u.email||'compte')+' ⏻';
   }catch(e){
     // L'iframe est chargée depuis la route protégée /studio : si /api/auth/me échoue
     // ici, c'est juste un souci de cookies — on n'affiche pas d'overlay (résidu v1).
-    AUTH.user=null; AUTH.isPro=false;
+    AUTH.user=null; AUTH.isPro=false; AUTH.tier='free';
     $('#userBadge').style.display='none';
   }
   updateProUI();
@@ -602,6 +603,16 @@ function updateProUI(){
 function requirePro(){
   if(!AUTH.user){ window.top.location.href='/login'; return false; }
   if(!AUTH.isPro){ $('#payOverlay').classList.add('show'); return false; }
+  return true;
+}
+/* Acapella : réservée au plan PRO — les Basic voient l'invite d'upgrade */
+function requireProPlan(){
+  if(!requirePro()) return false;
+  if(AUTH.tier!=='pro'){
+    uiError('Extraction acapella réservée au plan PRO — passe en PRO depuis « Mon compte ».');
+    $('#payOverlay').classList.add('show');
+    return false;
+  }
   return true;
 }
 document.addEventListener('DOMContentLoaded',()=>{
@@ -1261,7 +1272,7 @@ async function sliceForSeparation(){
 async function runSeparation(silent){
   // Extrait l'acapella sur le serveur. Renvoie true si OK, false si échec.
   if(!state.audioBuffer){ if(!silent) $('#sepInfo').textContent='Charge d\u2019abord un son.'; return false; }
-  if(!requirePro()) return false;
+  if(!requireProPlan()) return false;
   const btn=$('#sepBtn'), info=$('#sepInfo');
   btn.disabled=true;
   const t0=performance.now();
@@ -1519,8 +1530,8 @@ $('#iaBtn').onclick = async ()=>{
   const setP=(p,txt)=>{ prog.querySelector('i').style.width=clamp(p,0,100)+'%'; if(txt) phase=txt; };
   const ticker=setInterval(()=>{ info.textContent=phase+' ('+Math.round((performance.now()-t0)/1000)+' s)'; },500);
   try{
-    // Auto-extraction de l'acapella avant la détection si possible (Pro + pas encore extraite)
-    if(!acap.buffer && AUTH.user && AUTH.isPro){
+    // Auto-extraction de l'acapella avant la détection si possible (plan PRO + pas encore extraite)
+    if(!acap.buffer && AUTH.user && AUTH.tier==='pro'){
       setP(2,'Extraction automatique de la voix (htdemucs_ft)…');
       const ok=await runSeparation(true);
       if(!ok){
@@ -2821,7 +2832,22 @@ function pickMime(){
 }
 $('#exportBtn').onclick=async()=>{
   if(state.exporting||!state.audioBuffer)return;
-  if(!requirePro())return;   // export réservé aux Pro — le gratuit garde l'aperçu (watermarké)
+  if(!requirePro())return;   // export réservé aux abonnés — le gratuit garde l'aperçu (watermarké)
+
+  // Plan Basic : quota mensuel vérifié côté serveur. PRO : log d'usage.
+  try{
+    const r=await fetch('/api/export/register',{method:'POST',credentials:'include'});
+    if(!r.ok){
+      let msg='Export refusé';
+      try{ const j=await r.json(); msg=j.detail||msg; }catch(e){}
+      uiError(msg);
+      if(r.status===429||r.status===403) $('#payOverlay').classList.add('show');
+      return;
+    }
+    const q=await r.json();
+    if(q.quota) uiHint(`Export ${q.used}/${q.quota} ce mois-ci (plan Basic).`);
+  }catch(e){ /* réseau : on n'empêche pas l'export en cas de pépin serveur */ }
+
   if(state.playing)stopPlayback();
   buildAudioGraph();
 

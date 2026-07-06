@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 3 E2E — nouveau plan Basic (6,99 €/mois, 10 vidéos/mois, sans acapella). Backend: 17/17 pytest PASS (test_basic_plan.py). Auth /me tier=basic pour demo + tier=pro (VIP) pour julesfar17. Checkout plan='basic' → URL Stripe cs_live_ vérifiée (jamais payée, tx=6.99€, plan=basic persistée). Export quota renvoie {tier:basic,used:0,quota:10} pour Basic, {tier:pro,used:null,quota:null} pour VIP, {tier:free,used:null,quota:null} pour un compte free. Export register: free=403, Basic incrémente 1→10 puis 429 avec message 'Quota atteint 10 vidéos … PRO' comme attendu, VIP=200 illimité. Separate acapella: free=403, Basic=403 avec message 'Extraction acapella réservée au plan PRO', VIP=200 processing (job DELETE ensuite pour ne pas brûler Replicate). Régression: register/login/subscription/promo/me OK. Frontend Landing: 4 cartes tarifs (pricing-free/basic/pro/yearly-card) + pricing-comparison-table à 9 lignes + prix 6,99 et 12,99 vérifiés. Frontend Dashboard demo (Basic): badge 'BASIC', basic-quota-section, basic-quota-count '0 / 10', upgrade-to-pro-button, unsubscribe-button présents. Dashboard VIP: badge 'VIP ✦' + vip-section (régression OK). Studio /studio.html: 14 .sub-style visibles, #behindChk présent, pas d'erreur JS bloquante (seulement 401 lors du chargement de PoseNet/MediaPipe résolus après login, ce qui est attendu). Nettoyage final: demo laissé en Basic actif, export_logs vidés, tous les comptes TEST_ supprimés.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_basic_plan.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "sub_info() calcule correctement tier=basic vs tier=pro selon subscription.plan et VIP whitelist. Solide.",
+    "activate_subscription() annule proprement l'ancien abonnement Stripe si le plan change (Basic → PRO) — évite la double facturation. Bon design.",
+    "/api/export/register calcule le quota mensuel via count_documents avec created_at >= _month_start_iso() — correct et propre.",
+    "server.py atteint 1321 lignes — à surveiller (recommandation itération 2 dépassée). À splitter en modules (auth/, payments/, subscription/, media/, promo/) dans une itération refactor prochaine.",
+    "Le message 429 renvoie explicitement '10 vidéos/mois' et 'passe en PRO' — bonne UX orientée conversion.",
+    "MongoDB _id exclu partout via {_id:0}. Aucun problème de sérialisation constaté.",
+    "PRO_WHITELIST reste correctement isolé du chemin Stripe (jules ne peut pas créer de checkout — 400 'déjà PRO')."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_basic_plan.py (nouveau fichier — 17 tests)"
+  ],
+  "success_rate": {"backend": "100% (17/17 pytest)", "frontend": "100% (landing 4 cartes + table 9 lignes, dashboard Basic + VIP, studio 14 styles + behindChk)"},
+  "test_credentials": "VIP: julesfar17@gmail.com / Carnageproduction1704* ; Basic: demo@beatcut.fr / Demo1234!",
+  "seed_data_creation": "Demo est laissé en subscription {plan:'basic', status:'active', current_period_end +30j, sans stripe_customer_id/subscription_id}. Aucune donnée TEST_ résiduelle en DB. Aucune session Stripe finalisée (URL de checkout créée uniquement pour la vérification, jamais payée).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Le plan Basic à 6,99 €/mois est fonctionnel de bout en bout. test_basic_plan.py est le fichier de régression pour ce plan (17 tests). L'ancien backend_test.py (iteration 2) reset demo.subscription à None dans sa fixture — NE PAS l'exécuter tel quel sans remettre demo en Basic derrière (ou le mettre à jour). Le compte VIP julesfar17 reste sans subscription DB (whitelist PRO_WHITELIST). Le message 429 du quota Basic inclut bien '10 vidéos/mois' et 'PRO'. Le message 403 acapella pour Basic inclut bien 'Extraction acapella réservée au plan PRO'. Le studio /studio.html charge 14 .sub-style et #behindChk sans erreur JS bloquante."
+}
