@@ -832,11 +832,12 @@ async def proxy_transcribe(
 # Coût : payé à la seconde GPU (~0,01-0,02 € par séparation) — scale to zero.
 # ---------------------------------------------------------------------------
 import replicate
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 
 SEP_DIR = Path("/tmp/beatcut_sep")
 SEP_DIR.mkdir(parents=True, exist_ok=True)
-SEP_JOBS: dict = {}  # job_id -> {status, user_id, error, result_path, created_at}
+# Jobs stockés dans MongoDB (collection separation_jobs) — l'état en mémoire ne
+# fonctionne pas en production où plusieurs workers servent les requêtes.
 
 # Demucs v4 (htdemucs) sur Replicate — le standard pour séparer voix/instru
 DEMUCS_MODEL = (
@@ -886,20 +887,17 @@ def _separate_with_replicate(input_path: str) -> str:
         vocals_url = _coerce_url(output)
     if not vocals_url:
         raise RuntimeError("sortie inattendue du modèle de séparation")
-    out_path = str(SEP_DIR / f"{uuid.uuid4().hex}_vocals.wav")
-    with httpx.Client(timeout=180, follow_redirects=True) as http:
-        r = http.get(vocals_url)
-        r.raise_for_status()
-        with open(out_path, "wb") as f:
-            f.write(r.content)
-    return out_path
+    return vocals_url
 
 
 async def _run_separation(job_id: str, input_path: str):
     try:
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, _separate_with_replicate, input_path)
-        SEP_JOBS[job_id].update(status="done", result_path=result)
+        vocals_url = await loop.run_in_executor(None, _separate_with_replicate, input_path)
+        await db.separation_jobs.update_one(
+            {"job_id": job_id},
+            {"$set": {"status": "done", "result_url": vocals_url}},
+        )
     except Exception as e:
         msg = str(e)
         logger.error("Séparation %s échouée: %s", job_id, msg)
@@ -907,22 +905,17 @@ async def _run_separation(job_id: str, input_path: str):
             user_msg = "Service de séparation momentanément indisponible — réessaie plus tard."
         else:
             user_msg = "séparation échouée — réessaie"
-        SEP_JOBS[job_id].update(status="error", error=user_msg)
+        await db.separation_jobs.update_one(
+            {"job_id": job_id},
+            {"$set": {"status": "error", "error": user_msg}},
+        )
     finally:
         try:
             os.remove(input_path)
         except OSError:
             pass
-        cutoff = now_utc() - timedelta(hours=1)
-        for jid in list(SEP_JOBS.keys()):
-            job = SEP_JOBS[jid]
-            if parse_dt(job["created_at"]) < cutoff:
-                if job.get("result_path"):
-                    try:
-                        os.remove(job["result_path"])
-                    except OSError:
-                        pass
-                SEP_JOBS.pop(jid, None)
+        cutoff = now_utc() - timedelta(hours=2)
+        await db.separation_jobs.delete_many({"created_at": {"$lt": iso(cutoff)}})
 
 
 async def require_pro(user: dict) -> dict:
@@ -942,10 +935,11 @@ async def start_separation(file: UploadFile = File(...), user: dict = Depends(ge
     input_path = str(SEP_DIR / f"{job_id}.wav")
     with open(input_path, "wb") as f:
         f.write(content)
-    SEP_JOBS[job_id] = {
-        "status": "processing", "user_id": user["user_id"],
-        "error": None, "result_path": None, "created_at": iso(now_utc()),
-    }
+    await db.separation_jobs.insert_one({
+        "job_id": job_id, "user_id": user["user_id"],
+        "status": "processing", "error": None, "result_url": None,
+        "created_at": iso(now_utc()),
+    })
     await db.separation_logs.insert_one({
         "user_id": user["user_id"], "job_id": job_id,
         "size": len(content), "created_at": iso(now_utc()),
@@ -954,25 +948,40 @@ async def start_separation(file: UploadFile = File(...), user: dict = Depends(ge
     return {"id": job_id, "status": "processing"}
 
 
-def _get_job(job_id: str, user: dict) -> dict:
-    job = SEP_JOBS.get(job_id)
-    if not job or job["user_id"] != user["user_id"]:
+async def _get_job(job_id: str, user: dict) -> dict:
+    job = await db.separation_jobs.find_one(
+        {"job_id": job_id, "user_id": user["user_id"]}
+    )
+    if not job:
         raise HTTPException(status_code=404, detail="Job introuvable")
     return job
 
 
 @api_router.get("/separate/{job_id}")
 async def separation_status(job_id: str, user: dict = Depends(get_current_user)):
-    job = _get_job(job_id, user)
-    return {"id": job_id, "status": job["status"], "error": job["error"]}
+    job = await _get_job(job_id, user)
+    return {"id": job_id, "status": job["status"], "error": job.get("error")}
 
 
 @api_router.get("/separate/{job_id}/result")
 async def separation_result(job_id: str, user: dict = Depends(get_current_user)):
-    job = _get_job(job_id, user)
-    if job["status"] != "done" or not job.get("result_path") or not os.path.exists(job["result_path"]):
+    job = await _get_job(job_id, user)
+    if job["status"] != "done" or not job.get("result_url"):
         raise HTTPException(status_code=404, detail="Résultat indisponible")
-    return FileResponse(job["result_path"], media_type="audio/wav", filename="acapella.wav")
+    result_url = job["result_url"]
+
+    async def stream_wav():
+        async with httpx.AsyncClient(timeout=300, follow_redirects=True) as http:
+            async with http.stream("GET", result_url) as r:
+                r.raise_for_status()
+                async for chunk in r.aiter_bytes():
+                    yield chunk
+
+    return StreamingResponse(
+        stream_wav(),
+        media_type="audio/wav",
+        headers={"Content-Disposition": 'attachment; filename="acapella.wav"'},
+    )
 
 
 # ---------------------------------------------------------------------------
