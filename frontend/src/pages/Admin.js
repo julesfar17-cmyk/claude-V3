@@ -11,6 +11,7 @@ const fmt = (n, suffix = "") => `${n}${suffix}`;
 export default function Admin() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
+  const [allUsers, setAllUsers] = useState(null);
   const [loading, setLoading] = useState(true);
   const [newCode, setNewCode] = useState("");
   const [newDays, setNewDays] = useState(30);
@@ -18,14 +19,27 @@ export default function Admin() {
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get("/admin/stats");
+      const [{ data }, { data: usersData }] = await Promise.all([
+        api.get("/admin/stats"),
+        api.get("/admin/users"),
+      ]);
       setStats(data);
+      setAllUsers(usersData);
     } catch (e) {
       toast.error(formatApiErrorDetail(e.response?.data?.detail));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const copyAllEmails = () => {
+    if (!allUsers?.users?.length) return;
+    const emails = allUsers.users.map((u) => u.email).filter(Boolean).join(", ");
+    navigator.clipboard.writeText(emails).then(
+      () => toast.success(`${allUsers.users.length} emails copiés dans le presse-papier`),
+      () => toast.error("Impossible de copier — sélectionne manuellement"),
+    );
+  };
 
   useEffect(() => {
     if (user?.role === "admin") load();
@@ -64,16 +78,18 @@ export default function Admin() {
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-              <Stat label="MRR" value={`${stats.mrr.toFixed(2)} €`} accent />
-              <Stat label="Abonnés payants" value={fmt(stats.paid_users)} />
+              <Stat label="MRR (HORS PROMOS)" value={`${stats.mrr.toFixed(2)} €`} accent />
+              <Stat label="Payants réels (Stripe)" value={fmt(stats.real_paid_users)} accent />
+              <Stat label="Actifs via promo / offert" value={fmt(stats.promo_active_users)} />
               <Stat label="Inscrits totaux" value={fmt(stats.total_users)} />
+              <Stat label="Basic" value={fmt(stats.basic_subscribers)} />
+              <Stat label="PRO mensuel" value={fmt(stats.monthly_subscribers)} />
+              <Stat label="PRO annuel" value={fmt(stats.yearly_subscribers)} />
               <Stat label="Annulés" value={fmt(stats.canceled)} />
-              <Stat label="Mensuel" value={fmt(stats.monthly_subscribers)} />
-              <Stat label="Annuel" value={fmt(stats.yearly_subscribers)} />
               <Stat label="Connexion Google" value={fmt(stats.google_users)} />
               <Stat label="Connexion email" value={fmt(stats.password_users)} />
               <Stat label="Séparations / mois" value={fmt(stats.separations_this_month)} />
-              <Stat label="Coût Replicate estimé" value={`${stats.estimated_separation_cost_eur.toFixed(2)} €`} accent />
+              <Stat label="Coût Replicate estimé" value={`${stats.estimated_separation_cost_eur.toFixed(2)} €`} />
             </div>
 
             <section className="bg-card border border-border p-6 sm:p-8 mb-8">
@@ -124,25 +140,48 @@ export default function Admin() {
             </section>
 
             <section className="bg-card border border-border p-6 sm:p-8">
-              <h2 className="font-display text-lg font-bold mb-4">Derniers inscrits</h2>
-              <div className="overflow-x-auto">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 className="font-display text-lg font-bold" data-testid="admin-all-users-title">
+                  Tous les inscrits{allUsers ? ` (${allUsers.count})` : ""}
+                </h2>
+                <button
+                  onClick={copyAllEmails}
+                  data-testid="admin-copy-emails-button"
+                  className="border border-border px-4 py-2 text-xs font-osd tracking-wider hover:border-foreground transition-colors"
+                >
+                  COPIER TOUS LES EMAILS
+                </button>
+              </div>
+              <div className="overflow-x-auto max-h-[480px] overflow-y-auto" data-testid="admin-all-users-table">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 bg-card">
                     <tr className="font-osd text-[11px] tracking-wider text-muted-foreground border-b border-border">
                       <th className="text-left py-2">EMAIL</th>
+                      <th className="text-left py-2">PLAN</th>
+                      <th className="text-left py-2">PAYANT</th>
+                      <th className="text-left py-2">PROMO</th>
                       <th className="text-left py-2">PROVIDER</th>
-                      <th className="text-left py-2">STATUT</th>
                       <th className="text-left py-2">DATE</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.recent_users.map((u) => (
-                      <tr key={u.user_id} className="border-b border-border/50">
+                    {(allUsers?.users || []).map((u) => (
+                      <tr key={u.email} className="border-b border-border/50">
                         <td className="py-2">{u.email}</td>
-                        <td className="py-2">{u.auth_provider}</td>
-                        <td className="py-2">{u.subscription?.status || "gratuit"}</td>
+                        <td className="py-2">
+                          <span className={`font-osd text-[10px] tracking-wider px-2 py-0.5 ${
+                            u.tier === "pro" ? "bg-primary/15 text-primary" :
+                            u.tier === "basic" ? "bg-[#8f9bff]/15 text-[#8f9bff]" :
+                            "bg-secondary text-muted-foreground"
+                          }`}>
+                            {u.tier === "free" ? "GRATUIT" : (u.plan || u.tier).toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-2">{u.paying ? "✓ Stripe" : u.tier !== "free" ? "offert" : "—"}</td>
+                        <td className="py-2 font-osd text-xs">{u.promo || "—"}</td>
+                        <td className="py-2 text-muted-foreground">{u.provider}</td>
                         <td className="py-2 text-muted-foreground">
-                          {new Date(u.created_at).toLocaleDateString("fr-FR")}
+                          {u.created_at ? new Date(u.created_at).toLocaleDateString("fr-FR") : "—"}
                         </td>
                       </tr>
                     ))}

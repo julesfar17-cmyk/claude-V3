@@ -1160,20 +1160,26 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "subscription.status": {"$in": ["active", "canceled"]},
         "subscription.current_period_end": {"$gt": iso(now_utc())},
     }
-    yearly = await db.users.count_documents({**active_paid, "subscription.plan": "yearly"})
-    basic = await db.users.count_documents({**active_paid, "subscription.plan": "basic"})
-    monthly = max(0, paid_users - yearly - basic)
-    # MRR : annuels comptés au prorata mensuel
+    # Payants réels : abonnement Stripe actif. Les accès offerts via code promo
+    # n'ont pas de stripe_subscription_id → exclus du MRR et du compteur payant.
+    real_paid_filter = {**active_paid, "subscription.stripe_subscription_id": {"$nin": [None, ""]}}
+    real_paid = await db.users.count_documents(real_paid_filter)
+    promo_active = max(0, paid_users - real_paid)  # actifs sans Stripe = promo / offert
+    yearly = await db.users.count_documents({**real_paid_filter, "subscription.plan": "yearly"})
+    basic = await db.users.count_documents({**real_paid_filter, "subscription.plan": "basic"})
+    monthly = max(0, real_paid - yearly - basic)
+    # MRR : uniquement les payants réels — annuels comptés au prorata mensuel
     mrr = round(monthly * PRO_PRICE + basic * BASIC_PRICE + yearly * (PRO_PRICE_YEAR / 12), 2)
     # Séparations du mois
     start_month = iso(now_utc().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
     sep_count = await db.separation_logs.count_documents({"created_at": {"$gt": start_month}})
     est_sep_cost = round(sep_count * 0.015, 2)
-    last_users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).limit(10).to_list(10)
     promos = await db.promo_codes.find({}, {"_id": 0}).sort("created_at", -1).to_list(20)
     return {
         "total_users": total_users,
         "paid_users": paid_users,
+        "real_paid_users": real_paid,
+        "promo_active_users": promo_active,
         "canceled": canceled,
         "google_users": google_users,
         "password_users": pwd_users,
@@ -1183,9 +1189,34 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "mrr": mrr,
         "separations_this_month": sep_count,
         "estimated_separation_cost_eur": est_sep_cost,
-        "recent_users": last_users,
         "promo_codes": promos,
     }
+
+
+@api_router.get("/admin/users")
+async def admin_all_users(user: dict = Depends(get_current_user)):
+    """Liste complète de tous les inscrits (email, plan, promo, date)."""
+    await require_admin(user)
+    docs = await db.users.find(
+        {},
+        {"_id": 0, "email": 1, "name": 1, "auth_provider": 1, "created_at": 1, "subscription": 1, "role": 1},
+    ).sort("created_at", -1).to_list(50000)
+    users = []
+    for u in docs:
+        info = sub_info(u)
+        sub = u.get("subscription") or {}
+        users.append({
+            "email": u.get("email"),
+            "name": u.get("name"),
+            "provider": u.get("auth_provider"),
+            "created_at": u.get("created_at"),
+            "tier": info["tier"],
+            "plan": info["plan"],
+            "promo": sub.get("promo_applied"),
+            "paying": bool(sub.get("stripe_subscription_id")) and info["is_pro"],
+            "role": u.get("role"),
+        })
+    return {"count": len(users), "users": users}
 
 
 @api_router.post("/admin/promo")

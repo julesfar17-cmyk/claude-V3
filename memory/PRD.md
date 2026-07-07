@@ -66,6 +66,14 @@ Fichier fourni : `beatcut.html` — studio de montage beat-sync 100% client-side
 - ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
 - ℹ️ Compte demo@beatcut.fr configuré en plan Basic (test)
 
+## Implémenté (7 juillet 2026) — Admin enrichi
+- ✅ **MRR hors promos** : seuls les abonnés avec un vrai `stripe_subscription_id` actif comptent dans le MRR (les accès offerts via code promo sont exclus)
+- ✅ **Compteur "Payants réels (Stripe)"** vs "Actifs via promo / offert" dans les stats admin
+- ✅ **Liste complète de tous les inscrits** (`GET /api/admin/users`) : email, plan (badge coloré), payant ✓/offert, code promo utilisé, provider, date — table scrollable
+- ✅ Bouton **"Copier tous les emails"** (presse-papier, pour newsletters)
+- ✅ Nettoyage : 35 comptes de test résiduels supprimés de la DB preview
+- ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
+
 ## Comptes seedés
 Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 
