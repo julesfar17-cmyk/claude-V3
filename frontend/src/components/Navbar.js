@@ -61,6 +61,13 @@ export default function Navbar({ landing = false }) {
           {user ? (
             <>
               <Link
+                to="/projects"
+                data-testid="nav-projects-link"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Mes projets
+              </Link>
+              <Link
                 to="/dashboard"
                 data-testid="nav-dashboard-link"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -118,6 +125,9 @@ export default function Navbar({ landing = false }) {
           ))}
           {user ? (
             <>
+              <Link to="/projects" onClick={() => setOpen(false)} className="text-sm text-foreground" data-testid="nav-mobile-projects">
+                Mes projets
+              </Link>
               <Link to="/dashboard" onClick={() => setOpen(false)} className="text-sm text-foreground" data-testid="nav-mobile-dashboard">
                 Mon compte
               </Link>

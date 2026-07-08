@@ -1,8 +1,10 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Logo } from "@/components/Navbar";
 
 export default function Studio() {
+  const [params] = useSearchParams();
+  const projectId = params.get("project");
   return (
     <div className="h-screen w-full flex flex-col bg-background">
       <div className="flex items-center justify-between px-4 sm:px-6 h-12 bg-[#0d0b11] border-b border-border shrink-0">
@@ -19,7 +21,7 @@ export default function Studio() {
         </span>
       </div>
       <iframe
-        src="/studio.html"
+        src={projectId ? `/studio.html?project=${projectId}` : "/studio.html"}
         title="Studio BEATCUT"
         data-testid="studio-iframe"
         className="block w-full flex-1 border-0"

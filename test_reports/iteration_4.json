@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 4 — LOT 4 (Projets + Médias GridFS). Backend: 25/25 pytest PASS (test_projects_lot4.py) + régression 17/17 (test_basic_plan.py) = 42/42. Média upload/dedup (sha256) OK — 2e upload identique renvoie deduped:true avec le même media_id. Média download stream l'exact contenu (len + bytes match). Sécurité isolée: user free obtient 404 sur média d'un autre user (SECURITY OK). GET /api/media/quota: basic=2 000 000 000 (2 Go), free=200 000 000 (200 Mo), pro=10 000 000 000 (10 Go) — pile poil comme spec. Projects CRUD: POST create + upsert (project_id existant met à jour titre/state), GET list exclut 'state' (léger), GET /{id} renvoie le state complet, duplicate ajoute ' (copie)', DELETE renvoie media_deleted:N et purge bien les médias orphelins (partagés entre projets = conservés jusqu'à la dernière suppression, cas testé sur 2 médias A/B avec 2 projets P1/P2). 404 pour projet d'un autre user. Quota projets: free bloqué à 1 (2e création → 429 avec 'plan' et '1 projet'), duplicate d'un free aussi bloqué par le quota, basic=10 correctement exposé dans /api/projects. Régression: login/export_quota/separate acapella basic 403/admin_stats+admin_users OK. Frontend (demo@beatcut.fr): navbar 'Mes projets' (nav-projects-link) OK, /projects affiche 'Mes projets (2/10)' + bouton + Nouveau projet + projects-grid + 2 project-card-*, boutons project-open-* / project-duplicate-* / project-delete-* présents et fonctionnels. Duplicate ajoute une carte ' (copie)', delete (confirm dialog accepté) retire la carte. Ouvrir → /studio?project=ID charge l'iframe studio.html, save-badge présent ET affiche 'Enregistré ✓' après restauration. studio.html: 14 .sub-style, paste-lyrics-open ouvre le modal (paste-lyrics-apply visible), aucune erreur JS bloquante. Nettoyage final: DB remise dans l'état d'origine (demo=Basic, projet 'Renommé' conservé, aucun média orphelin, aucun compte TEST_).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_projects_lot4.py",
+    "/app/backend/tests/test_basic_plan.py",
+    "/app/test_reports/pytest/pytest_lot4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py atteint désormais 1560 lignes (contre 1321 en iteration 3). Le split en modules recommandé les 2 dernières itérations devient franchement urgent — au minimum sortir la partie LOT 4 (media/projects) dans un router séparé /app/backend/routers/projects.py — pour la maintenabilité et la testabilité isolée.",
+    "PROJECT_QUOTAS et STORAGE_QUOTAS sont définis comme constantes module-level : bien. Bien pensé : sub_info(user) retourne systématiquement un tier ∈ {free,basic,pro}, donc les dict lookups ne peuvent pas KeyError.",
+    "delete_project purge les médias orphelins en re-scannant la totalité des projets utilisateurs (find(...to_list(500))) après chaque suppression. Correct mais O(N) sur le nombre de projets — deviendra sous-optimal si un user atteint des centaines de projets (plan pro illimité). Suggestion: indexer sur user_id (déjà probablement fait) et à terme maintenir un compteur de références par media_id.",
+    "media_upload lit tout le fichier en mémoire (await file.read()) avant contrôle taille : un upload malicieux qui envoie 80 Mo de bytes va consommer 80 Mo de RAM par requête. La limite MAX_MEDIA_SIZE = 80_000_000 protège la RAM au niveau applicatif mais pas au niveau serveur (Starlette bufferise déjà). Acceptable pour l'usage prévu (audio courts).",
+    "serializeProject() dans studio.html enregistre uniquement mediaId+name pour l'audio et pas les buffers décodés — parfait pour la reprise. restoreProject() re-fetch le média puis appelle loadAudioFile({skipUpload:true}) — pas de double upload, propre.",
+    "setInterval(saveProjectNow, 30000) est déclaré au chargement mais démarre le compteur immédiatement — pas de leak (le tab reste live) mais le premier auto-save est décalé de 30 s après le load, pas 30 s après le premier changement. Comportement acceptable, pas un bug.",
+    "Pas de test_upsert vs quota edge case: si un user free a déjà 1 projet et ré-upsert (project_id existant), il ne doit PAS déclencher le quota — le code fait bien la distinction (branch update vs create), OK, vérifié par test_upsert_updates_existing sur demo (basic).",
+    "MongoDB _id : toujours exclu partout ({_id:0}) — aucun leak. Bien.",
+    "PROJECT_QUOTAS[info['tier']] utilise None pour 'pro' (illimité) et la garde `if quota is not None` gère correctement le cas — clean.",
+    "Le champ media_deleted dans la réponse DELETE est un bon point d'observabilité pour l'UX (permet un toast type 'Projet supprimé + 3 médias libérés').",
+    "GridFS bucket 'media' bien configuré ligne 30 (AsyncIOMotorGridFSBucket, bucket_name='media'). Les collections associées seront media.files et media.chunks — cohérent avec l'énoncé."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_projects_lot4.py (nouveau — 25 tests)"
+  ],
+  "success_rate": {"backend": "100% (42/42 : 25 LOT4 + 17 régression Basic)", "frontend": "100% (nav + grid + duplicate + delete + open→iframe save-badge + 14 sub-styles + paste-lyrics modal)"},
+  "test_credentials": "Basic (demo): demo@beatcut.fr / Demo1234! ; VIP: julesfar17@gmail.com / Carnageproduction1704*",
+  "seed_data_creation": "Aucune donnée de test résiduelle. Demo conservé en Basic avec le projet 'Renommé' (comme convenu). Tous les comptes TEST_ et médias orphelins supprimés à la fin.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "LOT 4 (projets + médias GridFS) 100% fonctionnel. test_projects_lot4.py = 25 tests, test_basic_plan.py = 17 tests régression Basic. Les 2 fichiers doivent toujours passer pour futures itérations. Le compte demo a toujours 1 projet 'Renommé' non touché. GridFS bucket = 'media' (collections media.files/media.chunks) — pour tester une suppression média, passer par l'API DELETE /projects/{id} qui purge les orphelins automatiquement. La fenêtre de saveBadge dans l'iframe /studio.html s'affiche 'Enregistré ✓' UNIQUEMENT après restore d'un projet (ou après un audio chargé + saveProjectNow déclenché). Auto-save setInterval(30000) : le badge ne se mettra pas à jour avant qu'un audio soit chargé (guard `!state.audioBuffer`)."
+}

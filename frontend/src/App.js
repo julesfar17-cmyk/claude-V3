@@ -11,6 +11,7 @@ import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import Studio from "@/pages/Studio";
+import Projects from "@/pages/Projects";
 import Admin from "@/pages/Admin";
 
 function AppRouter() {
@@ -30,6 +31,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects"
+        element={
+          <ProtectedRoute>
+            <Projects />
           </ProtectedRoute>
         }
       />

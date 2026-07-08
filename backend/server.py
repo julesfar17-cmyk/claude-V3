@@ -13,7 +13,7 @@ import httpx
 from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 from pydantic import BaseModel, Field
 import asyncio
 import secrets
@@ -27,6 +27,7 @@ from fastapi import UploadFile, File, Form
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+media_fs = AsyncIOMotorGridFSBucket(db, bucket_name="media")
 
 app = FastAPI(title="BEATCUT API")
 api_router = APIRouter(prefix="/api")
@@ -1143,6 +1144,212 @@ async def delete_template(template_id: str, user: dict = Depends(get_current_use
     if not res.deleted_count:
         raise HTTPException(status_code=404, detail="Template introuvable")
     return {"message": "supprimé"}
+
+
+# ---------------------------------------------------------------------------
+# LOT 4 — PROJETS & MÉDIAS (GridFS) : sauvegarde/reprise complète
+# ---------------------------------------------------------------------------
+import hashlib
+from bson import ObjectId
+from fastapi.responses import StreamingResponse as _SR  # alias local
+
+PROJECT_QUOTAS = {"free": 1, "basic": 10, "pro": None}          # None = illimité
+STORAGE_QUOTAS = {"free": 200_000_000, "basic": 2_000_000_000, "pro": 10_000_000_000}
+MAX_MEDIA_SIZE = 80_000_000  # 80 Mo par fichier
+
+async def _storage_used(user_id: str) -> int:
+    pipeline = [
+        {"$match": {"metadata.user_id": user_id}},
+        {"$group": {"_id": None, "total": {"$sum": "$length"}}},
+    ]
+    rows = await db["media.files"].aggregate(pipeline).to_list(1)
+    return rows[0]["total"] if rows else 0
+
+
+@api_router.get("/media/quota")
+async def media_quota(user: dict = Depends(get_current_user)):
+    info = sub_info(user)
+    used = await _storage_used(user["user_id"])
+    return {"tier": info["tier"], "used": used, "quota": STORAGE_QUOTAS[info["tier"]]}
+
+
+@api_router.post("/media/upload")
+async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    content = await file.read()
+    if len(content) > MAX_MEDIA_SIZE:
+        raise HTTPException(status_code=413, detail="Fichier trop lourd (max 80 Mo)")
+    info = sub_info(user)
+    sha = hashlib.sha256(content).hexdigest()
+    # Dédup : même fichier déjà stocké pour cet utilisateur → on renvoie l'existant
+    existing = await db["media.files"].find_one(
+        {"metadata.user_id": user["user_id"], "metadata.sha256": sha}
+    )
+    if existing:
+        return {"media_id": str(existing["_id"]), "size": existing["length"], "deduped": True}
+    used = await _storage_used(user["user_id"])
+    if used + len(content) > STORAGE_QUOTAS[info["tier"]]:
+        quota_mb = STORAGE_QUOTAS[info["tier"]] // 1_000_000
+        raise HTTPException(
+            status_code=413,
+            detail=f"Stockage plein ({quota_mb} Mo sur ton plan). Supprime un projet ou passe au plan supérieur.",
+        )
+    media_id = await media_fs.upload_from_stream(
+        file.filename or "media",
+        content,
+        metadata={
+            "user_id": user["user_id"], "sha256": sha,
+            "content_type": file.content_type or "application/octet-stream",
+            "created_at": iso(now_utc()),
+        },
+    )
+    return {"media_id": str(media_id), "size": len(content), "deduped": False}
+
+
+@api_router.get("/media/{media_id}")
+async def media_download(media_id: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(media_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="ID média invalide")
+    doc = await db["media.files"].find_one({"_id": oid, "metadata.user_id": user["user_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Média introuvable")
+
+    async def stream():
+        grid_out = await media_fs.open_download_stream(oid)
+        while True:
+            chunk = await grid_out.readchunk()
+            if not chunk:
+                break
+            yield chunk
+
+    return _SR(
+        stream(),
+        media_type=doc.get("metadata", {}).get("content_type", "application/octet-stream"),
+        headers={"Content-Length": str(doc["length"]),
+                 "Content-Disposition": f'inline; filename="{doc.get("filename","media")}"'},
+    )
+
+
+def _project_media_ids(state: dict) -> set:
+    ids = set()
+    audio = (state or {}).get("audio") or {}
+    if audio.get("mediaId"):
+        ids.add(audio["mediaId"])
+    for c in (state or {}).get("clips") or []:
+        if c.get("mediaId"):
+            ids.add(c["mediaId"])
+    return ids
+
+
+@api_router.get("/projects")
+async def list_projects(user: dict = Depends(get_current_user)):
+    docs = await db.projects.find(
+        {"user_id": user["user_id"]},
+        {"_id": 0, "state": 0},
+    ).sort("updated_at", -1).to_list(200)
+    info = sub_info(user)
+    return {"projects": docs, "count": len(docs), "quota": PROJECT_QUOTAS[info["tier"]]}
+
+
+@api_router.post("/projects")
+async def save_project(payload: dict, user: dict = Depends(get_current_user)):
+    """Upsert : payload = {project_id?, title, state, thumb?}"""
+    state = payload.get("state")
+    if not isinstance(state, dict):
+        raise HTTPException(status_code=400, detail="État du projet manquant")
+    title = (payload.get("title") or "Sans titre")[:120]
+    thumb = payload.get("thumb") or None
+    if thumb and len(thumb) > 120_000:
+        thumb = None  # vignette trop lourde : on l'ignore
+    project_id = payload.get("project_id")
+    now = iso(now_utc())
+    if project_id:
+        res = await db.projects.update_one(
+            {"project_id": project_id, "user_id": user["user_id"]},
+            {"$set": {"title": title, "state": state, "updated_at": now,
+                      **({"thumb": thumb} if thumb else {})}},
+        )
+        if not res.matched_count:
+            raise HTTPException(status_code=404, detail="Projet introuvable")
+        return {"project_id": project_id, "updated_at": now}
+    # Création → quota projets
+    info = sub_info(user)
+    quota = PROJECT_QUOTAS[info["tier"]]
+    if quota is not None:
+        count = await db.projects.count_documents({"user_id": user["user_id"]})
+        if count >= quota:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Limite de {quota} projet{'s' if quota>1 else ''} atteinte sur ton plan. Supprime un projet ou passe au plan supérieur.",
+            )
+    project_id = uuid.uuid4().hex[:14]
+    await db.projects.insert_one({
+        "project_id": project_id, "user_id": user["user_id"],
+        "title": title, "state": state, "thumb": thumb,
+        "created_at": now, "updated_at": now,
+    })
+    return {"project_id": project_id, "updated_at": now}
+
+
+@api_router.get("/projects/{project_id}")
+async def get_project(project_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.projects.find_one(
+        {"project_id": project_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    return doc
+
+
+@api_router.post("/projects/{project_id}/duplicate")
+async def duplicate_project(project_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.projects.find_one(
+        {"project_id": project_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    info = sub_info(user)
+    quota = PROJECT_QUOTAS[info["tier"]]
+    if quota is not None:
+        count = await db.projects.count_documents({"user_id": user["user_id"]})
+        if count >= quota:
+            raise HTTPException(status_code=429, detail=f"Limite de {quota} projet(s) atteinte — passe au plan supérieur.")
+    new_id = uuid.uuid4().hex[:14]
+    now = iso(now_utc())
+    await db.projects.insert_one({
+        **doc, "project_id": new_id,
+        "title": (doc["title"] + " (copie)")[:120],
+        "created_at": now, "updated_at": now,
+    })
+    return {"project_id": new_id}
+
+
+@api_router.delete("/projects/{project_id}")
+async def delete_project(project_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.projects.find_one(
+        {"project_id": project_id, "user_id": user["user_id"]}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    media_ids = _project_media_ids(doc.get("state") or {})
+    await db.projects.delete_one({"project_id": project_id, "user_id": user["user_id"]})
+    # Supprime les médias qui ne sont référencés par AUCUN autre projet
+    deleted_media = 0
+    if media_ids:
+        others = await db.projects.find(
+            {"user_id": user["user_id"]}, {"_id": 0, "state": 1}
+        ).to_list(500)
+        still_used = set()
+        for o in others:
+            still_used |= _project_media_ids(o.get("state") or {})
+        for mid in media_ids - still_used:
+            try:
+                await media_fs.delete(ObjectId(mid))
+                deleted_media += 1
+            except Exception:
+                pass
+    return {"message": "Projet supprimé", "media_deleted": deleted_media}
 
 
 @api_router.get("/admin/stats")

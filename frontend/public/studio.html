@@ -185,7 +185,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
     <span style="opacity:.7;font-size:17px">studio beat-sync</span>
   </div>
   <div class="osd-right">
-    <span id="userBadge" title="Se déconnecter"></span>
+    <span id="saveBadge" style="font-size:12px;opacity:.75;margin-right:10px" data-testid="save-badge"></span><span id="userBadge" title="Se déconnecter"></span>
     <span id="osdState">STBY</span>
     <span id="osdClock">00:00:00</span>
   </div>
@@ -644,7 +644,11 @@ document.addEventListener('DOMContentLoaded',()=>{
     else $('#payMsg').textContent='Pas encore actif — passe par « Mon compte » pour finaliser l\u2019abonnement.';
   };
   $('#payClose').onclick=()=>$('#payOverlay').classList.remove('show');
-  initAuth();
+  initAuth().then(()=>{
+    // LOT 4 : ouverture d'un projet depuis « Mes projets » (?project=ID)
+    const pid=new URLSearchParams(location.search).get('project');
+    if(pid && AUTH.user) restoreProject(pid);
+  });
 });
 const cv = $('#cv'), ctx = cv.getContext('2d');
 
@@ -673,6 +677,172 @@ const subs = {
   anchorsFromAcap:false,
 };
 const tap = {active:false, idx:0, times:[], targets:[]};
+
+/* ===============================================================
+   LOT 4 — PROJETS : sauvegarde/reprise complète (état + médias)
+================================================================ */
+const project = { id:null, title:null, audioMediaId:null, audioName:null,
+                  lastSavedJson:'', saving:false, restoring:false };
+
+function projectTouch(){ /* déclenche l'auto-save au prochain tick */ }
+
+async function uploadMediaBg(file){
+  if(!AUTH.user) return null;
+  try{
+    const fd=new FormData(); fd.append('file', file);
+    const r=await fetch('/api/media/upload',{method:'POST',credentials:'include',body:fd});
+    if(!r.ok){
+      if(r.status===413){ const j=await r.json().catch(()=>({})); uiError(j.detail||'Stockage plein'); }
+      return null;
+    }
+    return (await r.json()).media_id;
+  }catch(e){ return null; }
+}
+
+function serializeProject(){
+  return {
+    v:1,
+    bpm:state.bpm, offset:state.offset,
+    trimStart:state.trimStart, trimDur:state.trimDur,
+    mode:state.mode, cutEvery:state.cutEvery,
+    fx:{...state.fx}, palette:state.palette, format:state.format,
+    loopPerfect:state.loopPerfect, shuffleSeed:state.shuffleSeed,
+    trackName:state.trackName,
+    audio: project.audioMediaId ? {mediaId:project.audioMediaId, name:project.audioName||'audio'} : null,
+    clips: state.clips.map(c=>({mediaId:c.mediaId||null, pexelsUrl:c.pexelsUrl||null, name:c.name})),
+    subs:{
+      raw:subs.raw, sync:subs.sync, rate:subs.rate, style:subs.style,
+      font:subs.font, casse:subs.casse, customCol:subs.customCol,
+      colText:subs.colText, colAcc:subs.colAcc, outline:subs.outline,
+      shadow:subs.shadow, posY:subs.posY, anim:subs.anim, size:subs.size,
+      behindSubject:subs.behindSubject,
+      anchors:subs.anchors, anchorSource:subs.anchorSource,
+    },
+  };
+}
+
+function projectThumb(){
+  try{
+    const t=document.createElement('canvas');
+    const ratio=cv.height/cv.width;
+    t.width=160; t.height=Math.round(160*ratio);
+    t.getContext('2d').drawImage(cv,0,0,t.width,t.height);
+    return t.toDataURL('image/jpeg',0.5);
+  }catch(e){ return null; }
+}
+
+function setSaveBadge(txt, ok){
+  let el=$('#saveBadge');
+  if(!el) return;
+  el.textContent=txt;
+  el.style.color= ok ? 'var(--vert, #7dd97b)' : 'var(--ivoire-dim)';
+}
+
+async function saveProjectNow(){
+  if(!AUTH.user || !state.audioBuffer || project.saving || project.restoring) return;
+  const st=serializeProject();
+  const json=JSON.stringify(st);
+  if(json===project.lastSavedJson) return;      // rien de nouveau
+  project.saving=true;
+  setSaveBadge('Enregistrement…', false);
+  try{
+    const payload={ state:st, title: project.title || state.trackName || 'Sans titre',
+                    thumb: projectThumb() };
+    if(project.id) payload.project_id=project.id;
+    const r=await fetch('/api/projects',{method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    if(r.ok){
+      const d=await r.json();
+      project.id=d.project_id;
+      project.lastSavedJson=json;
+      setSaveBadge('Enregistré ✓', true);
+    }else if(r.status===429){
+      const j=await r.json().catch(()=>({}));
+      setSaveBadge('Non enregistré — limite de projets', false);
+      if(!saveProjectNow._warned){ saveProjectNow._warned=true; uiError(j.detail||'Limite de projets atteinte'); }
+    }else{
+      setSaveBadge('Erreur de sauvegarde', false);
+    }
+  }catch(e){ setSaveBadge('Hors ligne — non enregistré', false); }
+  finally{ project.saving=false; }
+}
+setInterval(saveProjectNow, 30000);   // auto-save 30 s (CDC §6.1)
+
+async function fetchMediaAsFile(mediaId, name){
+  const r=await fetch('/api/media/'+mediaId,{credentials:'include'});
+  if(!r.ok) throw new Error('média introuvable ('+r.status+')');
+  const blob=await r.blob();
+  return new File([blob], name||'media', {type:blob.type||'application/octet-stream'});
+}
+
+async function restoreProject(projectId){
+  project.restoring=true;
+  uiHint('📂 Ouverture du projet…');
+  try{
+    const r=await fetch('/api/projects/'+projectId,{credentials:'include'});
+    if(!r.ok) throw new Error('projet introuvable');
+    const doc=await r.json();
+    const st=doc.state||{};
+    project.id=doc.project_id; project.title=doc.title;
+
+    // 1. Audio
+    if(st.audio && st.audio.mediaId){
+      const f=await fetchMediaAsFile(st.audio.mediaId, st.audio.name);
+      await loadAudioFile(f, {skipUpload:true});
+      project.audioMediaId=st.audio.mediaId; project.audioName=st.audio.name;
+    }
+    // 2. Réglages (APRÈS l'audio qui reset trim/bpm)
+    if(st.bpm) state.bpm=st.bpm;
+    if(st.offset!=null) state.offset=st.offset;
+    if(st.trimStart!=null){ state.trimStart=st.trimStart; $('#trimStart').value=st.trimStart; }
+    if(st.trimDur!=null){ state.trimDur=st.trimDur; $('#trimDur').value=st.trimDur; }
+    if(st.mode) state.mode=st.mode;
+    if(st.cutEvery) state.cutEvery=st.cutEvery;
+    if(st.fx) Object.assign(state.fx, st.fx);
+    if(st.palette!=null) state.palette=st.palette;
+    if(st.format) state.format=st.format;
+    if(st.loopPerfect!=null) state.loopPerfect=st.loopPerfect;
+    if(st.shuffleSeed!=null) state.shuffleSeed=st.shuffleSeed;
+    if(st.trackName) state.trackName=st.trackName;
+    // 3. Clips (perso via GridFS, Pexels via URL de référence)
+    for(const c of st.clips||[]){
+      try{
+        if(c.mediaId){
+          const f=await fetchMediaAsFile(c.mediaId, c.name);
+          addClip(f, {mediaId:c.mediaId, skipUpload:true});
+        }else if(c.pexelsUrl){
+          const rr=await fetch(c.pexelsUrl);
+          if(rr.ok){
+            const blob=await rr.blob();
+            addClip(new File([blob], c.name||'clip.mp4',{type:'video/mp4'}), {pexelsUrl:c.pexelsUrl, skipUpload:true});
+          }
+        }
+      }catch(e){ console.warn('clip non restauré:', c.name, e); }
+    }
+    // 4. Sous-titres (paroles + timings + style — CDC §6.1)
+    if(st.subs){
+      Object.assign(subs, st.subs, {dirty:true, units:[], lines:[]});
+      $('#lyrics').value=subs.raw||'';
+      $('#fontSel').value=subs.font||'archivo';
+      $('#outlineRange').value=subs.outline;
+      $('#shadowChk').checked=!!subs.shadow;
+      $('#behindChk').checked=!!subs.behindSubject;
+      if(subs.behindSubject) initSegmenter().catch(()=>{});
+      if(subs.customCol){ $('#customColChk').checked=true; $('#colPickers').style.display='inline-flex';
+        $('#colText').value=subs.colText; $('#colAcc').value=subs.colAcc; }
+      $$('#syncSeg button').forEach(b=>b.classList.toggle('active', b.dataset.s===subs.sync));
+      $$('#subStyles .sub-style').forEach((b,i)=>b.classList.toggle('active', i===subs.style));
+    }
+    refreshBpmUI(); markDirty(); refreshSelUI(); drawWave(); drawIdle(); refreshStill();
+    project.lastSavedJson=JSON.stringify(serializeProject());
+    setSaveBadge('Enregistré ✓', true);
+    uiHint('✓ Projet « '+doc.title+' » restauré — tout est là, ▶ Lecture.');
+  }catch(e){
+    uiError('Ouverture du projet : '+e.message);
+  }finally{
+    project.restoring=false;
+  }
+}
 
 const PALETTES = [
   {name:'VHS noir',  bg:'#0b0b0d', ink:'#ece6da', acc:'#ff3b30'},
@@ -713,52 +883,62 @@ function bindDrop(zone, input, onFiles){
 const audioGraph = {built:false};
 let wavePeaks=null;
 
+async function loadAudioFile(f, opts={}){
+  if(state.playing) stopPlayback();
+  $('#audioDrop').querySelector('strong').textContent = 'Analyse en cours…';
+  const buf = await f.arrayBuffer();
+  const ac = new (window.AudioContext||window.webkitAudioContext)();
+  state.audioBuffer = await ac.decodeAudioData(buf.slice(0));
+  ac.close();
+
+  if(audioGraph.built){
+    try{ state.srcNode.disconnect(); state.audioCtx.close(); }catch(e){}
+    audioGraph.built = false;
+  }
+  if(state.audioEl){ try{URL.revokeObjectURL(state.audioEl.src);}catch(e){} }
+  state.audioEl = new Audio(URL.createObjectURL(f));
+  state.audioEl.preload = 'auto';
+  await new Promise((res,rej)=>{
+    state.audioEl.addEventListener('loadedmetadata',res,{once:true});
+    state.audioEl.addEventListener('error',()=>rej(new Error('lecture audio impossible')),{once:true});
+  });
+  state.trackName = f.name.replace(/\.[^.]+$/,'').replace(/[^\w\-]+/g,'-').toLowerCase() || 'beatcut';
+
+  const {bpm, offset} = detectBPM(state.audioBuffer);
+  state.bpm = bpm; state.offset = offset;
+  state.trimStart = 0; $('#trimStart').value = 0;
+  state.trimDur = Math.min(15, Math.floor(state.audioBuffer.duration));
+  $('#trimDur').value = state.trimDur;
+  subs.anchors=null; subs.anchorSource=null;
+
+  computeWavePeaks();
+
+  $('#bpmCard').style.display = 'block';
+  $('#audioName').textContent = f.name + ' — ' + state.audioBuffer.duration.toFixed(1) + ' s';
+  $('#durInfo').textContent = 'track : ' + state.audioBuffer.duration.toFixed(1) + ' s';
+  $('#audioDrop').querySelector('strong').textContent = 'Changer de track';
+  refreshBpmUI(); markDirty(); refreshSelUI();
+  $('#playBtn').disabled = false;
+  $('#exportBtn').disabled = false;
+  $('#iaBtn').disabled = false;
+  drawIdle(); drawWave();
+  // LOT 4 : upload du média en tâche de fond (sauf restauration de projet)
+  if(!opts.skipUpload){
+    project.audioMediaId=null; project.audioName=f.name;
+    uploadMediaBg(f).then(id=>{ if(id){ project.audioMediaId=id; projectTouch(); } });
+  }
+  projectTouch();
+}
+
 bindDrop($('#audioDrop'), $('#audioInput'), async files=>{
   const f = files.find(f=>f.type.startsWith('audio')||/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name));
   if(!f){
     if(files.length){ uiError('Fichier non-audio — sélectionne un .mp3, .wav, .m4a, .aac, .ogg ou .flac.'); }
     return;
   }
-  if(state.playing) stopPlayback();
-  $('#audioDrop').querySelector('strong').textContent = 'Analyse en cours…';
   try{
-    const buf = await f.arrayBuffer();
-    const ac = new (window.AudioContext||window.webkitAudioContext)();
-    state.audioBuffer = await ac.decodeAudioData(buf.slice(0));
-    ac.close();
-
-    if(audioGraph.built){
-      try{ state.srcNode.disconnect(); state.audioCtx.close(); }catch(e){}
-      audioGraph.built = false;
-    }
-    if(state.audioEl){ try{URL.revokeObjectURL(state.audioEl.src);}catch(e){} }
-    state.audioEl = new Audio(URL.createObjectURL(f));
-    state.audioEl.preload = 'auto';
-    await new Promise((res,rej)=>{
-      state.audioEl.addEventListener('loadedmetadata',res,{once:true});
-      state.audioEl.addEventListener('error',()=>rej(new Error('lecture audio impossible')),{once:true});
-    });
-    state.trackName = f.name.replace(/\.[^.]+$/,'').replace(/[^\w\-]+/g,'-').toLowerCase() || 'beatcut';
-
-    const {bpm, offset} = detectBPM(state.audioBuffer);
-    state.bpm = bpm; state.offset = offset;
-    state.trimStart = 0; $('#trimStart').value = 0;
-    state.trimDur = Math.min(15, Math.floor(state.audioBuffer.duration));
-    $('#trimDur').value = state.trimDur;
-    subs.anchors=null; subs.anchorSource=null;
-
-    computeWavePeaks();
-
-    $('#bpmCard').style.display = 'block';
-    $('#audioName').textContent = f.name + ' — ' + state.audioBuffer.duration.toFixed(1) + ' s';
-    $('#durInfo').textContent = 'track : ' + state.audioBuffer.duration.toFixed(1) + ' s';
-    $('#audioDrop').querySelector('strong').textContent = 'Changer de track';
-    refreshBpmUI(); markDirty(); refreshSelUI();
-    $('#playBtn').disabled = false;
-    $('#exportBtn').disabled = false;
-    $('#iaBtn').disabled = false;
+    await loadAudioFile(f);
     uiHint('BPM détecté. Ajuste l\u2019extrait sur la waveform, puis détection IA des paroles ou clips + ▶ Lecture.');
-    drawIdle(); drawWave();
   }catch(err){
     $('#audioDrop').querySelector('strong').textContent = 'Fichier illisible — réessaie';
     uiError('Chargement audio : '+err.message);
@@ -951,9 +1131,10 @@ function makeVideo(url){
   v.setAttribute('playsinline',''); v.loop=true;
   return v;
 }
-function addClip(file){
+function addClip(file, meta={}){
   const url=URL.createObjectURL(file);
-  const clip={url, name:file.name, duration:0, els:[makeVideo(url), makeVideo(url)]};
+  const clip={url, name:file.name, duration:0, els:[makeVideo(url), makeVideo(url)],
+              mediaId:meta.mediaId||null, pexelsUrl:meta.pexelsUrl||null};
   clip.els[0].addEventListener('loadedmetadata', ()=>{clip.duration=clip.els[0].duration; markDirty();}, {once:true});
   state.clips.push(clip);
   const th=document.createElement('div'); th.className='clip-thumb';
@@ -961,10 +1142,16 @@ function addClip(file){
   const x=document.createElement('button'); x.className='x'; x.textContent='✕'; x.title='Retirer ce clip';
   x.onclick=e=>{e.stopPropagation();
     state.clips=state.clips.filter(c=>c!==clip);
-    th.remove(); URL.revokeObjectURL(url); markDirty();
+    th.remove(); URL.revokeObjectURL(url); markDirty(); projectTouch();
   };
   th.append(pv,x); $('#clipList').append(th);
   markDirty();
+  // LOT 4 : upload en tâche de fond (fichiers perso uniquement — les clips Pexels
+  // gardent leur URL de référence, pas de duplication de stockage)
+  if(!meta.skipUpload && !clip.pexelsUrl){
+    uploadMediaBg(file).then(id=>{ if(id){ clip.mediaId=id; projectTouch(); } });
+  }
+  projectTouch();
 }
 
 /* ---- BANQUE DE CLIPS PEXELS ---- */
@@ -1034,7 +1221,7 @@ async function addPexelsClip(v, th){
     const r=await fetch(f.link);
     if(!r.ok) throw new Error('téléchargement : '+r.status);
     const blob=await r.blob();
-    addClip(new File([blob],'pexels-'+v.id+'.mp4',{type:'video/mp4'}));
+    addClip(new File([blob],'pexels-'+v.id+'.mp4',{type:'video/mp4'}), {pexelsUrl:f.link});
     th.style.outline='2px solid var(--rouge)';
     info.textContent='✓ Clip ajouté à tes clips.';
   }catch(e){
