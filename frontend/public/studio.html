@@ -205,6 +205,19 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
   </div>
 </div>
 
+<!-- Modal « Colle tes paroles » : le texte de l'artiste + les timings de l'IA -->
+<div class="overlay" id="pasteOverlay">
+  <div class="auth-card" style="max-width:520px">
+    <h2>Colle <em>tes paroles</em></h2>
+    <p style="margin-bottom:10px">Tu connais tes textes mieux que l'IA. Colle-les ici (verlan, argot, gimmicks — orthographe exacte garantie) : l'IA sert uniquement à les <b>chronométrer sur ta voix</b>, mot par mot.</p>
+    <textarea id="pasteLyricsTa" placeholder="Colle ton texte officiel ici…
+Une ligne = une phrase à l'écran." style="width:100%;min-height:160px;background:var(--noir);color:var(--ivoire);border:1px solid var(--line);border-radius:8px;padding:10px;font-family:var(--body);font-size:14px;resize:vertical"></textarea>
+    <button class="primary" id="pasteApplyBtn" data-testid="paste-lyrics-apply" style="margin-top:12px">🎯 Caler mes paroles sur la voix</button>
+    <button id="pasteClose" data-testid="paste-lyrics-close" style="background:transparent;border:none;color:var(--ivoire-dim)">Annuler</button>
+    <div class="auth-msg" id="pasteMsg"></div>
+  </div>
+</div>
+
 <main>
 <!-- ================= PANNEAU ================= -->
 <section class="panel">
@@ -336,6 +349,7 @@ textarea{width:100%;min-height:104px;resize:vertical;line-height:1.5}
     </div>
 
     <button class="primary" id="iaBtn" disabled>Détecter les paroles (IA)</button>
+    <button id="pasteLyricsBtn" data-testid="paste-lyrics-open" style="width:100%;padding:11px;font-size:13px;margin-top:8px;border:1px dashed var(--line);background:transparent;color:var(--ivoire)">📋 J'ai mes paroles — les coller</button>
     <div class="row" style="display:none">
       <div class="seg-group" id="iaModeSeg">
         <button data-i="cloud" class="active">cloud</button>
@@ -1050,6 +1064,11 @@ segBind('#syncSeg','s', s=>{ subs.sync=s; subs.dirty=true;
   $('#beatsOpts').style.display = s==='beats'?'flex':'none';
   $('#tapOpts').style.display   = s==='tap'  ?'flex':'none';
   $('#fileOpts').style.display  = s==='file' ?'flex':'none';
+  // Garde-fou LOT 0 : basculer en "Beats" avec des mots déjà calés par l'IA
+  // redistribue tout sur la grille → on prévient au lieu de désynchroniser en silence.
+  if(s==='beats' && subs.anchors && subs.anchors.length){
+    uiHint('⚠ Mode Beats : les timings IA sont mis de côté (les mots suivent la grille). Reviens sur ✨ IA pour retrouver le calage sur la voix.');
+  }
   refreshSyncInfo(); });
 segBind('#rateSeg','r', r=>{ subs.rate=parseFloat(r); subs.dirty=true; });
 segBind('#caseSeg','k', k=>{ subs.casse=k; refreshStill(); });
@@ -1520,6 +1539,44 @@ async function transcribeLocal(audio16, setP){
   return {wordLevel, chunks:(out.chunks||[])};
 }
 
+/* ---- MODE « COLLE TES PAROLES » (LOT 0 §2.4) ----
+   L'artiste connaît ses paroles ; l'IA sert à les chronométrer.
+   Flux : transcription IA (grille temporelle) → texte officiel de l'utilisateur
+   posé sur les timings via remapWords (mots identiques = timestamps exacts,
+   mots différents = interpolés entre ancres sûres). */
+let pendingPastedLyrics=null;
+
+function applyPastedLyrics(text){
+  $('#lyrics').value=text;
+  subs.raw=text;
+  subs.dirty=true;
+  refreshStill();
+  uiHint('✓ Tes paroles officielles sont calées sur la voix — les timings détectés sont conservés.');
+}
+
+$('#pasteLyricsBtn').onclick=()=>{
+  $('#pasteLyricsTa').value=$('#lyrics').value||'';
+  $('#pasteMsg').textContent='';
+  $('#pasteOverlay').classList.add('show');
+};
+$('#pasteClose').onclick=()=>$('#pasteOverlay').classList.remove('show');
+
+$('#pasteApplyBtn').onclick=async()=>{
+  const text=$('#pasteLyricsTa').value.trim();
+  if(!text){ $('#pasteMsg').textContent='Colle ton texte d\u2019abord.'; return; }
+  if(!state.audioBuffer){ $('#pasteMsg').textContent='Charge ton son avant de caler les paroles.'; return; }
+  $('#pasteOverlay').classList.remove('show');
+  if(subs.anchors && subs.anchors.length && subs.sync!=='beats'){
+    // Grille temporelle déjà là (détection faite) : calage immédiat
+    applyPastedLyrics(text);
+  }else{
+    // Pas encore de grille : on lance la détection IA, le texte sera posé dessus à la fin
+    pendingPastedLyrics=text;
+    uiHint('🎧 Détection de la grille temporelle en cours — ton texte sera calé dessus automatiquement…');
+    $('#iaBtn').onclick();
+  }
+};
+
 $('#iaBtn').onclick = async ()=>{
   if(!state.audioBuffer) return;
   if(state.playing) stopPlayback();
@@ -1592,8 +1649,16 @@ $('#iaBtn').onclick = async ()=>{
     info.textContent=`✓ ${units.length} mots détectés${wordLevel?' et calés à la milliseconde':' (calage par phrases)'} en ${Math.round((performance.now()-t0)/1000)} s. Corrige le texte si besoin, les timings sont conservés, puis ▶ Lecture.`;
     prog.querySelector('i').style.width='100%';
     info.classList.add('ok');
+    // Mode « colle tes paroles » : le texte officiel remplace la transcription,
+    // posé sur la grille temporelle qu'on vient de détecter (remapWords).
+    if(pendingPastedLyrics){
+      applyPastedLyrics(pendingPastedLyrics);
+      pendingPastedLyrics=null;
+      info.textContent=`✓ Grille détectée (${units.length} mots) — tes paroles officielles sont calées dessus. ▶ Lecture pour vérifier.`;
+    }
   }catch(err){
     clearInterval(ticker);
+    pendingPastedLyrics=null;
     info.classList.remove('ok');
     info.textContent='⚠ '+err.message+' — en attendant, la synchro TAP marche très bien.';
     console.error(err);

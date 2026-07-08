@@ -74,6 +74,17 @@ Fichier fourni : `beatcut.html` — studio de montage beat-sync 100% client-side
 - ✅ Nettoyage : 35 comptes de test résiduels supprimés de la DB preview
 - ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
 
+## Cahier des charges V2 (reçu 8 juillet 2026) — décisions de Jules
+- Export découverte Gratuit (1 au total) : SANS watermark
+- Stockage complet des médias pour les projets (LOT 4) : OUI dès l'implémentation
+- Phasage : LOT 0 (bug synchro) → P1 (quotas + Express) → P2 (Projets puis Timeline) → P3 (Styles + créateur) → LOT 5 transverse
+
+## Implémenté (8 juillet 2026) — LOT 0 : synchro sous-titres
+- ✅ **`remapWords` (LCS) vérifié** : la fonction d'origine EST conservée et fonctionne (preview ET prod). 11 tests unitaires couvrant les critères 2.5 du CDC (1 mot corrigé sur 50 → 49 timestamps strictement identiques ; insertion locale ; suppression sans impact ; 30% mots différents calés ; ponctuation/casse ignorées). Test permanent : `/app/frontend/tests/test_remap_words.js`
+- ✅ **Mode « Colle tes paroles »** (CDC §2.4) : bouton « 📋 J'ai mes paroles — les coller » + modal. Si grille temporelle déjà détectée → calage immédiat via remapWords ; sinon → détection IA lancée automatiquement puis texte officiel posé sur les timings. Testé e2e (mots identiques = timestamps exacts, verlan/argot interpolés localement)
+- ✅ **Garde-fou mode Beats** : avertissement si l'utilisateur bascule en "Beats" avec des mots calés IA (source de désync accidentelle)
+- ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
+
 ## Comptes seedés
 Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 
