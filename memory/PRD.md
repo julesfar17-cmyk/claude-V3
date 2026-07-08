@@ -77,7 +77,23 @@ Fichier fourni : `beatcut.html` — studio de montage beat-sync 100% client-side
 ## Cahier des charges V2 (reçu 8 juillet 2026) — décisions de Jules
 - Export découverte Gratuit (1 au total) : SANS watermark
 - Stockage complet des médias pour les projets (LOT 4) : OUI dès l'implémentation
-- Phasage : LOT 0 (bug synchro) → P1 (quotas + Express) → P2 (Projets puis Timeline) → P3 (Styles + créateur) → LOT 5 transverse
+- Phasage : LOT 0 (bug synchro) ✅ → P2 (LOT 4 Projets ✅ puis LOT 2 Timeline ✅) → P1 (quotas + Express) → P3 (Styles + créateur) → LOT 5 transverse
+
+## Implémenté (8 juillet 2026) — P2 : LOT 4 Projets + LOT 2 Timeline
+### LOT 4 — Projets (CDC §6) — testé 42/42 backend + frontend 100% (iteration_4)
+- ✅ Stockage médias **GridFS** (bucket `media`) : POST /api/media/upload (dédup sha256, max 80 Mo), GET /api/media/{id} (stream, sécurisé par user), GET /api/media/quota. Quotas stockage : 200 Mo free / 2 Go basic / 10 Go pro
+- ✅ CRUD projets : POST /api/projects (upsert), GET liste/détail, duplicate, DELETE avec purge des médias orphelins. Quotas projets : 1 free / 10 basic / illimité pro (429 + invite upgrade)
+- ✅ Studio : serializeProject/restoreProject (audio + clips perso GridFS + clips Pexels par URL + paroles + timings + style + réglages), auto-save 30 s, badge « Enregistré ✓ », upload médias en tâche de fond, ouverture via /studio?project=ID
+- ✅ Page React « Mes projets » (/projects) : cartes vignette, renommer, Ouvrir/Dupliquer/Supprimer, lien navbar desktop+mobile
+### LOT 2 — Timeline (CDC §4) — testé 100% frontend (iteration_5)
+- ✅ 2 pistes : CLIPS (segments aimantés au beat, couleur par clip) + MOTS (libres)
+- ✅ Bottom sheet segment : choix du clip (vignettes vidéo), point d'entrée (slider), 🔒 verrouiller
+- ✅ state.cutOv : les segments verrouillés **survivent au 🎲 Re-tirer** ; sérialisé dans les projets
+- ✅ Piste MOTS : drag des bords (timings) et déplacement, double-clic pour corriger (vide = supprimer), adoption des units comme anchors 'manual', subs.raw reconstruit
+- ✅ Zoom +/−, règle graduée par beat, playhead sync lecture, seek au clic
+### Dette technique notée (pour lots suivants)
+- studio.html = 3546 lignes → extraire timeline.js ; bindWordDrag → AbortController ; renderTimeline → debounce rAF ; cutOv indexé par index (fragile si bpm/trim changent → indexer par timestamp) ; server.py 1560 lignes → modules
+- ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
 
 ## Implémenté (8 juillet 2026) — LOT 0 : synchro sous-titres
 - ✅ **`remapWords` (LCS) vérifié** : la fonction d'origine EST conservée et fonctionne (preview ET prod). 11 tests unitaires couvrant les critères 2.5 du CDC (1 mot corrigé sur 50 → 49 timestamps strictement identiques ; insertion locale ; suppression sans impact ; 30% mots différents calés ; ponctuation/casse ignorées). Test permanent : `/app/frontend/tests/test_remap_words.js`
