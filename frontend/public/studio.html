@@ -146,6 +146,15 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 .word-chip:hover{border-color:#3A4450}
 .word-chip.sel{border-color:var(--accent);color:var(--accent)}
 .word-chip input{background:transparent;border:none;color:inherit;font:inherit;width:80px;padding:0}
+.word-add{background:none;border:1px dashed transparent;color:var(--muted);border-radius:6px;width:16px;height:22px;padding:0;font-size:14px;line-height:1;cursor:pointer;opacity:0;transition:opacity .15s ease,color .15s ease;flex:none}
+.lyric-line:hover .word-add{opacity:.5}
+.word-add:hover{opacity:1 !important;color:var(--accent);border-color:var(--line)}
+.ai-bar{position:fixed;left:0;right:0;top:0;z-index:80;display:none;pointer-events:none}
+.ai-bar .track{height:3px;background:rgba(255,255,255,.07)}
+.ai-bar .fill{height:100%;width:0%;background:var(--accent);box-shadow:0 0 14px var(--accent);transition:width .5s ease;border-radius:0 3px 3px 0}
+.ai-bar .lbl{position:absolute;top:8px;right:12px;background:rgba(13,17,22,.94);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12px;color:var(--text);display:flex;align-items:center;gap:8px}
+.ai-bar .lbl::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);animation:aiPulse 1s ease-in-out infinite;flex:none}
+@keyframes aiPulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
 .choice2{display:grid;gap:10px}
 .choice2 button{padding:16px 12px;text-align:left;border-radius:var(--r-m)}
 .choice2 b{display:block;margin-bottom:3px}
@@ -425,7 +434,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
         <div id="pasteZone" style="display:none">
           <textarea id="pasteText" placeholder="Colle tes paroles ici…"></textarea>
           <button class="primary" style="width:100%;margin-top:8px" onclick="applyPaste()">Caler mes paroles</button>
-          <p class="hint" style="margin-top:6px">EMERGENT : envoyer l'audio + ce texte au recalage serveur (transcription → alignement). En attendant : répartition provisoire.</p>
+          <p class="hint" style="margin-top:6px">Ton texte est calé mot par mot sur ta voix (transcription IA + alignement) — orthographe intacte.</p>
         </div>
         <div id="detectStatus" style="display:none;margin-bottom:10px">
           <div class="lyric-line" style="display:block">
@@ -437,7 +446,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
         <div id="lyricsTools" style="display:none;margin-top:8px">
           <button class="small" onclick="retime()">↻ Recaler les paroles</button>
           <button class="small" onclick="resetLyrics()">Repartir de zéro</button>
-          <p class="hint" style="margin-top:8px">Double-clique un mot pour le corriger — sa place dans le temps ne bouge jamais.</p>
+          <p class="hint" style="margin-top:8px">Double-clique un mot pour le corriger · bouton « + » entre les mots pour en insérer un · double-clique la piste paroles de la timeline pour ajouter un mot à cet instant.</p>
         </div>
       </div>
 
@@ -595,7 +604,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
     <h2>BEAT<b style="color:var(--accent)">CUT</b></h2>
     <p>Connecte-toi pour créer tes vidéos.</p>
     <button class="primary" onclick="loginGoogle()">Continuer avec Google</button>
-    <p class="hint" style="margin-top:14px">EMERGENT : brancher Supabase (Google OAuth, comme en v1). En local, ce bouton simule la connexion.</p>
+    <p class="hint" style="margin-top:14px">Connexion sécurisée avec ton compte Google.</p>
   </div>
 </div>
 
@@ -617,6 +626,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
   <p class="hint" style="margin-top:6px">4 coupes = 4 images sur ce temps (parfait pour un roll de batterie).</p>
 </div>
 <div id="toast"></div>
+<div class="ai-bar" id="aiBar" data-testid="ai-progress-bar"><div class="track"><div class="fill" id="aiBarFill"></div></div><div class="lbl" id="aiBarLbl">IA en cours…</div></div>
 
 <script>
 'use strict';
@@ -679,13 +689,14 @@ const API = {
     return (await r.json()).videos||[];
   },
   /* Acapella : Replicate GPU (plan PRO) — blob wav du mix → blob wav voix isolée */
-  async acapella(blob){
+  async acapella(blob, onProgress){
     const fd=new FormData(); fd.append('file', blob, 'extrait.wav');
     const r=await fetch('/api/separate',{method:'POST',credentials:'include',body:fd});
     if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||'Séparation indisponible'); }
     const {id}=await r.json();
     for(let i=0;i<70;i++){
       await new Promise(rs=>setTimeout(rs,5000));
+      if(onProgress) onProgress(i+1);
       const s=await(await fetch('/api/separate/'+id,{credentials:'include'})).json();
       if(s.status==='done') break;
       if(s.status==='error') throw new Error(s.error||'Séparation échouée');
@@ -741,6 +752,18 @@ function updateQuotaUI(){
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2800);};
+/* Barre de progression des actions IA (haut de page) */
+const aiBar={
+  _t:null,_pct:0,
+  start(label){ this._pct=0; this.set(label,4); clearInterval(this._t);
+    this._t=setInterval(()=>{ this._pct=Math.min(92,this._pct+(92-this._pct)*0.05); $('#aiBarFill').style.width=this._pct+'%'; },700); },
+  set(label,pct){ $('#aiBar').style.display='block'; if(label) $('#aiBarLbl').textContent=label;
+    if(pct!=null){ this._pct=Math.max(this._pct,Math.min(99,pct)); $('#aiBarFill').style.width=this._pct+'%'; } },
+  done(){ clearInterval(this._t); this._t=null;
+    if($('#aiBar').style.display==='none') return;
+    this._pct=100; $('#aiBarFill').style.width='100%';
+    setTimeout(()=>{ $('#aiBar').style.display='none'; $('#aiBarFill').style.width='0%'; this._pct=0; },600); },
+};
 const fmt=t=>`${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`;
 
 /* ---------------- Store : projets serveur (MongoDB + GridFS) — cross-device ---------------- */
@@ -1421,8 +1444,6 @@ function autoAssign(){
     }
   });
 }
-$('#bankSearch').addEventListener('keydown',e=>{ if(e.key==='Enter') toast('Banque de clips : à brancher par Emergent (proxy Pexels prêt)'); });
-
 /* ---------- Paroles ---------- */
 function showPaste(){ $('#lyricsChoice').style.display='none'; $('#pasteZone').style.display='block'; }
 async function detectLyrics(){
@@ -1432,6 +1453,7 @@ async function detectLyrics(){
   const s1=$('#ds1'), s2=$('#ds2');
   s1.style.opacity='1'; s1.style.color='var(--accent)'; s2.style.opacity='.4'; s2.style.color='';
   const fail=(msg)=>{
+    aiBar.done();
     st.style.display='none'; $('#lyricsChoice').style.display='grid';
     s1.textContent='1. Isolation de la voix…'; s2.textContent='2. Détection des paroles…';
     s1.style.color=''; s2.style.color='';
@@ -1442,18 +1464,23 @@ async function detectLyrics(){
     let audioForStt=wav;
     // Étape 1 — acapella (PRO) : transcription bien plus fiable sur la voix isolée
     if(API.plan==='pro'){
-      try{ audioForStt=await API.acapella(wav); s1.textContent='1. Voix isolée ✓'; s1.style.color='var(--ok)'; }
+      aiBar.start('IA · isolation de la voix…');
+      try{ audioForStt=await API.acapella(wav, n=>aiBar.set('IA · isolation de la voix… ('+(n*5)+' s)', 5+Math.min(45,n*4))); s1.textContent='1. Voix isolée ✓'; s1.style.color='var(--ok)'; }
       catch(e){ s1.textContent='1. Voix : mix complet (isolation indisponible)'; s1.style.color='var(--muted)'; }
     }else{
+      aiBar.start('IA · détection des paroles…');
       s1.textContent='1. Isolation de la voix : réservée au plan PRO'; s1.style.color='var(--muted)';
     }
     s2.style.opacity='1'; s2.style.color='var(--accent)';
+    aiBar.set('IA · détection des paroles…',55);
     // Étape 2 — transcription (mots relatifs à l'extrait → temps absolus)
     const words=await API.transcribe(audioForStt);
     if(!words.length){ fail('Aucune parole détectée sur cet extrait — essaie un autre passage ou colle ton texte.'); return; }
+    aiBar.set('IA · calage précis sur ta voix…',88);
     s2.textContent='2. Paroles détectées ✓'; s2.style.color='var(--ok)';
     pushHistory();
-    M.words=words.map(w=>({text:w.text, start:w.start+ext.start, end:w.end+ext.start}));
+    M.words=refineTimings(words.map(w=>({text:w.text, start:w.start+ext.start, end:w.end+ext.start})));
+    aiBar.done();
     setTimeout(()=>{ st.style.display='none'; s1.textContent='1. Isolation de la voix…'; s2.textContent='2. Détection des paroles…'; s1.style.color=''; s2.style.color=''; },900);
     renderLyrics(); drawTimeline(); dirty();
     if(!$('#extractZone').classList.contains('mini')) toggleExtract();
@@ -1474,20 +1501,25 @@ async function applyPaste(){
   }
   // Pas encore de grille : transcription d'abord (chronométrage), puis calage du texte collé
   toast('🎧 Détection de la grille temporelle — ton texte sera calé dessus…');
+  aiBar.start(API.plan==='pro'?'IA · isolation de la voix…':'IA · détection de la grille temporelle…');
   try{
     const wav=extractWavBlob(ext.start, ext.dur);
     let audioForStt=wav;
-    if(API.plan==='pro'){ try{ audioForStt=await API.acapella(wav); }catch(e){} }
+    if(API.plan==='pro'){ try{ audioForStt=await API.acapella(wav, n=>aiBar.set(null, 5+Math.min(40,n*4))); }catch(e){} }
+    aiBar.set('IA · détection de la grille temporelle…',50);
     const words=await API.transcribe(audioForStt);
     if(!words.length) throw new Error('aucune voix détectée sur cet extrait');
+    aiBar.set('IA · calage de tes paroles sur ta voix…',85);
     pushHistory();
-    const anchors=words.map(w=>({text:w.text,start:w.start+ext.start,end:w.end+ext.start}));
+    const anchors=refineTimings(words.map(w=>({text:w.text,start:w.start+ext.start,end:w.end+ext.start})));
     M.words=remapPasted(list, anchors);
+    aiBar.done();
     $('#lyricsChoice').style.display='none'; $('#pasteZone').style.display='none';
     renderLyrics(); drawTimeline(); dirty();
     if(!$('#extractZone').classList.contains('mini')) toggleExtract();
     toast('✓ Tes paroles sont calées sur ta voix, mot par mot.');
   }catch(e){
+    aiBar.done();
     // Repli : répartition provisoire sur l'extrait
     seedWords(list);
     toast('Paroles posées (répartition provisoire — la détection IA n\u2019a pas pu chronométrer : '+(e.message||'')+')');
@@ -1534,18 +1566,75 @@ async function retime(){
   /* Recalage : le texte ne change pas, seuls les timings s'affinent (re-transcription) */
   if(!buffer||!M.words||!M.words.length){ toast('Rien à recaler'); return; }
   toast('🎧 Recalage des timings sur ta voix…');
+  aiBar.start('IA · recalage des timings…');
   try{
     const wav=extractWavBlob(ext.start, ext.dur);
     let audioForStt=wav;
-    if(API.plan==='pro'){ try{ audioForStt=await API.acapella(wav); }catch(e){} }
+    if(API.plan==='pro'){ try{ audioForStt=await API.acapella(wav, n=>aiBar.set(null, 5+Math.min(40,n*4))); }catch(e){} }
+    aiBar.set('IA · recalage des timings…',50);
     const words=await API.transcribe(audioForStt);
     if(!words.length) throw new Error('aucune voix détectée');
+    aiBar.set('IA · calage précis sur ta voix…',85);
     pushHistory();
-    const anchors=words.map(w=>({text:w.text,start:w.start+ext.start,end:w.end+ext.start}));
+    const anchors=refineTimings(words.map(w=>({text:w.text,start:w.start+ext.start,end:w.end+ext.start})));
     M.words=remapPasted(M.words.map(w=>w.text), anchors);
+    aiBar.done();
     renderLyrics(); drawTimeline(); dirty();
     toast('✓ Timings recalés — ton texte n\u2019a pas bougé.');
-  }catch(e){ toast('Recalage impossible : '+(e.message||'réessaie')); }
+  }catch(e){ aiBar.done(); toast('Recalage impossible : '+(e.message||'réessaie')); }
+}
+/* Calage automatique amélioré : chaque début de mot est aimanté sur l'attaque
+   vocale la plus proche (montée d'énergie ±140 ms), puis on nettoie l'ordre,
+   les durées minimales et les micro-trous (anti-clignotement). */
+function refineTimings(list){
+  if(!list||!list.length) return list;
+  const out=list.map(w=>({...w}));
+  if(env.length){
+    const onset=t=>{
+      const i0=Math.max(1,Math.floor((t-0.14)*ENV_FPS)), i1=Math.min(env.length-1,Math.ceil((t+0.14)*ENV_FPS));
+      let bi=-1,bs=0;
+      for(let i=i0;i<=i1;i++){
+        const rise=env[i]-env[i-1]; if(rise<=0) continue;
+        const score=rise*(1-Math.abs(i/ENV_FPS-t)/0.2);
+        if(score>bs){bs=score;bi=i;}
+      }
+      return bi>0? bi/ENV_FPS : t;
+    };
+    out.forEach(w=>{ const d=w.end-w.start; const s=onset(w.start); w.start=s; w.end=s+d; });
+  }
+  for(let i=0;i<out.length;i++){
+    if(i>0&&out[i].start<out[i-1].start+0.05) out[i].start=out[i-1].start+0.05;
+    if(out[i].end<out[i].start+0.08) out[i].end=out[i].start+0.08;
+  }
+  for(let i=0;i<out.length-1;i++){
+    const gap=out[i+1].start-out[i].end;
+    if(gap>0&&gap<0.15) out[i].end=out[i+1].start;          // comble les micro-trous
+    if(out[i].end>out[i+1].start) out[i].end=out[i+1].start; // jamais de chevauchement
+  }
+  return out;
+}
+/* Sélection synchronisée éditeur ↔ timeline, sans re-render (préserve le double-clic) */
+function syncSel(){
+  $$('#lyricsList .word-chip').forEach(c=>c.classList.toggle('sel',+c.dataset.i===selWord));
+  $$('#trWords .wblock').forEach(b=>b.classList.toggle('sel',+b.dataset.i===selWord));
+}
+/* Insertion d'un mot à l'index donné — timing auto dans le trou entre voisins */
+function insertWordAt(at, tHint){
+  if(!M) return;
+  pushHistory();
+  const prev=M.words[at-1]||null, next=M.words[at]||null;
+  let s,e;
+  if(tHint!=null){ s=tHint; e=tHint+0.35; if(next&&e>next.start) e=Math.max(s+0.1,next.start); }
+  else if(prev&&next){ s=prev.end+0.01; e=next.start-0.01; if(e-s<0.1){ s=prev.end; e=Math.max(s+0.15,Math.min(next.start,s+0.25)); } }
+  else if(prev){ s=prev.end+0.02; e=s+0.4; }
+  else if(next){ e=next.start-0.02; s=e-0.4; }
+  else { s=ext.start; e=s+0.4; }
+  s=Math.max(ext.start,s); e=Math.min(ext.start+ext.dur,Math.max(e,s+0.1));
+  M.words.splice(at,0,{text:'',start:s,end:e,_new:true});
+  selWord=at;
+  renderLyrics(); drawTimeline();
+  const chip=$$('#lyricsList .word-chip')[at];
+  if(chip) editWord(at,chip);
 }
 function renderLyrics(){
   const root=$('#lyricsList'); root.innerHTML='';
@@ -1553,14 +1642,21 @@ function renderLyrics(){
   $('#lyricsTools').style.display=has?'block':'none';
   if(!has){ $('#lyricsChoice').style.display='grid'; return; }
   $('#lyricsChoice').style.display='none';
+  const mkAdd=at=>{
+    const a=document.createElement('button'); a.className='word-add'; a.textContent='+';
+    a.title='Ajouter un mot ici'; a.setAttribute('data-testid','add-word-btn');
+    a.onclick=ev=>{ ev.stopPropagation(); insertWordAt(at); };
+    return a;
+  };
   for(let i=0;i<M.words.length;i+=6){
     const line=document.createElement('div'); line.className='lyric-line';
+    line.append(mkAdd(i));
     M.words.slice(i,i+6).forEach((w,j)=>{
       const idx=i+j;
-      const chip=document.createElement('span'); chip.className='word-chip'+(idx===selWord?' sel':''); chip.textContent=w.text;
-      chip.onclick=()=>{selWord=idx;renderLyrics();drawTimeline();};
+      const chip=document.createElement('span'); chip.className='word-chip'+(idx===selWord?' sel':''); chip.textContent=w.text; chip.dataset.i=idx;
+      chip.onclick=()=>{ selWord=idx; syncSel(); };
       chip.ondblclick=()=>editWord(idx,chip);
-      line.append(chip);
+      line.append(chip, mkAdd(idx+1));
     });
     root.append(line);
   }
@@ -1569,10 +1665,18 @@ function editWord(idx,chip){
   /* RÈGLE ABSOLUE : on ne touche qu'au texte — les timings de ce mot
      et de tous les autres sont conservés à l'identique. */
   const w=M.words[idx];
-  chip.innerHTML='<input value="'+w.text.replace(/"/g,'&quot;')+'">';
+  chip.innerHTML='<input value="'+(w.text||'').replace(/"/g,'&quot;')+'" data-testid="word-edit-input">';
   const inp=chip.querySelector('input'); inp.focus(); inp.select();
-  const done=()=>{ if(inp.value.trim()&&inp.value.trim()!==w.text) pushHistory(); w.text=inp.value.trim()||w.text; renderLyrics(); drawTimeline(); dirty(); };
-  inp.onblur=done; inp.onkeydown=e=>{ if(e.key==='Enter') inp.blur(); };
+  const done=()=>{
+    const v=inp.value.trim();
+    if(w._new && !v){ M.words.splice(idx,1); selWord=-1; renderLyrics(); drawTimeline(); return; }
+    if(v && v!==w.text){ if(!w._new) pushHistory(); w.text=v; }
+    delete w._new;
+    if(!w.text){ M.words.splice(idx,1); selWord=-1; }
+    renderLyrics(); drawTimeline(); dirty();
+  };
+  inp.onblur=done;
+  inp.onkeydown=e=>{ if(e.key==='Enter') inp.blur(); if(e.key==='Escape'){ inp.value=w.text||''; inp.blur(); } };
 }
 
 /* ---------- Styles ---------- */
@@ -1902,30 +2006,33 @@ function drawTimeline(){
   (M.words||[]).forEach((w,i)=>{
     const b=document.createElement('div'); b.className='wblock'+(i===selWord?' sel':'');
     b.style.left=((w.start-ext.start)*PXS())+'px'; b.style.width=Math.max(14,(w.end-w.start)*PXS())+'px';
-    b.textContent=w.text; b.tabIndex=0;
+    b.textContent=w.text; b.tabIndex=0; b.dataset.i=i;
     b.addEventListener('pointermove',ev=>{
       if(b._drag)return;
       const r=b.getBoundingClientRect(), px=ev.clientX-r.left;
       b.style.cursor=(px<8||px>r.width-8)?'ew-resize':'grab';
     });
     b.addEventListener('pointerdown',e=>{
-      pushHistory();
-      selWord=i; renderLyrics();
+      selWord=i; syncSel();
       const r=b.getBoundingClientRect(), px=e.clientX-r.left;
       const mode= px<8?'l' : px>r.width-8?'r' : 'm';   // bord gauche / bord droit / déplacer
       const x0=e.clientX, s0=w.start, e0=w.end;
-      b._drag=true;
+      let moved=false;
       const mv=ev=>{
+        if(!moved){ if(Math.abs(ev.clientX-x0)<3) return; moved=true; b._drag=true; pushHistory(); }
         const dt=(ev.clientX-x0)/PXS();
         if(mode==='m'){ const dur=e0-s0; w.start=Math.max(ext.start,Math.min(s0+dt, ext.start+ext.dur-dur)); w.end=w.start+dur; }
         else if(mode==='l'){ w.start=Math.min(e0-0.06, Math.max(ext.start, s0+dt)); }
         else { w.end=Math.max(s0+0.06, Math.min(ext.start+ext.dur, e0+dt)); w.hardEnd=true; }
         positionBlock(b,w); b.style.width=Math.max(14,(w.end-w.start)*PXS())+'px';
       };
-      const up=()=>{ b._drag=false; document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); drawTimeline(); dirty(); };
+      const up=()=>{
+        document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up);
+        if(moved){ b._drag=false; drawTimeline(); dirty(); }   // pas de re-render sans drag → le double-clic reste possible
+      };
       document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
     });
-    b.addEventListener('dblclick',()=>{ selWord=i; renderLyrics(); const chip=$$('#lyricsList .word-chip')[i]; if(chip) editWord(i,chip); });
+    b.addEventListener('dblclick',ev=>{ ev.stopPropagation(); selWord=i; tab('paroles'); renderLyrics(); const chip=$$('#lyricsList .word-chip')[i]; if(chip) editWord(i,chip); });
     b.addEventListener('keydown',e=>{ if(e.key==='Delete'||e.key==='Backspace'){ pushHistory(); M.words.splice(i,1); selWord=-1; renderLyrics(); drawTimeline(); dirty(); } });
     trW.append(b);
   });
@@ -1982,6 +2089,16 @@ function drawTimeline(){
   }
 }
 function positionBlock(b,w){ b.style.left=((w.start-ext.start)*PXS())+'px'; }
+/* Double-clic sur une zone vide de la piste paroles = ajout d'un mot à cet instant */
+$('#trWords').addEventListener('dblclick',e=>{
+  if(e.target!==e.currentTarget||!M||!buffer) return;
+  const r=$('#tlInner').getBoundingClientRect();
+  const t=ext.start+Math.max(0,(e.clientX-r.left))/PXS();
+  if(!M.words) M.words=[];
+  let at=M.words.findIndex(w=>w.start>t); if(at<0) at=M.words.length;
+  tab('paroles');
+  insertWordAt(at, t);
+});
 $('#tlScroll').addEventListener('wheel',e=>{
   if(tlZoom>1){ e.preventDefault(); $('#tlScroll').scrollLeft += (e.deltaY+e.deltaX); }
 },{passive:false});
@@ -2034,13 +2151,13 @@ async function exportVideo(){
   if(!rec){ try{ rec=new MediaRecorder(stream); mime=rec.mimeType||'video/webm'; }
     catch(e){ exporting=false; btn.disabled=false; btn.textContent=btnLabel;
       toast('Ton navigateur ne permet pas l\u2019enregistrement vidéo — rien n\u2019a été décompté'); return; } }
-  let failed=false, watchdog=null;
+  let failed=false, watchdog=null, expTick=null;
   const startTs=performance.now();
   const parts=[];
   rec.onerror=()=>{ failed=true; };
   rec.ondataavailable=e=>{ if(e.data&&e.data.size) parts.push(e.data); };
   const finish=(msg)=>{
-    clearTimeout(watchdog);
+    clearTimeout(watchdog); clearInterval(expTick); aiBar.done();
     document.removeEventListener('visibilitychange',visWarn);
     exporting=false; btn.disabled=false; btn.textContent=btnLabel;
     if(msg) toast(msg);
@@ -2073,6 +2190,11 @@ async function exportVideo(){
   srcNode.start(0,ext.start,ext.dur);
   startedAt=audioCtx.currentTime; startOff=ext.start; playing=true;
   rec.start(1000);                                          // chunks réguliers : rien ne se perd
+  aiBar.set('Export vidéo… 0 s / '+Math.round(ext.dur)+' s', 2);
+  expTick=setInterval(()=>{
+    const el=(performance.now()-startTs)/1000;
+    aiBar.set('Export vidéo… '+el.toFixed(0)+' s / '+Math.round(ext.dur)+' s', Math.min(97, el/ext.dur*100));
+  },500);
   watchdog=setTimeout(()=>{ try{rec.stop();}catch(e){} }, (ext.dur+8)*1000);   // filet de sécurité
   srcNode.onended=()=>{ try{rec.stop();}catch(e){} };
   raf();
@@ -2158,7 +2280,6 @@ $$('#fmtSeg button').forEach(b=>b.onclick=()=>{
   cv.width=f[0]; cv.height=f[1];
   if(M){ M.format=b.dataset.f; dirty(); }
   fitPreview(); drawPreview(curTime());
-  // EMERGENT: la recherche Pexels doit suivre le format (portrait / carré / paysage)
 });
 function fitPreview(){
   const wrap=$('#stageWrap'), cv=$('#preview');
