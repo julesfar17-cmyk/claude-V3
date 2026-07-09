@@ -74,6 +74,24 @@ Fichier fourni : `beatcut.html` — studio de montage beat-sync 100% client-side
 - ✅ Nettoyage : 35 comptes de test résiduels supprimés de la DB preview
 - ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
 
+## Implémenté (9 juillet 2026) — V2 COMPLÈTE (fichier fourni par Jules) — testé 100% (iteration_6)
+### Studio V2 (`/app/frontend/public/studio.html`, ancien sauvegardé en studio-v1-backup.html)
+- ✅ Nouvelle DA « encre bleutée + LED rouge » (Bricolage Grotesque/Inter/JetBrains Mono), SPA hash-routing (#/accueil, #/morceaux, #/edit/{id})
+- ✅ **Toutes les APIs branchées** : auth réelle (/api/auth/me, avatar→/dashboard, redirect /login), plan+quota serveur, transcription Groq (/api/proxy/transcribe), acapella Replicate PRO (/api/separate), banque Pexels (UI de recherche ajoutée), upload/download GridFS
+- ✅ **Morceaux cross-device** : store localStorage remplacé par /api/projects (bootRemote, persistRemote débounce 800ms, loadRemoteMorceau restaure audio GridFS + clips + paroles + style + extrait + BPM), suppression serveur avec bouton ✕
+- ✅ Paroles : détection réelle (acapella si PRO → transcribe), « Coller mes paroles » avec remap LCS (remapPasted), « Recaler » réel
+- ✅ Export : quota serveur vérifié AVANT, décompte APRÈS succès réel (/api/export/register)
+- ✅ Garde beforeunload pendant l'upload audio ; window.API exposé pour les tests
+### Nouvelle règle de quota export
+- ✅ **GRATUIT = 1 export découverte AU TOTAL (lifetime), SANS watermark** (CDC §1) ; Basic = 10/mois ; Pro = illimité. Backend /api/export/register + /api/export/quota mis à jour (tests pytest adaptés)
+### Landing + Profil nouvelle DA
+- ✅ index.css : tokens globaux V2 (fond #0E1116, panel #151A21, accent #FF453A, radius 12px) → TOUTES les pages React héritent (Dashboard, Admin, Auth, Projects)
+- ✅ Landing réécrite « simple » : hero waveform LED, 4 étapes, 4 cartes tarifs, tableau comparatif compact, CTA final
+### Dette technique (iteration_6)
+- Extraire js/{api,store,audio,subs}.js de studio.html ; data-testid manquants dans le studio V2 ; AbortController polling acapella ; retry persistRemote hors-ligne ; filtre mots fantômes transcription
+- ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
+- ℹ️ NOTE : le phasage CDC (P1 Express, P3 styles/créateur, LOT 5) est en partie couvert par la V2 de Jules (pages, éditeur, presets, créateur de style local). Les quotas journaliers du CDC §1 (détections IA/jour, recherches clips/jour, acapella 20/j) restent À FAIRE côté serveur.
+
 ## Cahier des charges V2 (reçu 8 juillet 2026) — décisions de Jules
 - Export découverte Gratuit (1 au total) : SANS watermark
 - Stockage complet des médias pour les projets (LOT 4) : OUI dès l'implémentation

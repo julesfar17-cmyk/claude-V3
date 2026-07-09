@@ -712,6 +712,7 @@ const API = {
 
 /* Encode un extrait de l'AudioBuffer en WAV 16-bit mono (pour transcription/acapella) */
 function extractWavBlob(start, dur){
+  if(!buffer) throw new Error('Aucun audio chargé');
   const sr=buffer.sampleRate;
   const s0=Math.floor(start*sr), n=Math.min(Math.floor(dur*sr), buffer.length-s0);
   const ch=buffer.getChannelData(0).slice(s0, s0+n);
@@ -1001,8 +1002,9 @@ async function loadAudio(file, opts={}){
     findDrop();
     // Stockage serveur (cross-device) : upload en tâche de fond
     M.audioMediaId=null; M.audioName=file.name;
-    API.uploadMedia(file).then(id=>{ M.audioMediaId=id; dirty(); })
-      .catch(e=>toast('⚠ Morceau non sauvegardé en ligne : '+e.message));
+    M._uploadingAudio=true;
+    API.uploadMedia(file).then(id=>{ M.audioMediaId=id; M._uploadingAudio=false; dirty(); })
+      .catch(e=>{ M._uploadingAudio=false; toast('⚠ Morceau non sauvegardé en ligne : '+e.message); });
   }
   $('#audioDrop').style.display='none'; $('#preview').style.display='block';
   $('#extractZone').classList.add('show');
@@ -2251,6 +2253,12 @@ API.init().then(()=>{
   }
   bootRemote();
 });
+// Protège l'upload audio en cours (fermeture d'onglet = morceau sans son)
+window.addEventListener('beforeunload', e=>{
+  if(M && M._uploadingAudio){ e.preventDefault(); e.returnValue='Sauvegarde du son en cours…'; }
+});
+// Exposé pour les tests E2E
+window.API=API; window.DBref=()=>DB;
 </script>
 </body>
 </html>
