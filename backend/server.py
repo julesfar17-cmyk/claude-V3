@@ -962,12 +962,21 @@ def _month_start_iso() -> str:
 
 @api_router.post("/export/register")
 async def register_export(user: dict = Depends(get_current_user)):
-    """Appelé par le studio au lancement d'un export vidéo.
-    Basic : quota mensuel. PRO/VIP : illimité. Gratuit : refusé."""
+    """Appelé par le studio à l'export vidéo.
+    Free : 1 export découverte AU TOTAL (sans watermark). Basic : quota mensuel. PRO/VIP : illimité."""
     user = await sync_stripe_subscription(user)
     info = sub_info(user)
     if info["tier"] == "free":
-        raise HTTPException(status_code=403, detail="Export réservé aux abonnés — passe en Basic ou PRO")
+        used = await db.export_logs.count_documents({"user_id": user["user_id"], "tier": "free"})
+        if used >= 1:
+            raise HTTPException(
+                status_code=429,
+                detail="Ton export découverte est déjà utilisé — passe en Basic (10 vidéos/mois, 6,99 €) ou PRO (illimité).",
+            )
+        await db.export_logs.insert_one({
+            "user_id": user["user_id"], "tier": "free", "created_at": iso(now_utc()),
+        })
+        return {"allowed": True, "used": used + 1, "quota": 1}
     if info["tier"] == "basic":
         used = await db.export_logs.count_documents({
             "user_id": user["user_id"], "created_at": {"$gte": _month_start_iso()},
@@ -990,6 +999,9 @@ async def register_export(user: dict = Depends(get_current_user)):
 @api_router.get("/export/quota")
 async def export_quota(user: dict = Depends(get_current_user)):
     info = sub_info(user)
+    if info["tier"] == "free":
+        used = await db.export_logs.count_documents({"user_id": user["user_id"], "tier": "free"})
+        return {"tier": "free", "used": used, "quota": 1}
     if info["tier"] != "basic":
         return {"tier": info["tier"], "used": None, "quota": None}
     used = await db.export_logs.count_documents({

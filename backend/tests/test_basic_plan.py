@@ -184,21 +184,48 @@ class TestExportQuota:
         assert data["used"] is None
         assert data["quota"] is None
 
-    def test_quota_free_returns_free_none(self, free_session):
+    def test_quota_free_returns_lifetime_1(self, free_session):
+        """V2: free tier now has lifetime quota of 1 discovery export."""
         r = free_session.get(f"{BASE_URL}/api/export/quota")
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["tier"] == "free"
-        assert data["used"] is None
-        assert data["quota"] is None
+        assert data["quota"] == 1
+        assert isinstance(data["used"], int)
 
 
 # -------------------------- Export register --------------------------
 class TestExportRegister:
-    def test_free_export_forbidden(self, free_session):
-        r = free_session.post(f"{BASE_URL}/api/export/register")
-        assert r.status_code == 403, r.text
-        assert "Basic" in r.json().get("detail", "") or "PRO" in r.json().get("detail", "")
+    def test_free_export_lifetime_1_then_429(self, mongo_db):
+        """V2: free = 1 lifetime discovery export. 1st call OK, 2nd → 429."""
+        import uuid as _uuid
+        email = f"TEST_freeexp_{_uuid.uuid4().hex[:6]}@example.com"
+        s = requests.Session()
+        r = s.post(f"{BASE_URL}/api/auth/register",
+                   json={"name": "FreeExp", "email": email, "password": "Passw0rd!"})
+        assert r.status_code == 200
+        try:
+            # Initial quota → used=0
+            q0 = s.get(f"{BASE_URL}/api/export/quota").json()
+            assert q0["tier"] == "free" and q0["quota"] == 1 and q0["used"] == 0
+            # 1st register OK
+            r1 = s.post(f"{BASE_URL}/api/export/register")
+            assert r1.status_code == 200, r1.text
+            data = r1.json()
+            assert data["allowed"] is True and data["used"] == 1 and data["quota"] == 1
+            # Quota now shows 1/1
+            q1 = s.get(f"{BASE_URL}/api/export/quota").json()
+            assert q1["used"] == 1 and q1["quota"] == 1
+            # 2nd register → 429
+            r2 = s.post(f"{BASE_URL}/api/export/register")
+            assert r2.status_code == 429, r2.text
+            detail = r2.json().get("detail", "")
+            assert "découverte" in detail.lower() or "decouverte" in detail.lower() or "quota" in detail.lower()
+        finally:
+            u = mongo_db.users.find_one({"email": email}, {"user_id": 1, "_id": 0})
+            if u:
+                mongo_db.export_logs.delete_many({"user_id": u["user_id"]})
+            mongo_db.users.delete_one({"email": email})
 
     def test_vip_export_allowed_unlimited(self, vip_session):
         r = vip_session.post(f"{BASE_URL}/api/export/register")
