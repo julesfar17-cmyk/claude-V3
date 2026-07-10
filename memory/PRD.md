@@ -179,3 +179,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Testé : proxy 540×960 OK ; fallback realtime auto (pod headless sans encodeur H.264) avec export réel réussi + quota décompté + canvas restauré ; mécanique WebCodecs+muxer validée e2e (VP9/Opus, mêmes APIs, mp4 230 Ko généré)
 - ℹ️ Le chemin offline H.264 s'active automatiquement sur Chrome/Edge/Brave/Android ; Safari sans AudioEncoder AAC → repli temps réel
 - ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
+
+## Corrigé (10 juillet 2026) — Freezes de l'aperçu : lecture événementielle (modèle V1 restauré)
+- Cause : la V2 vérifiait la position vidéo À CHAQUE FRAME dans drawPreview (`|currentTime-target|>0.45 → seek`) → re-seeks en pleine lecture (drift audio/vidéo, boucles de clips) = micro-freezes. La V1 n'agissait qu'aux coupures
+- ✅ Porté le modèle V1 : `syncLivePlan(t)` dans raf() détecte le changement de plan → `activatePlan(i)` (UNE fois par coupure) : play du lecteur pré-calé, pause de l'ancien, pré-seek du lecteur du plan suivant. `livePtr`/`liveEl` globaux, reset dans stopAll
+- ✅ drawPreview en lecture : dessine `liveEl` tel quel, ZÉRO seek/play par frame. À l'arrêt (scrub) : calage à la demande conservé. Mode offline inchangé
+- ✅ Aperçu série : `syncLivePlan` appelé dans la boucle withVariant
+- ✅ Testé e2e : 60 fps constants, 6 seeks/5 s (= pré-calages aux coupures uniquement), 11 activations, lecteurs en pause au stop
+- ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com

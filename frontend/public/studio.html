@@ -1818,7 +1818,8 @@ function planThumbImg(cl, target){
 /* Certains navigateurs mettent les <video> en pause (onglet, mémoire) → frames noires. On les réveille. */
 /* ---- Double lecteur par clip : le plan suivant est pré-calé sur un 2e <video>,
    la coupure bascule sur un lecteur déjà prêt → image nette immédiate ---- */
-let planAssign=[], lastPlanEl=null, offlineRender=false;
+let planAssign=[], offlineRender=false;
+let livePtr=-1, liveEl=null;   // lecture événementielle (modèle V1) : on n'agit qu'aux coupures
 function poolEl(cl,k){
   if(!cl.els) cl.els=[cl.el];
   if(k===1&&!cl.els[1]){
@@ -1835,6 +1836,42 @@ function assignPlanPlayers(){
     cnt[p.clip]=(cnt[p.clip]||0)+1;
     return (cnt[p.clip]-1)%2;   // alternance : 2 plans successifs du même clip = 2 lecteurs différents
   });
+}
+/* À la coupure UNIQUEMENT (comme la V1) : lance le lecteur du plan, coupe l'ancien,
+   pré-cale celui du plan suivant. Aucune correction pendant qu'un plan joue. */
+function activatePlan(i){
+  const plans=(M&&M.plans)||[]; const p=plans[i];
+  livePtr=i;
+  let el=null;
+  if(p&&p.clip!==null&&clips[p.clip]){
+    el=poolEl(clips[p.clip], planAssign[i]===1?1:0);
+    if(el.duration&&!el.seeking){
+      const tt=(p.seek||0)%el.duration;
+      if(Math.abs(el.currentTime-tt)>0.3){ try{ el.currentTime=tt; }catch(e){} }   // résilience si pas pré-calé
+    }
+    el.play().catch(()=>{});
+  }
+  if(liveEl&&liveEl!==el){ try{ liveEl.pause(); }catch(e){} }
+  liveEl=el;
+  const nx=plans[i+1]||plans[0];
+  const nxi=plans[i+1]? i+1 : 0;
+  if(nx&&nx!==p&&nx.clip!==null&&clips[nx.clip]){
+    const nv=poolEl(clips[nx.clip], planAssign[nxi]===1?1:0);
+    if(nv!==el){
+      try{ nv.pause(); }catch(e){}
+      if(nv.duration&&!nv.seeking){
+        const nt=(nx.seek||0)%nv.duration;
+        if(Math.abs(nv.currentTime-nt)>0.15){ try{ nv.currentTime=nt; }catch(e){} }
+      }
+    }
+  }
+}
+function syncLivePlan(t){
+  const plans=(M&&M.plans)||[];
+  if(planAssign.length!==plans.length) assignPlanPlayers();
+  if(!plans.length) return;
+  const cur=plans.findIndex(p=>t>=p.start&&t<p.end);
+  if(cur>=0&&cur!==livePtr) activatePlan(cur);
 }
 /* Pré-cale les lecteurs des 2 premiers plans avant de démarrer (zéro frame floue au lancement) */
 function warmUpPlans(fromT){
@@ -1871,10 +1908,13 @@ function play(from){
 function stopAll(){
   if(srcNode){ srcNode.onended=null; try{srcNode.stop()}catch(e){} srcNode=null; }
   playing=false; looping=false;
+  if(liveEl){ try{ liveEl.pause(); }catch(e){} }
+  livePtr=-1; liveEl=null;
   $('#playBtn').textContent='▶'; $('#loopBtn').textContent='▶ Écouter l\u2019extrait';
 }
 function raf(){
   const t=curTime();
+  if(playing) syncLivePlan(t);
   drawPreview(t); drawPlayhead(t);
   if(playing&&tlZoom>1){ const sc=$('#tlScroll'), x=(t-ext.start)*PXS();
     if(x<sc.scrollLeft+40||x>sc.scrollLeft+sc.clientWidth-80) sc.scrollLeft=Math.max(0,x-sc.clientWidth/3); }
@@ -1997,14 +2037,15 @@ function drawPreview(t, cvOverride){
   let drewMedia=false;
   if(plan&&plan.clip!==null&&clips[plan.clip]){
     const cl=clips[plan.clip];
-    const v=poolEl(cl, planAssign[pi]===1?1:0);
+    let v=poolEl(cl, planAssign[pi]===1?1:0);
     const target=(plan.seek||0)+(t-plan.start);
     if(!offlineRender){
-      if(lastPlanEl&&lastPlanEl!==v&&!lastPlanEl.paused){ try{ lastPlanEl.pause(); }catch(e){} }
-      lastPlanEl=v;
-      if(v.paused) v.play().catch(()=>{});
-      const tgt=v.duration? target%v.duration : target;
-      if(v.duration&&!v.seeking&&Math.abs(v.currentTime-tgt)>0.45){ try{ v.currentTime=tgt; }catch(e){} }
+      if(playing){
+        if(livePtr===pi&&liveEl) v=liveEl;   // lecture : lecteur activé à la coupure, jamais re-seeké ici
+      } else {
+        const tgt=v.duration? target%v.duration : target;   // scrub à l'arrêt : cale à la demande
+        if(v.duration&&!v.seeking&&Math.abs(v.currentTime-tgt)>0.45){ try{ v.currentTime=tgt; }catch(e){} }
+      }
     }
     if(v.readyState>=2&&v.videoWidth&&(offlineRender||!v.seeking)){
       const s=Math.max(W/v.videoWidth,H/v.videoHeight);
@@ -2020,19 +2061,6 @@ function drawPreview(t, cvOverride){
         c.drawImage(img,(W-img.naturalWidth*s)/2,(H-img.naturalHeight*s)/2,img.naturalWidth*s,img.naturalHeight*s);
         c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
         drewMedia=true;
-      }
-    }
-    // Pré-calage du plan SUIVANT sur son propre lecteur (en pause) → coupure nette garantie
-    if(!offlineRender){
-      const np=plans[pi+1]||plans[0];
-      const npi=plans[pi+1]? pi+1 : 0;
-      if(np&&np!==plan&&np.clip!==null&&clips[np.clip]){
-        const nv=poolEl(clips[np.clip], planAssign[npi]===1?1:0);
-        if(nv!==v){
-          if(!nv.paused) nv.pause();
-          const nt=nv.duration? (np.seek||0)%nv.duration : (np.seek||0);
-          if(nv.duration&&!nv.seeking&&Math.abs(nv.currentTime-nt)>0.25){ try{ nv.currentTime=nt; }catch(e){} }
-        }
       }
     }
   }
@@ -2542,7 +2570,8 @@ function seriePreviewToggle(i, cvs, btn){
   const va=serieVariants[i];
   const loop=()=>{
     if(seriePlayingIdx!==i) return;
-    withVariant(va, ()=>drawPreview(curTime(), cvs));
+    const t=curTime();
+    withVariant(va, ()=>{ syncLivePlan(t); drawPreview(t, cvs); });
     serieRaf=requestAnimationFrame(loop);
   };
   loop();
