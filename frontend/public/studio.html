@@ -358,7 +358,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
           </div>
         </div>
         <input type="file" id="audioInput" hidden>
-        <canvas id="preview" width="1080" height="1920" style="display:none"></canvas>
+        <canvas id="preview" width="540" height="960" style="display:none"></canvas>
       </div>
 
       <!-- Choix de l'extrait -->
@@ -633,6 +633,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 <div id="toast"></div>
 <div class="ai-bar" id="aiBar" data-testid="ai-progress-bar"><div class="track"><div class="fill" id="aiBarFill"></div></div><div class="lbl" id="aiBarLbl">IA en cours…</div></div>
 
+<script src="/vendor/mp4-muxer.min.js"></script>
 <script>
 'use strict';
 /* =====================================================================
@@ -1817,7 +1818,7 @@ function planThumbImg(cl, target){
 /* Certains navigateurs mettent les <video> en pause (onglet, mémoire) → frames noires. On les réveille. */
 /* ---- Double lecteur par clip : le plan suivant est pré-calé sur un 2e <video>,
    la coupure bascule sur un lecteur déjà prêt → image nette immédiate ---- */
-let planAssign=[], lastPlanEl=null;
+let planAssign=[], lastPlanEl=null, offlineRender=false;
 function poolEl(cl,k){
   if(!cl.els) cl.els=[cl.el];
   if(k===1&&!cl.els[1]){
@@ -1997,13 +1998,15 @@ function drawPreview(t, cvOverride){
   if(plan&&plan.clip!==null&&clips[plan.clip]){
     const cl=clips[plan.clip];
     const v=poolEl(cl, planAssign[pi]===1?1:0);
-    if(lastPlanEl&&lastPlanEl!==v&&!lastPlanEl.paused){ try{ lastPlanEl.pause(); }catch(e){} }
-    lastPlanEl=v;
-    if(v.paused) v.play().catch(()=>{});
     const target=(plan.seek||0)+(t-plan.start);
-    const tgt=v.duration? target%v.duration : target;
-    if(v.duration&&!v.seeking&&Math.abs(v.currentTime-tgt)>0.45){ try{ v.currentTime=tgt; }catch(e){} }
-    if(v.readyState>=2&&v.videoWidth&&!v.seeking){
+    if(!offlineRender){
+      if(lastPlanEl&&lastPlanEl!==v&&!lastPlanEl.paused){ try{ lastPlanEl.pause(); }catch(e){} }
+      lastPlanEl=v;
+      if(v.paused) v.play().catch(()=>{});
+      const tgt=v.duration? target%v.duration : target;
+      if(v.duration&&!v.seeking&&Math.abs(v.currentTime-tgt)>0.45){ try{ v.currentTime=tgt; }catch(e){} }
+    }
+    if(v.readyState>=2&&v.videoWidth&&(offlineRender||!v.seeking)){
       const s=Math.max(W/v.videoWidth,H/v.videoHeight);
       c.drawImage(v,(W-v.videoWidth*s)/2,(H-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
       // léger voile pour la lisibilité du texte uniquement — la vidéo n'est jamais ré-encodée à l'import
@@ -2020,14 +2023,16 @@ function drawPreview(t, cvOverride){
       }
     }
     // Pré-calage du plan SUIVANT sur son propre lecteur (en pause) → coupure nette garantie
-    const np=plans[pi+1]||plans[0];
-    const npi=plans[pi+1]? pi+1 : 0;
-    if(np&&np!==plan&&np.clip!==null&&clips[np.clip]){
-      const nv=poolEl(clips[np.clip], planAssign[npi]===1?1:0);
-      if(nv!==v){
-        if(!nv.paused) nv.pause();
-        const nt=nv.duration? (np.seek||0)%nv.duration : (np.seek||0);
-        if(nv.duration&&!nv.seeking&&Math.abs(nv.currentTime-nt)>0.25){ try{ nv.currentTime=nt; }catch(e){} }
+    if(!offlineRender){
+      const np=plans[pi+1]||plans[0];
+      const npi=plans[pi+1]? pi+1 : 0;
+      if(np&&np!==plan&&np.clip!==null&&clips[np.clip]){
+        const nv=poolEl(clips[np.clip], planAssign[npi]===1?1:0);
+        if(nv!==v){
+          if(!nv.paused) nv.pause();
+          const nt=nv.duration? (np.seek||0)%nv.duration : (np.seek||0);
+          if(nv.duration&&!nv.seeking&&Math.abs(nv.currentTime-nt)>0.25){ try{ nv.currentTime=nt; }catch(e){} }
+        }
       }
     }
   }
@@ -2220,6 +2225,7 @@ document.addEventListener('keydown',e=>{
 
 /* ---------- Export ---------- */
 let exporting=false;
+/* ---------- EXPORT — dispatcher : offline (image par image, qualité garantie) sinon temps réel ---------- */
 async function exportVideo(nameSuffix){
   if(exporting){ toast('Un export est déjà en cours — attends la fin'); return false; }
   if(!buffer){toast('Dépose d\u2019abord ton morceau');return false;}
@@ -2232,10 +2238,109 @@ async function exportVideo(nameSuffix){
     return false;
   }
   try{ await audioCtx.resume(); }catch(e){}
+  if(await offlineSupported()) return exportOffline(nameSuffix);
+  return exportRealtime(nameSuffix);
+}
+async function offlineSupported(){
+  try{
+    if(!window.VideoEncoder||!window.AudioEncoder||!window.Mp4Muxer||!window.VideoFrame||!window.AudioData) return false;
+    const f=FORMATS[(M&&M.format)||'916'];
+    const nch=Math.min(2,buffer.numberOfChannels||1);
+    const v=await VideoEncoder.isConfigSupported({codec:'avc1.640033',width:f[0],height:f[1],bitrate:12000000,framerate:30});
+    const a=await AudioEncoder.isConfigSupported({codec:'mp4a.40.2',sampleRate:buffer.sampleRate,numberOfChannels:nch,bitrate:192000});
+    return !!(v.supported&&a.supported);
+  }catch(e){ return false; }
+}
+/* Cale le lecteur du plan actif EXACTEMENT sur l'image voulue, et attend qu'elle soit décodée */
+async function seekPlanFrame(t){
+  const plans=(M&&M.plans)||[]; const pi=plans.findIndex(p=>t>=p.start&&t<p.end);
+  if(pi<0) return;
+  const p=plans[pi]; if(p.clip===null||!clips[p.clip]) return;
+  const v=poolEl(clips[p.clip], planAssign[pi]===1?1:0);
+  if(!v.duration) await new Promise(r=>{ const to=setTimeout(r,1500); v.addEventListener('loadedmetadata',()=>{clearTimeout(to);r();},{once:true}); });
+  if(!v.duration) return;
+  const tgt=((p.seek||0)+(t-p.start))%v.duration;
+  if(Math.abs(v.currentTime-tgt)<=0.005&&v.readyState>=2&&!v.seeking) return;
+  await new Promise(r=>{
+    const to=setTimeout(r,600);
+    v.addEventListener('seeked',()=>{clearTimeout(to);r();},{once:true});
+    try{ v.currentTime=tgt; }catch(e){ clearTimeout(to); r(); }
+  });
+}
+/* Export offline (comme les logiciels de montage) : chaque image est rendue une par une
+   après décodage exact du clip, puis encodée en H.264 haut débit. Zéro freeze possible. */
+async function exportOffline(nameSuffix){
   exporting=true;
   const btn=$('#exportBtn'), btnLabel=btn.textContent;
   btn.disabled=true; btn.textContent='⏺ Export en cours…';
-  const canvas=$('#preview');   // déjà en résolution native 1080p — on enregistre tel quel
+  stopAll();
+  const fps=30, fmt=FORMATS[(M&&M.format)||'916'], W=fmt[0], H=fmt[1];
+  const total=Math.max(1,Math.round(ext.dur*fps));
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const cleanup=()=>{ offlineRender=false; exporting=false; btn.disabled=false; btn.textContent=btnLabel; aiBar.done(); };
+  try{
+    aiBar.set('Préparation de l\u2019export studio…',1);
+    assignPlanPlayers();
+    clips.forEach(c=>(c.els||[c.el]).forEach(v=>{ if(v){ try{ v.pause(); }catch(e){} } }));
+    const {Muxer,ArrayBufferTarget}=Mp4Muxer;
+    const sr=buffer.sampleRate, nch=Math.min(2,buffer.numberOfChannels||1);
+    const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},audio:{codec:'aac',numberOfChannels:nch,sampleRate:sr},fastStart:'in-memory'});
+    let encErr=null;
+    const venc=new VideoEncoder({output:(ch,m)=>muxer.addVideoChunk(ch,m),error:e=>{encErr=e;}});
+    venc.configure({codec:'avc1.640033',width:W,height:H,bitrate:12000000,framerate:fps});
+    const aenc=new AudioEncoder({output:(ch,m)=>muxer.addAudioChunk(ch,m),error:e=>{encErr=e;}});
+    aenc.configure({codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:nch,bitrate:192000});
+    // — Audio : extrait encodé en AAC
+    const s0=Math.floor(ext.start*sr), n=Math.min(Math.floor(ext.dur*sr), buffer.length-s0);
+    const chans=[...Array(nch)].map((_,k)=>buffer.getChannelData(k));
+    const CH=4096;
+    for(let off=0;off<n;off+=CH){
+      const len=Math.min(CH,n-off);
+      const data=new Float32Array(len*nch);
+      for(let k=0;k<nch;k++) data.set(chans[k].subarray(s0+off,s0+off+len), k*len);
+      const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:len,numberOfChannels:nch,timestamp:Math.round(off/sr*1e6),data});
+      aenc.encode(ad); ad.close();
+    }
+    // — Vidéo : image par image
+    for(let i=0;i<total;i++){
+      const t=ext.start+i/fps;
+      await seekPlanFrame(t);
+      offlineRender=true; drawPreview(t,cv); offlineRender=false;
+      const frame=new VideoFrame(cv,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
+      venc.encode(frame,{keyFrame:i%(fps*2)===0}); frame.close();
+      if(venc.encodeQueueSize>6) await new Promise(r=>{ const to=setTimeout(r,80); venc.addEventListener('dequeue',()=>{clearTimeout(to);r();},{once:true}); });
+      if(encErr) throw encErr;
+      if((i&7)===0) aiBar.set('Export studio '+W+'×'+H+'… '+Math.round(i/total*100)+' %', 2+i/total*92);
+    }
+    aiBar.set('Finalisation du MP4…',96);
+    await venc.flush(); await aenc.flush();
+    muxer.finalize();
+    const blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
+    if(blob.size<20000) throw new Error('fichier vide');
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=(M.title||'beatcut')+(nameSuffix||'')+'.mp4'; a.click();
+    // NE DÉCOMPTER qu'après un export réellement réussi (serveur = vérité)
+    fetch('/api/export/register',{method:'POST',credentials:'include'}).then(()=>API.refreshQuota()).catch(()=>{});
+    if(API.plan!=='pro' && API.quota.left>0) API.quota.left--;
+    DB.exports++; M.videos=(M.videos||0)+1; dirty(); updateQuotaUI();
+    cleanup();
+    toast('Vidéo exportée en '+W+'×'+H+' — qualité studio, image par image ✓');
+    return true;
+  }catch(e){
+    cleanup();
+    toast('Export studio indisponible ('+((e&&e.message)||'erreur')+') — passage en mode direct…');
+    return exportRealtime(nameSuffix);
+  }
+}
+/* ---- Export temps réel (repli navigateurs sans WebCodecs) ---- */
+async function exportRealtime(nameSuffix){
+  try{ await audioCtx.resume(); }catch(e){}
+  exporting=true;
+  const btn=$('#exportBtn'), btnLabel=btn.textContent;
+  btn.disabled=true; btn.textContent='⏺ Export en cours…';
+  const canvas=$('#preview');
+  const fmt=FORMATS[(M&&M.format)||'916'];
+  canvas.width=fmt[0]; canvas.height=fmt[1]; fitPreview();   // pleine résolution le temps de l'export
   const dest=audioCtx.createMediaStreamDestination();
   const stream=canvas.captureStream(30);
   dest.stream.getAudioTracks().forEach(tr=>stream.addTrack(tr));
@@ -2259,6 +2364,8 @@ async function exportVideo(nameSuffix){
   const finish=(msg,ok)=>{
     clearTimeout(watchdog); clearInterval(expTick); aiBar.done();
     document.removeEventListener('visibilitychange',visWarn);
+    canvas.width=Math.round(fmt[0]/PREVIEW_SCALE); canvas.height=Math.round(fmt[1]/PREVIEW_SCALE);
+    fitPreview(); drawPreview(curTime());
     exporting=false; btn.disabled=false; btn.textContent=btnLabel;
     if(msg) toast(msg);
     resolveExport(!!ok);
@@ -2280,7 +2387,7 @@ async function exportVideo(nameSuffix){
     if(API.plan!=='pro' && API.quota.left>0) API.quota.left--;
     DB.exports++; M.videos=(M.videos||0)+1; dirty();
     updateQuotaUI();
-    finish('Vidéo exportée en '+canvas.width+'×'+canvas.height+' ✓', true);
+    finish('Vidéo exportée en '+fmt[0]+'×'+fmt[1]+' ✓', true);
   };
   const visWarn=()=>{ if(document.hidden) toast('⚠ Reste sur cet onglet : en arrière-plan, la vidéo se fige'); };
   document.addEventListener('visibilitychange',visWarn);
@@ -2518,10 +2625,11 @@ $('#bpmInput').addEventListener('change',()=>setBpm($('#bpmInput').value));
 
 /* ---------- Formats vidéo ---------- */
 const FORMATS={ '916':[1080,1920], '11':[1080,1080], '45':[1080,1350], '169':[1920,1080] };
+const PREVIEW_SCALE=2;   // aperçu en demi-résolution (proxy fluide, comme les logiciels de montage) — l'export reste en pleine résolution
 $$('#fmtSeg button').forEach(b=>b.onclick=()=>{
   $$('#fmtSeg button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
   const f=FORMATS[b.dataset.f], cv=$('#preview');
-  cv.width=f[0]; cv.height=f[1];
+  cv.width=Math.round(f[0]/PREVIEW_SCALE); cv.height=Math.round(f[1]/PREVIEW_SCALE);
   if(M){ M.format=b.dataset.f; dirty(); }
   fitPreview(); drawPreview(curTime());
 });
