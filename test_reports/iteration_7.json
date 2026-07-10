@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 7 — transcodage vidéo serveur H.264 1080p (fix vidéos lourdes iPhone HEVC 4K). BACKEND: 10/10 pytest PASS (test_media_transcode.py). Upload MP4 720p testsrc2 3s → réponse immédiate {media_id, processing:true, deduped:false}. Polling GET /media/{id}/status → transcoded:true en ~3-5s. Download → Content-Type video/mp4, ffprobe confirme codec h264 + audio AAC + dimension ≤ 1920. Upload audio WAV → processing:false, aucun transcodage (bytes identiques). Ré-upload même MP4 → deduped:true avec même media_id, processing:false (déjà transcodé). GET status id invalide → 400, GET status avec autre user → 404 (scoping OK). Admin /admin/media/migrate GET+POST OK ({running,total,done,failed} présents), non-admin → 403 sur GET et POST. FRONTEND: /studio.html avec démo → ouverture directe du projet Morceau Série Test via hash #/edit/d51b835aa74548 → loadOverlay disparaît, titre 'Morceau Série Test' chargé, clip_test.webm présent dans la banque, paroles yo/beatcut/série/de/vidéos/test affichées. Upload d'une vidéo test 720p 2.5s via set_input_files('#clipInput') → badge [data-testid=clip-optimizing-badge] apparaît en <1s. Clic #playBtn pendant optimisation → toast '⏳ Optimisation de ta vidéo en cours — la lecture sera prête dans un instant', playBtn reste sur ▶ (lecture bien bloquée). Badge disparaît en ~2s + toast '✓ test_upload.mp4 optimisée — prête à jouer'. Régression play normal : clic #playBtn → passe à ⏸, #tcNow avance de 0:00.0 à 0:02.0 en 2s (lecture fluide). Tous les data-testid attendus (load-overlay, clip-optimizing-badge) sont bien présents.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_media_transcode.py",
+    "/app/test_reports/pytest/pytest_iteration7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Aucun endpoint DELETE /api/media/{id} exposé — les média orphelins (upload sans attachement à un projet) restent en GridFS et comptent contre le quota utilisateur. Recommandation : ajouter DELETE /media/{id} scopé user OU un GC périodique des orphelins (id non référencé dans state.audioMediaId ni state.clipRefs après N heures). Pour les tests c'est gênant (cleanup impossible côté suite).",
+    "_transcode_media échoue silencieusement : si ffmpeg crash, on set metadata.transcode_failed=true mais le fichier ORIGINAL (potentiellement HEVC/4K non lisible dans Chrome) reste en GridFS avec le même _id. Côté client, on continue à fetch cette vidéo brute — l'UI ne prévient pas l'utilisateur. Recommandation : exposer 'failed:true' dans /media/{id}/status suffit techniquement mais studio.html:733 ne teste que !s.processing dans la boucle uploadMedia — il devrait aussi remonter s.failed à l'appelant addClip pour afficher un toast d'erreur explicite.",
+    "MIGRATION_STATE est un dict Python module-level partagé sans lock → si deux admins postent /admin/media/migrate simultanément, on peut avoir 2 tasks background qui écrivent en concurrence. Peu probable mais à noter (ajouter asyncio.Lock).",
+    "Le semaphore TRANSCODE_SEM(2) limite bien la concurrence mais aucun timeout d'attente exposé — si 20 utilisateurs uploadent en même temps, l'API reste réactive mais le 20e utilisateur attendra ~10x le temps de transcodage. Non bloquant mais mérite un log + éventuellement un status 'queued' distinct de 'processing'.",
+    "uploadMedia côté client polling toutes les 2s pendant 150 itérations = 5min max. Pour une vidéo iPhone 4K longue (~30-60s de transcodage), c'est OK, mais pas de feedback à l'utilisateur en cas de timeout côté client (le return renvoie simplement l'id, le clip reste _optimizing=true à jamais). Recommandation : renvoyer un statut 'timeout' explicite au delà de 150 tries.",
+    "Le badge clip-optimizing-badge n'est ajouté que dans renderClips() lu à chaque re-render — si un futur code oublie de re-render après _optimizing=true, le badge n'apparaîtra pas. Recommandation : lier le badge à un flag via un observer/computed plutôt qu'à un render impératif. Non bloquant."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_media_transcode.py"
+  ],
+  "success_rate": {"backend": "100% (10/10 pytest)", "frontend": "100% (login → studio.html → open project → upload vidéo → badge d'optim → lecture bloquée pendant transcode → lecture OK après)"},
+  "test_credentials": "Démo: demo@beatcut.fr / Demo1234! ; Admin: admin@beatcut.fr / Admin123! ; Compte user éphémère TEST_media_scope_* créé via /api/auth/register (cleanup best-effort)",
+  "seed_data_creation": "Upload d'une vidéo MP4 720p 2.5s (~2.4 Mo brut, transcodé en ~1-2 Mo) sur le compte démo pendant les tests — reste en GridFS après le run (pas d'endpoint DELETE /media/{id}). Impact quota démo : négligeable (~5 Mo / 2 Go = 0.25%).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Fix vidéos lourdes iPhone HEVC/4K validé end-to-end. Backend: POST /api/media/upload transcode async via ffmpeg (imageio_ffmpeg) → H.264 1920 max keyframes 0.5s AAC faststart. Retourne {media_id, processing:true} immédiat pour vidéo, {processing:false} pour audio. Poll GET /media/{id}/status → {processing, transcoded, failed, size}. Dedup par SHA256 par user. Admin: POST /admin/media/migrate lance migration en background sur les fichiers non transcodés (state MIGRATION_STATE global). Frontend studio.html: API.uploadMedia polling 150×2s, clip._optimizing=true jusqu'à la fin, badge data-testid=clip-optimizing-badge, verrous dans play()/startLoop()/exportVideo()/genSerie(). Pour tests fresh, générer un MP4 UNIQUE (fréquence sinus + durée variables) sinon la dédup renvoie deduped:true dès le premier upload. Note : la démo a déjà 'Morceau Série Test' (id d51b835aa74548) et 'Recette 150BPM' (id 032e4762018d45) en fixture.",
+  "rca of the issue": "N/A — aucun bug détecté. Le fix (transcodage serveur + UI badge + verrous de chargement + endpoint migration) fonctionne comme spécifié. Deux améliorations proposées non-bloquantes : (1) exposer un endpoint DELETE /media/{id} pour cleanup post-test, (2) propager s.failed dans uploadMedia côté client pour toast d'erreur explicite en cas d'échec ffmpeg."
+}

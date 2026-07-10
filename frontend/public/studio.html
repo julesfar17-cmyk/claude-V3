@@ -172,7 +172,15 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 .sw{width:24px;height:24px;border-radius:6px;border:1px solid var(--line);cursor:pointer}
 .sw.on{outline:2px solid var(--accent);outline-offset:1px}
 .clip-grid{display:block;min-width:0}
-.clip-box{margin-top:10px;border:1px solid var(--line);border-radius:var(--r-s);padding:7px;background:var(--panel-2);min-width:0}
+.clip-box{margin-top:10px;border:1px solid var(--line);border-radius:var(--r-s);padding:7px;background:var(--panel-2);min-width:0;position:relative}
+.clip-opt{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:rgba(10,10,14,.62);backdrop-filter:blur(2px);border-radius:inherit;color:#ffd166;font-size:12px;font-weight:600;text-align:center;padding:4px}
+#loadOverlay{position:fixed;inset:0;z-index:9999;display:none;place-items:center;background:rgba(8,8,12,.82);backdrop-filter:blur(6px)}
+#loadOverlay.show{display:grid}
+#loadOverlay .box{width:min(420px,86vw);text-align:center}
+#loadOverlay .txt{font-size:15px;font-weight:600;margin-bottom:14px}
+#loadOverlay .sub{font-size:12px;opacity:.65;margin-top:10px}
+#loadOverlay .bar{height:8px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}
+#loadOverlay .bar>i{display:block;height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,#7c5cff,#00d4ff);transition:width .25s}
 .clip-head{display:flex;align-items:center;gap:6px;font-size:11.5px;margin-bottom:7px}
 .clip-head .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .clip-head button{padding:2px 7px;font-size:11px;border-radius:5px}
@@ -712,17 +720,46 @@ const API = {
     if(!res.ok) throw new Error('Résultat indisponible');
     return await res.blob();
   },
-  /* Médias : stockage GridFS serveur — cross-device */
+  /* Médias : stockage GridFS serveur — cross-device.
+     Les vidéos sont TRANSCODÉES côté serveur (H.264 1080p, keyframes 0.5s) :
+     on attend la fin de l'optimisation avant de rendre le média « prêt ». */
   async uploadMedia(file){
     const fd=new FormData(); fd.append('file', file);
     const r=await fetch('/api/media/upload',{method:'POST',credentials:'include',body:fd});
     if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||'Upload impossible'); }
-    return (await r.json()).media_id;
+    const j=await r.json();
+    if(j.processing){
+      for(let i=0;i<150;i++){
+        await new Promise(rs=>setTimeout(rs,2000));
+        const s=await this.mediaStatus(j.media_id);
+        if(s && !s.processing) break;
+      }
+    }
+    return j.media_id;
   },
-  async fetchMedia(mediaId, name){
+  async mediaStatus(mediaId){
+    try{
+      const r=await fetch('/api/media/'+mediaId+'/status',{credentials:'include'});
+      return r.ok? await r.json() : null;
+    }catch(e){ return null; }
+  },
+  async fetchMedia(mediaId, name, onProgress){
     const r=await fetch('/api/media/'+mediaId,{credentials:'include'});
     if(!r.ok) throw new Error('Média introuvable');
-    const blob=await r.blob();
+    const total=+r.headers.get('Content-Length')||0;
+    let blob;
+    if(r.body && total && onProgress){
+      const reader=r.body.getReader(); const chunks=[]; let got=0;
+      while(true){
+        const {done,value}=await reader.read();
+        if(done) break;
+        chunks.push(value); got+=value.length;
+        onProgress(Math.min(1, got/total));
+      }
+      blob=new Blob(chunks,{type:r.headers.get('Content-Type')||'application/octet-stream'});
+    }else{
+      blob=await r.blob();
+    }
     return new File([blob], name||'media', {type:blob.type||'application/octet-stream'});
   },
 };
@@ -758,6 +795,11 @@ function updateQuotaUI(){
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2800);};
+/* Verrou de chargement : overlay plein écran avec barre de progression */
+const loadOv=(()=>{const d=document.createElement('div');d.id='loadOverlay';d.setAttribute('data-testid','load-overlay');d.innerHTML='<div class="box"><div class="txt" id="loadOvTxt">Chargement…</div><div class="bar"><i id="loadOvBar"></i></div><div class="sub" id="loadOvSub"></div></div>';document.body.appendChild(d);return d;})();
+function showLoad(txt,frac,sub){loadOv.classList.add('show');$('#loadOvTxt').textContent=txt;$('#loadOvBar').style.width=Math.round(Math.max(0,Math.min(1,frac||0))*100)+'%';$('#loadOvSub').textContent=sub||'';}
+function hideLoad(){loadOv.classList.remove('show');}
+function clipsOptimizing(){ return clips.some(c=>c._optimizing); }
 /* Barre de progression des actions IA (haut de page) */
 const aiBar={
   _t:null,_pct:0,
@@ -985,22 +1027,30 @@ async function fetchRemoteMorceau(m){
   });
   if(st.ext) ext={...st.ext};
   if(st.beatAnchor!=null) beatAnchor=st.beatAnchor;
+  // Verrou de chargement : audio + clips ENTIÈREMENT téléchargés avant lecture
+  const total=(m.audioMediaId?1:0)+((m.clipRefs||[]).length);
+  let step=0;
+  const prog=f=>showLoad('Chargement de ton morceau…',total?(step+f)/total:1,total?Math.min(step+1,total)+' / '+total+' fichiers':'');
   // Audio depuis GridFS
   if(m.audioMediaId){
     try{
-      const f=await API.fetchMedia(m.audioMediaId, m.audioName||'audio.mp3');
+      prog(0);
+      const f=await API.fetchMedia(m.audioMediaId, m.audioName||'audio.mp3', prog);
       await loadAudio(f,{restore:true});
     }catch(e){ toast('Audio introuvable — re-dépose ton morceau'); }
+    step++;
   }
   // Clips (perso GridFS + Pexels par URL)
   for(const c of m.clipRefs||[]){
     try{
-      if(c.mediaId){ addClip(await API.fetchMedia(c.mediaId,c.name),{mediaId:c.mediaId,skipUpload:true}); }
+      prog(0);
+      if(c.mediaId){ addClip(await API.fetchMedia(c.mediaId,c.name,prog),{mediaId:c.mediaId,skipUpload:true}); }
       else if(c.pexelsUrl){
         const rr=await fetch(c.pexelsUrl);
         if(rr.ok) addClip(new File([await rr.blob()],c.name||'clip.mp4',{type:'video/mp4'}),{pexelsUrl:c.pexelsUrl,skipUpload:true});
       }
     }catch(e){}
+    step++;
   }
 }
 async function loadRemoteMorceau(m){
@@ -1012,7 +1062,7 @@ async function loadRemoteMorceau(m){
   }catch(e){
     toast('Ouverture impossible : '+e.message);
     go('morceaux');
-  }
+  }finally{ hideLoad(); }
 }
 
 /* ---------- Audio ---------- */
@@ -1251,7 +1301,9 @@ function toggleExtract(){
 }
 function toggleLoop(){ looping?stopAll():startLoop(); }
 function startLoop(){
-  if(!buffer||exporting)return; stopAll(); looping=true;
+  if(!buffer||exporting)return;
+  if(clipsOptimizing()){ toast('⏳ Optimisation de ta vidéo en cours — la lecture sera prête dans un instant'); return; }
+  stopAll(); looping=true;
   warmUpPlans(ext.start);
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer; srcNode.loop=true;
   srcNode.loopStart=ext.start; srcNode.loopEnd=ext.start+ext.dur;
@@ -1336,11 +1388,33 @@ function addClip(file, meta={}){
     if(!meta.skipUpload) toast(file.name.slice(0,24)+' → '+n+' plans proposés, placés sur le beat 🎲');
   },{once:true});
   renderClips();
-  // Stockage serveur (fichiers perso — les clips Pexels gardent leur URL de référence)
+  // Stockage serveur + optimisation (les clips Pexels gardent leur URL de référence)
   if(!meta.skipUpload && !clip.pexelsUrl){
-    API.uploadMedia(file).then(id=>{ clip.mediaId=id; dirty(); }).catch(()=>{});
+    clip._optimizing=true; renderClips();
+    toast('⏳ Optimisation de ta vidéo en cours… (lecture fluide garantie)');
+    API.uploadMedia(file).then(async id=>{
+      clip.mediaId=id;
+      try{
+        const s=await API.mediaStatus(id);
+        if(s && s.transcoded) swapClipMedia(clip, await API.fetchMedia(id, clip.name));
+      }catch(e){}
+      clip._optimizing=false; renderClips(); dirty();
+      toast('✓ '+(clip.name||'Vidéo').slice(0,24)+' optimisée — prête à jouer');
+    }).catch(e=>{
+      clip._optimizing=false; renderClips();
+      toast('⚠ Vidéo non sauvegardée en ligne : '+(e.message||'upload impossible'));
+    });
   }
   if(!meta.skipUpload) dirty();
+}
+/* Remplace le média local d'un clip par sa version optimisée serveur */
+function swapClipMedia(clip, file){
+  const old=clip.url;
+  (clip.els||[clip.el]).filter(Boolean).forEach(v=>{ try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} });
+  clip.url=URL.createObjectURL(file);
+  const v=makePoolVideo(clip.url);
+  clip.el=v; clip.els=[v];
+  if(old){ try{ URL.revokeObjectURL(old); }catch(e){} }
 }
 function renderClips(){
   const root=$('#clipGrid'); root.innerHTML='';
@@ -1353,6 +1427,7 @@ function renderClips(){
     const del=document.createElement('button'); del.textContent='✕'; del.title='Retirer la vidéo';
     del.onclick=()=>removeClip(ci);
     head.append(nm,add,del); box.append(head);
+    if(clip._optimizing){ const ov=document.createElement('div'); ov.className='clip-opt'; ov.setAttribute('data-testid','clip-optimizing-badge'); ov.textContent='⏳ Optimisation de ta vidéo…'; box.append(ov); }
     const grid=document.createElement('div'); grid.className='subgrid';
     (clip.seeks||[]).forEach((s,si)=>{
       const d=document.createElement('div'); d.className='subclip'; d.draggable=true;
@@ -1920,7 +1995,9 @@ function warmUpPlans(fromT){
 }
 function togglePlay(){ if(exporting){toast('Export en cours — attends la fin');return;} playing&&!looping? stopAll() : play(ext.start); }
 function play(from){
-  if(!buffer||exporting)return; stopAll();
+  if(!buffer||exporting)return;
+  if(clipsOptimizing()){ toast('⏳ Optimisation de ta vidéo en cours — la lecture sera prête dans un instant'); return; }
+  stopAll();
   warmUpPlans(from);
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer;
   srcNode.connect(audioCtx.destination);
@@ -2281,6 +2358,7 @@ let exporting=false;
 async function exportVideo(nameSuffix){
   if(exporting){ toast('Un export est déjà en cours — attends la fin'); return false; }
   if(!buffer){toast('Dépose d\u2019abord ton morceau');return false;}
+  if(clipsOptimizing()){ toast('⏳ Optimisation de tes vidéos en cours — l\u2019export sera prêt dans un instant'); return false; }
   // 1) Plan + quota côté serveur AVANT (source de vérité)
   await API.refreshQuota();
   if(API.plan!=='pro' && API.quota.left<=0){
@@ -2524,6 +2602,7 @@ async function drawVariantFrame(cvs, va, t){
 }
 async function genSerie(){
   if(exporting){toast('Attends la fin de l\u2019export en cours');return;}
+  if(clipsOptimizing()){toast('⏳ Optimisation de tes vidéos en cours — réessaie dans un instant');return;}
   const m=DB.morceaux.find(x=>x.id===$('#serieMorceau').value);
   if(!m){toast('Crée d\u2019abord un morceau');return;}
   if(!serieSel.size){toast('Choisis au moins un style de sous-titres');return;}

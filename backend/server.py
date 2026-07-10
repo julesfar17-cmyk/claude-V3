@@ -1169,6 +1169,75 @@ PROJECT_QUOTAS = {"free": 1, "basic": 10, "pro": None}          # None = illimit
 STORAGE_QUOTAS = {"free": 200_000_000, "basic": 2_000_000_000, "pro": 10_000_000_000}
 MAX_MEDIA_SIZE = 80_000_000  # 80 Mo par fichier
 
+# --- Transcodage vidéo (H.264 1080p, keyframes 0.5s, AAC, faststart) -------
+import re as _re
+import tempfile
+import imageio_ffmpeg
+
+FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+TRANSCODE_SEM = asyncio.Semaphore(2)
+_VIDEO_EXT_RE = _re.compile(r"\.(mp4|mov|m4v|webm|avi|mkv|3gp|hevc)$", _re.I)
+
+
+def _is_video(content_type: str, filename: str) -> bool:
+    if (content_type or "").lower().startswith("video/"):
+        return True
+    return bool(_VIDEO_EXT_RE.search(filename or ""))
+
+
+async def _ffmpeg_transcode(src_bytes: bytes, suffix: str):
+    """Retourne les octets MP4 optimisés, ou None si échec."""
+    with tempfile.TemporaryDirectory() as td:
+        src = os.path.join(td, "in" + (suffix or ".mp4"))
+        dst = os.path.join(td, "out.mp4")
+        with open(src, "wb") as f:
+            f.write(src_bytes)
+        cmd = [FFMPEG_EXE, "-y", "-i", src,
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+               "-profile:v", "high", "-pix_fmt", "yuv420p",
+               "-vf", "scale=w=1920:h=1920:force_original_aspect_ratio=decrease:force_divisible_by=2",
+               "-force_key_frames", "expr:gte(t,n_forced*0.5)",
+               "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+               "-movflags", "+faststart", dst]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=900)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return None
+        if proc.returncode != 0 or not os.path.exists(dst) or os.path.getsize(dst) == 0:
+            logger.warning("FFmpeg échec: %s", (err or b"")[-300:])
+            return None
+        with open(dst, "rb") as f:
+            return f.read()
+
+
+async def _transcode_media(oid):
+    """Remplace le fichier GridFS par sa version optimisée (même _id conservé)."""
+    async with TRANSCODE_SEM:
+        doc = await db["media.files"].find_one({"_id": oid})
+        if not doc:
+            return
+        meta = doc.get("metadata") or {}
+        try:
+            grid_out = await media_fs.open_download_stream(oid)
+            raw = await grid_out.read()
+            suffix = os.path.splitext(doc.get("filename") or "")[1]
+            out = await _ffmpeg_transcode(raw, suffix)
+            if out:
+                fname = os.path.splitext(doc.get("filename") or "media")[0] + ".mp4"
+                new_meta = {**meta, "content_type": "video/mp4", "transcoded": True, "processing": False}
+                await media_fs.delete(oid)
+                await media_fs.upload_from_stream_with_id(oid, fname, out, metadata=new_meta)
+                logger.info("Transcodage OK %s : %d → %d octets", oid, len(raw), len(out))
+                return
+        except Exception:
+            logger.exception("Transcodage échoué %s", oid)
+        await db["media.files"].update_one(
+            {"_id": oid},
+            {"$set": {"metadata.processing": False, "metadata.transcode_failed": True}})
+
 async def _storage_used(user_id: str) -> int:
     pipeline = [
         {"$match": {"metadata.user_id": user_id}},
@@ -1197,7 +1266,9 @@ async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_cu
         {"metadata.user_id": user["user_id"], "metadata.sha256": sha}
     )
     if existing:
-        return {"media_id": str(existing["_id"]), "size": existing["length"], "deduped": True}
+        emeta = existing.get("metadata") or {}
+        return {"media_id": str(existing["_id"]), "size": existing["length"], "deduped": True,
+                "processing": bool(emeta.get("processing"))}
     used = await _storage_used(user["user_id"])
     if used + len(content) > STORAGE_QUOTAS[info["tier"]]:
         quota_mb = STORAGE_QUOTAS[info["tier"]] // 1_000_000
@@ -1205,6 +1276,7 @@ async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_cu
             status_code=413,
             detail=f"Stockage plein ({quota_mb} Mo sur ton plan). Supprime un projet ou passe au plan supérieur.",
         )
+    is_video = _is_video(file.content_type, file.filename)
     media_id = await media_fs.upload_from_stream(
         file.filename or "media",
         content,
@@ -1212,9 +1284,12 @@ async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_cu
             "user_id": user["user_id"], "sha256": sha,
             "content_type": file.content_type or "application/octet-stream",
             "created_at": iso(now_utc()),
+            "processing": is_video,
         },
     )
-    return {"media_id": str(media_id), "size": len(content), "deduped": False}
+    if is_video:
+        asyncio.create_task(_transcode_media(media_id))
+    return {"media_id": str(media_id), "size": len(content), "deduped": False, "processing": is_video}
 
 
 @api_router.get("/media/{media_id}")
@@ -1241,6 +1316,68 @@ async def media_download(media_id: str, user: dict = Depends(get_current_user)):
         headers={"Content-Length": str(doc["length"]),
                  "Content-Disposition": f'inline; filename="{doc.get("filename","media")}"'},
     )
+
+
+@api_router.get("/media/{media_id}/status")
+async def media_status(media_id: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(media_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="ID média invalide")
+    doc = await db["media.files"].find_one({"_id": oid, "metadata.user_id": user["user_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Média introuvable")
+    meta = doc.get("metadata") or {}
+    return {"processing": bool(meta.get("processing")), "transcoded": bool(meta.get("transcoded")),
+            "failed": bool(meta.get("transcode_failed")), "size": doc["length"]}
+
+
+# --- Migration : transcode les vidéos GridFS existantes (admin) ------------
+MIGRATION_STATE = {"running": False, "total": 0, "done": 0, "failed": 0}
+
+
+def _migration_query():
+    return {
+        "$and": [
+            {"metadata.transcoded": {"$ne": True}},
+            {"metadata.transcode_failed": {"$ne": True}},
+            {"$or": [
+                {"metadata.content_type": {"$regex": "^video/"}},
+                {"filename": {"$regex": r"\.(mp4|mov|m4v|webm|avi|mkv|3gp)$", "$options": "i"}},
+            ]},
+        ]
+    }
+
+
+async def _run_media_migration(ids):
+    for oid in ids:
+        try:
+            await _transcode_media(oid)
+            doc = await db["media.files"].find_one({"_id": oid}, {"metadata.transcoded": 1})
+            ok = bool(((doc or {}).get("metadata") or {}).get("transcoded"))
+            MIGRATION_STATE["done" if ok else "failed"] += 1
+        except Exception:
+            MIGRATION_STATE["failed"] += 1
+    MIGRATION_STATE["running"] = False
+    logger.info("Migration médias terminée : %s", MIGRATION_STATE)
+
+
+@api_router.post("/admin/media/migrate")
+async def admin_media_migrate(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    if MIGRATION_STATE["running"]:
+        return MIGRATION_STATE
+    ids = [d["_id"] async for d in db["media.files"].find(_migration_query(), {"_id": 1})]
+    MIGRATION_STATE.update({"running": bool(ids), "total": len(ids), "done": 0, "failed": 0})
+    if ids:
+        asyncio.create_task(_run_media_migration(ids))
+    return MIGRATION_STATE
+
+
+@api_router.get("/admin/media/migrate")
+async def admin_media_migrate_status(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    return MIGRATION_STATE
 
 
 def _project_media_ids(state: dict) -> set:
