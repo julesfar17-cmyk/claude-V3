@@ -199,3 +199,14 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ⚠️ Non testable en headless (pas de codecs H.264/HEVC) : mp4 iPhone HEVC + H.264 GOP long → à valider par le client dans son navigateur
 - 📋 PHASE SUIVANTE À CHIFFRER (demande client) : normalisation serveur à l'upload (transcode H.264 1080p max, GOP ~0,5 s, faststart)
 - ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
+
+## Implémenté (10 juillet 2026) — PHASE 1 : Transcodage serveur à l'upload + verrou de chargement (fix définitif freezes iPhone HEVC/4K)
+- ✅ **Backend transcodage FFmpeg** (`imageio_ffmpeg`, sémaphore 2 jobs max) : `POST /api/media/upload` détecte les vidéos → réponse immédiate `{media_id, processing:true}` + tâche asyncio de transcodage → H.264 High 1080p max (grand côté 1920), **keyframes toutes les 0,5 s** (`force_key_frames`), AAC 128k stéréo, `+faststart`, yuv420p. Le fichier GridFS est REMPLACÉ avec le MÊME _id (références projets intactes). Échec ffmpeg → original conservé + `transcode_failed:true`
+- ✅ `GET /api/media/{id}/status` → `{processing, transcoded, failed, size}` (scopé user, 404 autre user, 400 id invalide)
+- ✅ **Migration admin** : `POST /api/admin/media/migrate` (lance en background sur toutes les vidéos GridFS non transcodées) + `GET` pour le statut `{running,total,done,failed}` — 403 non-admin. **Exécutée en preview : 7/7 vidéos migrées, 0 échec**
+- ✅ **Frontend studio.html** : `API.uploadMedia` polle le statut (2 s × 150) ; `addClip` → badge « ⏳ Optimisation de ta vidéo… » (`data-testid=clip-optimizing-badge`) + une fois transcodé, `swapClipMedia` remplace le blob local par la version optimisée téléchargée ; échec → toast d'avertissement explicite
+- ✅ **Verrous** : `play()`, `startLoop()`, `exportVideo()`, `genSerie()` bloqués avec toast tant qu'un clip s'optimise (`clipsOptimizing()`)
+- ✅ **Verrou de chargement projet** : overlay plein écran `#loadOverlay` (`data-testid=load-overlay`) avec barre de progression réelle (streaming fetch + Content-Length) — audio + clips ENTIÈREMENT téléchargés en blobs avant ouverture de l'éditeur
+- ✅ Testé : agent de test 10/10 backend (pytest `/app/backend/tests/test_media_transcode.py`) + e2e frontend complet (upload → badge → lecture bloquée → lecture OK après). Bench réel : 4K portrait 35 Mo → 1080×1920 2 Mo en ~3 s, keyframes exactes à 0,5 s
+- ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com ; relancer la migration en prod après déploiement : `POST /api/admin/media/migrate` (connecté admin)
+- 📋 Recommandations testeur (non bloquant, backlog) : endpoint `DELETE /api/media/{id}` ou GC des médias orphelins ; statut `queued` distinct si file d'attente transcode chargée

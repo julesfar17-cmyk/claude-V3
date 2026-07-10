@@ -1394,12 +1394,14 @@ function addClip(file, meta={}){
     toast('⏳ Optimisation de ta vidéo en cours… (lecture fluide garantie)');
     API.uploadMedia(file).then(async id=>{
       clip.mediaId=id;
+      let ok=false;
       try{
         const s=await API.mediaStatus(id);
-        if(s && s.transcoded) swapClipMedia(clip, await API.fetchMedia(id, clip.name));
+        if(s && s.transcoded){ swapClipMedia(clip, await API.fetchMedia(id, clip.name)); ok=true; }
+        else if(s && s.failed) toast('⚠ Optimisation impossible pour cette vidéo — elle peut saccader à la lecture');
       }catch(e){}
       clip._optimizing=false; renderClips(); dirty();
-      toast('✓ '+(clip.name||'Vidéo').slice(0,24)+' optimisée — prête à jouer');
+      if(ok) toast('✓ '+(clip.name||'Vidéo').slice(0,24)+' optimisée — prête à jouer');
     }).catch(e=>{
       clip._optimizing=false; renderClips();
       toast('⚠ Vidéo non sauvegardée en ligne : '+(e.message||'upload impossible'));
