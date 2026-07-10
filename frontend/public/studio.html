@@ -727,7 +727,16 @@ const API = {
     const fd=new FormData(); fd.append('file', file);
     const r=await fetch('/api/media/upload',{method:'POST',credentials:'include',body:fd});
     if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||'Upload impossible'); }
-    const j=await r.json();
+    return this._pollMedia(await r.json());
+  },
+  /* Import serveur d'un clip Pexels : le serveur télécharge + transcode (zéro re-upload client) */
+  async importMedia(url, name){
+    const r=await fetch('/api/media/import-url',{method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({url,name})});
+    if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||'Import impossible'); }
+    return this._pollMedia(await r.json());
+  },
+  async _pollMedia(j){
     if(j.processing){
       for(let i=0;i<150;i++){
         await new Promise(rs=>setTimeout(rs,2000));
@@ -2831,10 +2840,13 @@ $('#bankSearch').addEventListener('keydown', async e=>{
         try{
           const files=(v.video_files||[]).filter(f=>f.link&&(f.height||0)<=1280).sort((a,b)=>(b.height||0)-(a.height||0));
           const f=files[0]||v.video_files[0];
-          const rr=await fetch(f.link);
-          addClip(new File([await rr.blob()],'pexels-'+v.id+'.mp4',{type:'video/mp4'}),{pexelsUrl:f.link});
-          toast('✓ Clip ajouté');
-        }catch(err){ toast('Clip indisponible — essaie un autre'); }
+          const nm='pexels-'+v.id+'.mp4';
+          toast('⏳ Optimisation du clip en cours…');
+          const id=await API.importMedia(f.link, nm);
+          const file=await API.fetchMedia(id, nm);
+          addClip(file,{mediaId:id,pexelsUrl:f.link});
+          toast('✓ Clip ajouté — optimisé pour une lecture fluide');
+        }catch(err){ toast(err.message||'Clip indisponible — essaie un autre'); }
         img.style.opacity='1';
       };
       root.appendChild(img);

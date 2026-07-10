@@ -1195,7 +1195,7 @@ async def _ffmpeg_transcode(src_bytes: bytes, suffix: str):
         cmd = [FFMPEG_EXE, "-y", "-i", src,
                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
                "-profile:v", "high", "-pix_fmt", "yuv420p",
-               "-vf", "scale=w=1920:h=1920:force_original_aspect_ratio=decrease:force_divisible_by=2",
+               "-vf", "scale=w='min(1920,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
                "-force_key_frames", "expr:gte(t,n_forced*0.5)",
                "-c:a", "aac", "-b:a", "128k", "-ac", "2",
                "-movflags", "+faststart", dst]
@@ -1254,9 +1254,7 @@ async def media_quota(user: dict = Depends(get_current_user)):
     return {"tier": info["tier"], "used": used, "quota": STORAGE_QUOTAS[info["tier"]]}
 
 
-@api_router.post("/media/upload")
-async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    content = await file.read()
+async def _store_media(user: dict, content: bytes, filename: str, content_type: str) -> dict:
     if len(content) > MAX_MEDIA_SIZE:
         raise HTTPException(status_code=413, detail="Fichier trop lourd (max 80 Mo)")
     info = sub_info(user)
@@ -1276,13 +1274,13 @@ async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_cu
             status_code=413,
             detail=f"Stockage plein ({quota_mb} Mo sur ton plan). Supprime un projet ou passe au plan supérieur.",
         )
-    is_video = _is_video(file.content_type, file.filename)
+    is_video = _is_video(content_type, filename)
     media_id = await media_fs.upload_from_stream(
-        file.filename or "media",
+        filename or "media",
         content,
         metadata={
             "user_id": user["user_id"], "sha256": sha,
-            "content_type": file.content_type or "application/octet-stream",
+            "content_type": content_type or "application/octet-stream",
             "created_at": iso(now_utc()),
             "processing": is_video,
         },
@@ -1290,6 +1288,31 @@ async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_cu
     if is_video:
         asyncio.create_task(_transcode_media(media_id))
     return {"media_id": str(media_id), "size": len(content), "deduped": False, "processing": is_video}
+
+
+@api_router.post("/media/upload")
+async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    content = await file.read()
+    return await _store_media(user, content, file.filename or "media", file.content_type or "")
+
+
+@api_router.post("/media/import-url")
+async def media_import_url(payload: dict, user: dict = Depends(get_current_user)):
+    """Import serveur d'un clip Pexels : téléchargement + transcodage sans re-upload client."""
+    from urllib.parse import urlparse
+    url = (payload.get("url") or "").strip()
+    name = (payload.get("name") or "").strip() or "clip.mp4"
+    host = (urlparse(url).hostname or "") if url else ""
+    if not url.startswith("https://") or not (host == "pexels.com" or host.endswith(".pexels.com")):
+        raise HTTPException(status_code=400, detail="URL non autorisée")
+    try:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as cx:
+            r = await cx.get(url)
+    except Exception:
+        raise HTTPException(status_code=502, detail="Clip indisponible — réessaie")
+    if r.status_code != 200 or not r.content:
+        raise HTTPException(status_code=502, detail="Clip indisponible — réessaie")
+    return await _store_media(user, r.content, name, r.headers.get("content-type") or "video/mp4")
 
 
 @api_router.get("/media/{media_id}")

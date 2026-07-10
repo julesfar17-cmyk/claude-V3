@@ -210,3 +210,12 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Testé : agent de test 10/10 backend (pytest `/app/backend/tests/test_media_transcode.py`) + e2e frontend complet (upload → badge → lecture bloquée → lecture OK après). Bench réel : 4K portrait 35 Mo → 1080×1920 2 Mo en ~3 s, keyframes exactes à 0,5 s
 - ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com ; relancer la migration en prod après déploiement : `POST /api/admin/media/migrate` (connecté admin)
 - 📋 Recommandations testeur (non bloquant, backlog) : endpoint `DELETE /api/media/{id}` ou GC des médias orphelins ; statut `queued` distinct si file d'attente transcode chargée
+
+## Implémenté (10 juillet 2026) — Clips Pexels optimisés côté serveur (option A validée user)
+- ✅ `POST /api/media/import-url` : le SERVEUR télécharge le clip Pexels (hosts *.pexels.com uniquement, https, max 80 Mo) puis le passe dans le même pipeline de transcodage (H.264, keyframes 0,5 s) → stocké GridFS, compte dans le quota user. Dédup sha256 conservée
+- ✅ Refactor backend : `_store_media()` partagé entre `media_upload` et `media_import_url`
+- ✅ **Fix upscale** : le filtre scale n'agrandit plus les vidéos < 1080p (`min(1920,iw)`) — un clip 720p reste en 720p (fichier plus léger). Testé : 720p in → 720p out
+- ✅ Frontend : clic vignette Pexels → `API.importMedia` (zéro re-upload client) → poll statut → clip ajouté avec `mediaId` + `pexelsUrl` (les projets rechargent depuis GridFS en priorité). Toasts « ⏳ Optimisation du clip en cours… » / « ✓ Clip ajouté — optimisé »
+- ✅ Testé e2e (curl + Playwright) : import Pexels 720p → transcodé en ~13 s, keyframes 0,5 s ; flux studio complet OK (recherche neon → clic → clip dans la banque en ~6 s)
+- ℹ️ Les anciens projets avec clips Pexels (pexelsUrl seul) continuent de streamer depuis Pexels ; les nouveaux ajouts passent tous par GridFS optimisé
+- ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
