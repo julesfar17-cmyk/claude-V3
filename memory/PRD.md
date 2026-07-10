@@ -187,3 +187,15 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Aperçu série : `syncLivePlan` appelé dans la boucle withVariant
 - ✅ Testé e2e : 60 fps constants, 6 seeks/5 s (= pré-calages aux coupures uniquement), 11 activations, lecteurs en pause au stop
 - ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com
+
+## URGENT corrigé (10 juillet 2026) — « Moteur vidéo des plans » (spec client appliquée à la lettre)
+- ✅ 1. DOUBLE TAMPON : 2 <video> par fichier source (`poolEl`/`makePoolVideo`), plan N+1 pré-positionné en pause (`prepareNext`) pendant que N joue
+- ✅ 2. À la coupure : permutation + play() UNIQUEMENT, zéro seek (`activatePlan`) ; pendant un plan (`ensureActive`) : re-seek seulement si dérive >0,9 s, paused→play(), ended→reprise au point d'entrée
+- ✅ 3. Lecteur pas prêt : vignette 360×480 du plan, sinon dégradé — jamais de canvas vide
+- ✅ 4. Éléments : muted, playsinline (+attribut), preload=auto, loop=false, disableRemotePlayback (addClip refactoré via makePoolVideo, plus de play() à l'import)
+- ✅ 5. Export = même pipeline de rendu (offline: seekPlanFrame+drawPreview ; realtime: syncLivePlan dans raf) ; quota décompté seulement si fichier valide/complet (durée ≥ ext.dur−0,8 s en realtime ; offline complet par construction)
+- ✅ BUG BONUS corrigé : retour sur un morceau distant déjà ouvert → resetAudioState purgait les médias sans re-téléchargement (_loaded restait true) → morceau vide. Fix : `M._loaded=false` au reset (openEditor + serieLoadMorceau)
+- ✅ RECETTE exécutée (fixture « Recette 150BPM » id 032e4762018d45 : 150 BPM, 30 s, ~75 plans, 2 webm dont un GOP long -g 300 simulant les seeks lents) : 0 frame figée, 0 plan noir, 0 vignette sur 3 lectures d'affilée, 60 fps, seeks uniquement aux pré-calages, changement/retour morceau OK
+- ⚠️ Non testable en headless (pas de codecs H.264/HEVC) : mp4 iPhone HEVC + H.264 GOP long → à valider par le client dans son navigateur
+- 📋 PHASE SUIVANTE À CHIFFRER (demande client) : normalisation serveur à l'upload (transcode H.264 1080p max, GOP ~0,5 s, faststart)
+- ⚠️ Nécessite un REDÉPLOIEMENT pour beat-cut.com

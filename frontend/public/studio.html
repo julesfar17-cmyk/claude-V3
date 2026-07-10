@@ -945,13 +945,17 @@ function resetAudioState(){
   stopAll();
   buffer=null; env=[]; beats=[]; bpm=0; ext={start:0,dur:30};
   clips.length=0; $('#clipGrid').innerHTML=''; loopBars=0;
+  planAssign=[];   // le moteur vidéo repart de zéro avec le nouveau morceau
   selWord=-1; hist.length=0; updateUndoBtn();
   $('#bpmVal').textContent='— BPM'; $('#tcNow').textContent='0:00.0'; $('#tcEnd').textContent='0:00.0';
   $('#lyricsChoice').style.display='grid'; $('#pasteZone').style.display='none';
 }
 function openEditor(id){
   M=DB.morceaux.find(x=>x.id===id); if(!M){go('morceaux');return;}
-  if(loadedFor!==M.id){ resetAudioState(); loadedFor=M.id; }
+  if(loadedFor!==M.id){
+    resetAudioState(); loadedFor=M.id;
+    if(M._remote) M._loaded=false;   // les médias ont été purgés : re-télécharger l'état complet
+  }
   // Morceau distant pas encore chargé : récupérer l'état complet + les médias
   if(M._remote && !M._loaded){ loadRemoteMorceau(M); return; }
   $('#editTitle').value=M.title;
@@ -1321,7 +1325,7 @@ cDrop.addEventListener('drop',e=>{ [...e.dataTransfer.files].filter(f=>f.type.st
 }));
 function addClip(file, meta={}){
   const url=URL.createObjectURL(file);
-  const v=document.createElement('video'); v.src=url; v.muted=true; v.loop=true; v.playsInline=true; v.preload='auto';
+  const v=makePoolVideo(url);
   const clip={url,el:v,els:[v],thumbs:[],seeks:[],name:file.name,mediaId:meta.mediaId||null,pexelsUrl:meta.pexelsUrl||null};
   clips.push(clip);
   v.addEventListener('loadedmetadata',()=>{
@@ -1331,7 +1335,6 @@ function addClip(file, meta={}){
     makeThumbs(clip, ()=>{ autoAssign(); renderClips(); drawTimeline(); });
     if(!meta.skipUpload) toast(file.name.slice(0,24)+' → '+n+' plans proposés, placés sur le beat 🎲');
   },{once:true});
-  v.play().catch(()=>{});
   renderClips();
   // Stockage serveur (fichiers perso — les clips Pexels gardent leur URL de référence)
   if(!meta.skipUpload && !clip.pexelsUrl){
@@ -1816,17 +1819,28 @@ function planThumbImg(cl, target){
   return cl._timgs[i];
 }
 /* Certains navigateurs mettent les <video> en pause (onglet, mémoire) → frames noires. On les réveille. */
-/* ---- Double lecteur par clip : le plan suivant est pré-calé sur un 2e <video>,
-   la coupure bascule sur un lecteur déjà prêt → image nette immédiate ---- */
+/* ================== Moteur vidéo des plans ==================
+   video.currentTime est ASYNCHRONE ('seeked' arrive 50-300 ms après, bien plus sur
+   GOP long). Règles :
+   1. DOUBLE TAMPON : 2 <video> par fichier source — le plan N+1 est pré-positionné
+      en pause sur le 2e élément pendant que N joue (prepareNext).
+   2. À la coupure : permutation + play() UNIQUEMENT, zéro seek (activatePlan).
+   3. Pendant un plan (ensureActive) : aucun re-seek tant que la dérive < 0,9 s ;
+      paused → play() ; ended → reprise au point d'entrée du plan.
+   4. Lecteur pas prêt (readyState<2) : vignette du plan, sinon fond dégradé —
+      jamais un canvas vide/figé (géré dans drawPreview). */
 let planAssign=[], offlineRender=false;
-let livePtr=-1, liveEl=null;   // lecture événementielle (modèle V1) : on n'agit qu'aux coupures
+let livePtr=-1, liveEl=null;
+function makePoolVideo(url){
+  const v=document.createElement('video');
+  v.src=url; v.muted=true; v.playsInline=true; v.setAttribute('playsinline','');
+  v.preload='auto'; v.loop=false;
+  try{ v.disableRemotePlayback=true; }catch(e){}
+  return v;
+}
 function poolEl(cl,k){
   if(!cl.els) cl.els=[cl.el];
-  if(k===1&&!cl.els[1]){
-    const v=document.createElement('video');
-    v.src=cl.url; v.muted=true; v.loop=true; v.playsInline=true; v.preload='auto';
-    cl.els[1]=v;
-  }
+  if(k===1&&!cl.els[1]) cl.els[1]=makePoolVideo(cl.url);
   return cl.els[k]||cl.el;
 }
 function assignPlanPlayers(){
@@ -1834,36 +1848,45 @@ function assignPlanPlayers(){
   planAssign=plans.map(p=>{
     if(p.clip===null||!clips[p.clip]) return -1;
     cnt[p.clip]=(cnt[p.clip]||0)+1;
-    return (cnt[p.clip]-1)%2;   // alternance : 2 plans successifs du même clip = 2 lecteurs différents
+    return (cnt[p.clip]-1)%2;   // alternance : 2 plans successifs du même fichier = 2 lecteurs différents
   });
 }
-/* À la coupure UNIQUEMENT (comme la V1) : lance le lecteur du plan, coupe l'ancien,
-   pré-cale celui du plan suivant. Aucune correction pendant qu'un plan joue. */
+/* Coupure : permutation + play() uniquement — ZÉRO seek au moment du cut */
 function activatePlan(i){
   const plans=(M&&M.plans)||[]; const p=plans[i];
   livePtr=i;
   let el=null;
   if(p&&p.clip!==null&&clips[p.clip]){
     el=poolEl(clips[p.clip], planAssign[i]===1?1:0);
-    if(el.duration&&!el.seeking){
-      const tt=(p.seek||0)%el.duration;
-      if(Math.abs(el.currentTime-tt)>0.3){ try{ el.currentTime=tt; }catch(e){} }   // résilience si pas pré-calé
-    }
     el.play().catch(()=>{});
   }
   if(liveEl&&liveEl!==el){ try{ liveEl.pause(); }catch(e){} }
   liveEl=el;
+  prepareNext(i);
+}
+/* Pendant que N joue : pose le seek du plan N+1 sur son lecteur, en pause */
+function prepareNext(i){
+  const plans=(M&&M.plans)||[];
   const nx=plans[i+1]||plans[0];
   const nxi=plans[i+1]? i+1 : 0;
-  if(nx&&nx!==p&&nx.clip!==null&&clips[nx.clip]){
-    const nv=poolEl(clips[nx.clip], planAssign[nxi]===1?1:0);
-    if(nv!==el){
-      try{ nv.pause(); }catch(e){}
-      if(nv.duration&&!nv.seeking){
-        const nt=(nx.seek||0)%nv.duration;
-        if(Math.abs(nv.currentTime-nt)>0.15){ try{ nv.currentTime=nt; }catch(e){} }
-      }
-    }
+  if(!nx||nx===plans[i]||nx.clip===null||!clips[nx.clip]) return;
+  const nv=poolEl(clips[nx.clip], planAssign[nxi]===1?1:0);
+  if(nv===liveEl) return;   // même lecteur que le plan courant : la dérive sera corrigée par ensureActive
+  try{ nv.pause(); }catch(e){}
+  const pose=()=>{ const nt=(nx.seek||0)%(nv.duration||1); if(Math.abs(nv.currentTime-nt)>0.15){ try{ nv.currentTime=nt; }catch(e){} } };
+  if(nv.duration) pose();
+  else nv.addEventListener('loadedmetadata',pose,{once:true});
+}
+/* Surveillance douce du plan en cours — jamais de seek si dérive < 0,9 s */
+function ensureActive(t){
+  const plans=(M&&M.plans)||[];
+  const p=plans[livePtr]; if(!p||!liveEl) return;
+  const v=liveEl;
+  if(v.ended){ try{ v.currentTime=(p.seek||0)%(v.duration||1); }catch(e){} v.play().catch(()=>{}); return; }
+  if(v.paused) v.play().catch(()=>{});
+  if(v.duration&&!v.seeking){
+    const tgt=((p.seek||0)+(t-p.start))%v.duration;
+    if(Math.abs(v.currentTime-tgt)>0.9){ try{ v.currentTime=tgt; }catch(e){} }
   }
 }
 function syncLivePlan(t){
@@ -1872,6 +1895,7 @@ function syncLivePlan(t){
   if(!plans.length) return;
   const cur=plans.findIndex(p=>t>=p.start&&t<p.end);
   if(cur>=0&&cur!==livePtr) activatePlan(cur);
+  else if(cur>=0) ensureActive(t);
 }
 /* Pré-cale les lecteurs des 2 premiers plans avant de démarrer (zéro frame floue au lancement) */
 function warmUpPlans(fromT){
@@ -2468,7 +2492,10 @@ function renderSerieStyles(){
 /* Charge le morceau choisi dans l'état global sans ouvrir l'éditeur */
 async function serieLoadMorceau(m){
   M=m;
-  if(loadedFor!==m.id){ resetAudioState(); loadedFor=m.id; }
+  if(loadedFor!==m.id){
+    resetAudioState(); loadedFor=m.id;
+    if(m._remote) m._loaded=false;   // les médias ont été purgés : re-télécharger l'état complet
+  }
   if(m._remote && !m._loaded) await fetchRemoteMorceau(m);
   if(M.style){ if(M.style.caps!==undefined&&M.style.textCase===undefined){ M.style.textCase=M.style.caps?'up':'none'; delete M.style.caps; } style=Object.assign(style,M.style); }
   M.fx=M.fx||{flash:true,zoom:true};
