@@ -1247,7 +1247,7 @@ function toggleExtract(){
 function toggleLoop(){ looping?stopAll():startLoop(); }
 function startLoop(){
   if(!buffer||exporting)return; stopAll(); looping=true;
-  wakeClips();
+  warmUpPlans(ext.start);
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer; srcNode.loop=true;
   srcNode.loopStart=ext.start; srcNode.loopEnd=ext.start+ext.dur;
   srcNode.connect(audioCtx.destination); srcNode.start(0,ext.start);
@@ -1321,7 +1321,7 @@ cDrop.addEventListener('drop',e=>{ [...e.dataTransfer.files].filter(f=>f.type.st
 function addClip(file, meta={}){
   const url=URL.createObjectURL(file);
   const v=document.createElement('video'); v.src=url; v.muted=true; v.loop=true; v.playsInline=true; v.preload='auto';
-  const clip={url,el:v,thumbs:[],seeks:[],name:file.name,mediaId:meta.mediaId||null,pexelsUrl:meta.pexelsUrl||null};
+  const clip={url,el:v,els:[v],thumbs:[],seeks:[],name:file.name,mediaId:meta.mediaId||null,pexelsUrl:meta.pexelsUrl||null};
   clips.push(clip);
   v.addEventListener('loadedmetadata',()=>{
     const D=v.duration||6;
@@ -1412,22 +1412,23 @@ document.addEventListener('click',()=>{ $('#pickPop').classList.remove('show');
   if(pendingPick){ pendingPick=null; $$('.subclip').forEach(x=>x.classList.remove('sel')); } });
 function makeThumbAt(clip, time, index, done){
   const v=document.createElement('video'); v.src=clip.url; v.muted=true; v.preload='auto';
-  const cvs=document.createElement('canvas'); cvs.width=90; cvs.height=120;
+  const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
   const ctx=cvs.getContext('2d');
   v.addEventListener('seeked',()=>{
     try{
       const s=Math.max(cvs.width/v.videoWidth, cvs.height/v.videoHeight);
       ctx.drawImage(v,(cvs.width-v.videoWidth*s)/2,(cvs.height-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
-      clip.thumbs[index]=cvs.toDataURL('image/jpeg',0.6);
+      clip.thumbs[index]=cvs.toDataURL('image/jpeg',0.7);
+      if(clip._timgs) delete clip._timgs[index];
     }catch(e){}
     done&&done();
   },{once:true});
   v.addEventListener('loadedmetadata',()=>{ v.currentTime=Math.min(time,(v.duration||1)-0.1); },{once:true});
 }
 function makeThumbs(clip, done){
-  // capture une vignette par sous-plan (pour la timeline et l'aperçu du choix)
+  // capture une vignette par sous-plan (timeline, choix, et secours plein écran → taille généreuse)
   const v=document.createElement('video'); v.src=clip.url; v.muted=true; v.preload='auto';
-  const cvs=document.createElement('canvas'); cvs.width=90; cvs.height=120;
+  const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
   const ctx=cvs.getContext('2d');
   let i=0;
   const grab=()=>{
@@ -1438,7 +1439,7 @@ function makeThumbs(clip, done){
     try{
       const s=Math.max(cvs.width/v.videoWidth, cvs.height/v.videoHeight);
       ctx.drawImage(v,(cvs.width-v.videoWidth*s)/2,(cvs.height-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
-      clip.thumbs[i]=cvs.toDataURL('image/jpeg',0.6);
+      clip.thumbs[i]=cvs.toDataURL('image/jpeg',0.7);
     }catch(e){}
     i++; grab();
   });
@@ -1814,11 +1815,51 @@ function planThumbImg(cl, target){
   return cl._timgs[i];
 }
 /* Certains navigateurs mettent les <video> en pause (onglet, mémoire) → frames noires. On les réveille. */
-function wakeClips(){ clips.forEach(c=>{ if(c.el&&c.el.paused) c.el.play().catch(()=>{}); }); }
+/* ---- Double lecteur par clip : le plan suivant est pré-calé sur un 2e <video>,
+   la coupure bascule sur un lecteur déjà prêt → image nette immédiate ---- */
+let planAssign=[], lastPlanEl=null;
+function poolEl(cl,k){
+  if(!cl.els) cl.els=[cl.el];
+  if(k===1&&!cl.els[1]){
+    const v=document.createElement('video');
+    v.src=cl.url; v.muted=true; v.loop=true; v.playsInline=true; v.preload='auto';
+    cl.els[1]=v;
+  }
+  return cl.els[k]||cl.el;
+}
+function assignPlanPlayers(){
+  const plans=(M&&M.plans)||[]; const cnt={};
+  planAssign=plans.map(p=>{
+    if(p.clip===null||!clips[p.clip]) return -1;
+    cnt[p.clip]=(cnt[p.clip]||0)+1;
+    return (cnt[p.clip]-1)%2;   // alternance : 2 plans successifs du même clip = 2 lecteurs différents
+  });
+}
+/* Pré-cale les lecteurs des 2 premiers plans avant de démarrer (zéro frame floue au lancement) */
+function warmUpPlans(fromT){
+  assignPlanPlayers();
+  const plans=(M&&M.plans)||[]; const idx=[];
+  for(let i=0;i<plans.length&&idx.length<2;i++){
+    if(plans[i].end>fromT&&plans[i].clip!==null&&clips[plans[i].clip]) idx.push(i);
+  }
+  return Promise.all(idx.map(i=>new Promise(res=>{
+    const p=plans[i], v=poolEl(clips[p.clip], planAssign[i]===1?1:0);
+    const to=setTimeout(res,2500);
+    const ok=()=>{ clearTimeout(to); res(); };
+    const seekTo=()=>{
+      const tt=(p.seek||0)%(v.duration||1);
+      if(Math.abs(v.currentTime-tt)<=0.2&&v.readyState>=2) return ok();
+      v.addEventListener('seeked',ok,{once:true});
+      try{ v.currentTime=tt; }catch(e){ ok(); }
+    };
+    if(v.duration) seekTo();
+    else v.addEventListener('loadedmetadata',seekTo,{once:true});
+  })));
+}
 function togglePlay(){ if(exporting){toast('Export en cours — attends la fin');return;} playing&&!looping? stopAll() : play(ext.start); }
 function play(from){
   if(!buffer||exporting)return; stopAll();
-  wakeClips();
+  warmUpPlans(from);
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer;
   srcNode.connect(audioCtx.destination);
   srcNode.start(0, from, ext.start+ext.dur-from);
@@ -1939,7 +1980,10 @@ function getNoise(){
 function drawPreview(t, cvOverride){
   const cv=cvOverride||$('#preview'); if(!cvOverride && cv.style.display==='none')return;  const c=cv.getContext('2d'), W=cv.width,H=cv.height;
   c.imageSmoothingEnabled=true; c.imageSmoothingQuality='high';
-  const plan=M&&M.plans? M.plans.find(p=>t>=p.start&&t<p.end):null;
+  const plans=(M&&M.plans)||[];
+  if(planAssign.length!==plans.length) assignPlanPlayers();
+  const pi=plans.findIndex(p=>t>=p.start&&t<p.end);
+  const plan=pi>=0? plans[pi] : null;
   const fx=(M&&M.fx)||{};
   const cutAge=plan? Math.max(0,t-plan.start) : 99;
   c.fillStyle='#0B0E12'; c.fillRect(0,0,W,H);
@@ -1951,9 +1995,14 @@ function drawPreview(t, cvOverride){
   if(sc!==1||dx||dy){ c.translate(W/2+dx,H/2+dy); c.scale(sc,sc); c.translate(-W/2,-H/2); }
   let drewMedia=false;
   if(plan&&plan.clip!==null&&clips[plan.clip]){
-    const cl=clips[plan.clip], v=cl.el;
+    const cl=clips[plan.clip];
+    const v=poolEl(cl, planAssign[pi]===1?1:0);
+    if(lastPlanEl&&lastPlanEl!==v&&!lastPlanEl.paused){ try{ lastPlanEl.pause(); }catch(e){} }
+    lastPlanEl=v;
+    if(v.paused) v.play().catch(()=>{});
     const target=(plan.seek||0)+(t-plan.start);
-    if(v.duration&&Math.abs(v.currentTime-target)>0.45){ try{ v.currentTime=target%v.duration; }catch(e){} }
+    const tgt=v.duration? target%v.duration : target;
+    if(v.duration&&!v.seeking&&Math.abs(v.currentTime-tgt)>0.45){ try{ v.currentTime=tgt; }catch(e){} }
     if(v.readyState>=2&&v.videoWidth&&!v.seeking){
       const s=Math.max(W/v.videoWidth,H/v.videoHeight);
       c.drawImage(v,(W-v.videoWidth*s)/2,(H-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
@@ -1961,13 +2010,24 @@ function drawPreview(t, cvOverride){
       c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
       drewMedia=true;
     } else {
-      // vidéo en plein seek/décodage : vignette du plan à la place → jamais d'écran noir
+      // lecteur pas encore prêt (rare grâce au pré-calage) : vignette du plan → jamais d'écran noir
       const img=planThumbImg(cl, target);
       if(img&&img.complete&&img.naturalWidth){
         const s=Math.max(W/img.naturalWidth,H/img.naturalHeight);
         c.drawImage(img,(W-img.naturalWidth*s)/2,(H-img.naturalHeight*s)/2,img.naturalWidth*s,img.naturalHeight*s);
         c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
         drewMedia=true;
+      }
+    }
+    // Pré-calage du plan SUIVANT sur son propre lecteur (en pause) → coupure nette garantie
+    const np=plans[pi+1]||plans[0];
+    const npi=plans[pi+1]? pi+1 : 0;
+    if(np&&np!==plan&&np.clip!==null&&clips[np.clip]){
+      const nv=poolEl(clips[np.clip], planAssign[npi]===1?1:0);
+      if(nv!==v){
+        if(!nv.paused) nv.pause();
+        const nt=nv.duration? (np.seek||0)%nv.duration : (np.seek||0);
+        if(nv.duration&&!nv.seeking&&Math.abs(nv.currentTime-nt)>0.25){ try{ nv.currentTime=nt; }catch(e){} }
       }
     }
   }
@@ -2032,6 +2092,7 @@ function drawAll(){ drawWaveSel(); drawTimeline(); drawPreview(curTime()); }
 function drawPlayhead(t){ $('#playhead').style.left=Math.max(0,(t-ext.start)*PXS())+'px'; }
 function drawTimeline(){
   if(!M) return;
+  assignPlanPlayers();
   const inner=$('#tlInner'); inner.style.width=(ext.dur*PXS())+'px';
   $$('#tlInner .beatmark, #tlInner .cutmark').forEach(e=>e.remove());
   beats.filter(b=>b>=ext.start&&b<=ext.start+ext.dur).forEach(b=>{
@@ -2225,7 +2286,8 @@ async function exportVideo(nameSuffix){
   document.addEventListener('visibilitychange',visWarn);
   toast('Export haute qualité en cours… ('+Math.round(ext.dur)+' s en temps réel — reste sur cet onglet)');
   stopAll();
-  wakeClips();
+  aiBar.set('Préparation des plans vidéo…',1);
+  try{ await warmUpPlans(ext.start); }catch(e){}
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer;
   srcNode.connect(audioCtx.destination); srcNode.connect(dest);
   srcNode.start(0,ext.start,ext.dur);
@@ -2364,7 +2426,7 @@ function seriePreviewToggle(i, cvs, btn){
   serieStopPreview();
   if(!buffer||exporting) return;
   try{ audioCtx.resume(); }catch(e){}
-  wakeClips();
+  warmUpPlans(ext.start);
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer; srcNode.connect(audioCtx.destination);
   srcNode.start(0, ext.start, ext.dur);
   srcNode.onended=()=>serieStopPreview();
