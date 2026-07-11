@@ -251,6 +251,23 @@ def _extract_period_end(sub_obj) -> datetime:
     return now_utc() + timedelta(days=SUBSCRIPTION_DAYS)
 
 
+def _stripe_sub_status(s) -> str:
+    if s.get("status") in ("active", "trialing"):
+        return "canceled" if s.get("cancel_at_period_end") else "active"
+    return "expired"
+
+
+async def _apply_stripe_sub_state(user_id: str, s):
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "subscription.status": _stripe_sub_status(s),
+            "subscription.current_period_end": iso(_extract_period_end(s)),
+            "subscription.synced_at": iso(now_utc()),
+        }},
+    )
+
+
 async def activate_subscription(user_id: str, customer_id: str = None, subscription_id: str = None, plan: str = "monthly"):
     days = SUBSCRIPTION_DAYS_YEAR if plan == "yearly" else SUBSCRIPTION_DAYS
     # Changement de plan (ex: Basic → PRO) : annule l'ancien abonnement Stripe
@@ -341,18 +358,7 @@ async def sync_stripe_subscription(user: dict) -> dict:
     except Exception as e:
         logger.warning("Stripe sync failed for %s: %s", sub_id, e)
         return user
-    if s.get("status") in ("active", "trialing"):
-        status = "canceled" if s.get("cancel_at_period_end") else "active"
-    else:
-        status = "expired"
-    await db.users.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {
-            "subscription.status": status,
-            "subscription.current_period_end": iso(_extract_period_end(s)),
-            "subscription.synced_at": iso(now_utc()),
-        }},
-    )
+    await _apply_stripe_sub_state(user["user_id"], s)
     return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
 
 
@@ -722,23 +728,171 @@ async def payment_status(session_id: str, user: dict = Depends(get_current_user)
     return {"status": session.status, "payment_status": session.payment_status}
 
 
+_WEBHOOK_SECRET_CACHE = None
+
+
+async def get_webhook_secret() -> str:
+    """Secret webhook : env prioritaire, sinon celui créé automatiquement (db.config)."""
+    global _WEBHOOK_SECRET_CACHE
+    env_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+    if env_secret:
+        return env_secret
+    if _WEBHOOK_SECRET_CACHE is None:
+        doc = await db.config.find_one({"_id": "stripe_webhook"})
+        _WEBHOOK_SECRET_CACHE = (doc or {}).get("secret") or ""
+    return _WEBHOOK_SECRET_CACHE
+
+
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
-    secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+    secret = await get_webhook_secret()
     if not secret:
-        # Pas de webhook configuré dans le dashboard Stripe : le renouvellement
-        # est synchronisé par polling (sync_stripe_subscription) — rien à faire ici.
+        # Pas de webhook configuré : le filet de sécurité est la réconciliation périodique.
         return {"received": True}
     payload = await request.body()
     try:
         event = stripe.Webhook.construct_event(payload, request.headers.get("Stripe-Signature", ""), secret)
     except Exception:
         raise HTTPException(status_code=400, detail="Webhook invalide")
-    if event["type"] == "checkout.session.completed":
-        obj = event["data"]["object"]
+    etype = event["type"]
+    obj = event["data"]["object"]
+    if etype == "checkout.session.completed":
         if obj.get("payment_status") == "paid":
             await _claim_and_activate(obj["id"], obj.get("customer"), obj.get("subscription"))
+    elif etype in ("customer.subscription.updated", "customer.subscription.deleted", "invoice.paid"):
+        sub_id = obj.get("id") if etype.startswith("customer.subscription") else obj.get("subscription")
+        if sub_id:
+            u = await db.users.find_one({"subscription.stripe_subscription_id": sub_id}, {"_id": 0, "user_id": 1})
+            if u:
+                try:
+                    s = obj if etype.startswith("customer.subscription") else await asyncio.to_thread(stripe.Subscription.retrieve, sub_id)
+                    await _apply_stripe_sub_state(u["user_id"], s)
+                except Exception:
+                    logger.exception("Webhook : sync abonnement %s impossible", sub_id)
     return {"received": True}
+
+
+# ---------------------------------------------------------------------------
+# Réconciliation : filet de sécurité pour les paiements jamais réclamés
+# (client parti avant le retour sur le site) + vérification des annulations
+# ---------------------------------------------------------------------------
+async def reconcile_payments() -> dict:
+    cutoff = iso(now_utc() - timedelta(days=30))
+    txs = await db.payment_transactions.find(
+        {"processed": {"$ne": True}, "created_at": {"$gt": cutoff}},
+        {"_id": 0, "session_id": 1, "email": 1},
+    ).to_list(500)
+    activated, emails = 0, []
+    for tx in txs:
+        try:
+            session = await asyncio.to_thread(stripe.checkout.Session.retrieve, tx["session_id"])
+        except Exception as e:
+            logger.warning("Réconciliation session %s : %s", tx["session_id"], e)
+            continue
+        if session.payment_status == "paid":
+            await _claim_and_activate(tx["session_id"], session.get("customer"), session.get("subscription"))
+            activated += 1
+            emails.append(tx.get("email"))
+            logger.info("Réconciliation : accès activé rétroactivement pour %s (session %s)", tx.get("email"), tx["session_id"])
+        elif session.status == "expired":
+            await db.payment_transactions.update_one(
+                {"session_id": tx["session_id"]},
+                {"$set": {"processed": True, "status": "expired",
+                          "payment_status": session.payment_status, "updated_at": iso(now_utc())}},
+            )
+    return {"checked": len(txs), "activated": activated, "activated_emails": emails}
+
+
+async def reconcile_subscriptions(force: bool = False) -> dict:
+    users = await db.users.find(
+        {"subscription.stripe_subscription_id": {"$exists": True, "$nin": [None, ""]}},
+        {"_id": 0, "user_id": 1, "email": 1, "subscription": 1},
+    ).to_list(1000)
+    checked, changes = 0, []
+    for u in users:
+        sub = u.get("subscription") or {}
+        synced = parse_dt(sub.get("synced_at"))
+        if not force and synced and (now_utc() - synced) < timedelta(hours=12):
+            continue
+        checked += 1
+        try:
+            s = await asyncio.to_thread(stripe.Subscription.retrieve, sub["stripe_subscription_id"])
+        except Exception as e:
+            logger.warning("Réconciliation abonnement %s : %s", sub.get("stripe_subscription_id"), e)
+            continue
+        new_status = _stripe_sub_status(s)
+        await _apply_stripe_sub_state(u["user_id"], s)
+        if new_status != sub.get("status"):
+            changes.append({"email": u.get("email"), "avant": sub.get("status"), "apres": new_status})
+            logger.info("Réconciliation : %s %s → %s", u.get("email"), sub.get("status"), new_status)
+    return {"checked": checked, "status_changed": len(changes), "changes": changes}
+
+
+async def _payments_watchdog():
+    await asyncio.sleep(15)
+    while True:
+        try:
+            r = await reconcile_payments()
+            if r["activated"]:
+                logger.info("Watchdog paiements : %s", r)
+            await reconcile_subscriptions()
+        except Exception:
+            logger.exception("Watchdog paiements en erreur")
+        await asyncio.sleep(600)
+
+
+@api_router.post("/admin/payments/reconcile")
+async def admin_payments_reconcile(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    payments = await reconcile_payments()
+    subscriptions = await reconcile_subscriptions(force=True)
+    return {"payments": payments, "subscriptions": subscriptions}
+
+
+@api_router.get("/admin/payments/webhook")
+async def admin_webhook_status(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    if os.environ.get("STRIPE_WEBHOOK_SECRET"):
+        return {"configured": True, "source": "env", "url": None}
+    doc = await db.config.find_one({"_id": "stripe_webhook"})
+    return {"configured": bool(doc and doc.get("secret")), "source": "auto", "url": (doc or {}).get("url")}
+
+
+@api_router.post("/admin/payments/webhook-setup")
+async def admin_webhook_setup(request: Request, user: dict = Depends(get_current_user)):
+    """Crée le webhook Stripe automatiquement pour le domaine courant (secret stocké en base)."""
+    await require_admin(user)
+    global _WEBHOOK_SECRET_CACHE
+    host = (request.headers.get("x-forwarded-host") or request.url.hostname or "").split(",")[0].strip()
+    if not host:
+        raise HTTPException(status_code=400, detail="Hôte introuvable")
+    url = f"https://{host}/api/webhook/stripe"
+    doc = await db.config.find_one({"_id": "stripe_webhook"})
+    if doc and doc.get("url") == url and doc.get("secret"):
+        return {"configured": True, "url": url, "already": True}
+    if doc and doc.get("endpoint_id"):
+        try:
+            await asyncio.to_thread(stripe.WebhookEndpoint.delete, doc["endpoint_id"])
+        except Exception:
+            pass
+    try:
+        ep = await asyncio.to_thread(lambda: stripe.WebhookEndpoint.create(
+            url=url,
+            enabled_events=["checkout.session.completed", "customer.subscription.updated",
+                            "customer.subscription.deleted", "invoice.paid"],
+            description="BEATCUT — créé automatiquement",
+        ))
+    except Exception as e:
+        logger.error("Création webhook Stripe : %s", e)
+        raise HTTPException(status_code=502, detail="Création du webhook Stripe impossible — réessaie") from e
+    await db.config.update_one(
+        {"_id": "stripe_webhook"},
+        {"$set": {"secret": ep["secret"], "url": url, "endpoint_id": ep["id"], "created_at": iso(now_utc())}},
+        upsert=True,
+    )
+    _WEBHOOK_SECRET_CACHE = ep["secret"]
+    logger.info("Webhook Stripe créé : %s", url)
+    return {"configured": True, "url": url, "already": False}
 
 
 # ---------------------------------------------------------------------------
@@ -1713,6 +1867,7 @@ async def startup():
                 "created_at": iso(now_utc()),
             })
     asyncio.create_task(_reengage_loop())
+    asyncio.create_task(_payments_watchdog())
 
 
 app.include_router(api_router)

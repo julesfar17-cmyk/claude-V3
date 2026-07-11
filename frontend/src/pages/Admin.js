@@ -16,21 +16,51 @@ export default function Admin() {
   const [newCode, setNewCode] = useState("");
   const [newDays, setNewDays] = useState(30);
   const [newMaxUses, setNewMaxUses] = useState("");
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileResult, setReconcileResult] = useState(null);
+  const [webhook, setWebhook] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [{ data }, { data: usersData }] = await Promise.all([
+      const [{ data }, { data: usersData }, { data: wh }] = await Promise.all([
         api.get("/admin/stats"),
         api.get("/admin/users"),
+        api.get("/admin/payments/webhook"),
       ]);
       setStats(data);
       setAllUsers(usersData);
+      setWebhook(wh);
     } catch (e) {
       toast.error(formatApiErrorDetail(e.response?.data?.detail));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const reconcile = async () => {
+    setReconciling(true);
+    try {
+      const { data } = await api.post("/admin/payments/reconcile");
+      setReconcileResult(data);
+      const n = data.payments.activated;
+      toast.success(n ? `${n} accès activé(s) rétroactivement !` : "Aucun paiement en attente — tout est à jour");
+      load();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail));
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  const setupWebhook = async () => {
+    try {
+      const { data } = await api.post("/admin/payments/webhook-setup");
+      setWebhook(data);
+      toast.success(data.already ? "Webhook déjà configuré ✓" : "Webhook Stripe créé — activations instantanées ✓");
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail));
+    }
+  };
 
   const copyAllEmails = () => {
     if (!allUsers?.users?.length) return;
@@ -91,6 +121,52 @@ export default function Admin() {
               <Stat label="Séparations / mois" value={fmt(stats.separations_this_month)} />
               <Stat label="Coût Replicate estimé" value={`${stats.estimated_separation_cost_eur.toFixed(2)} €`} />
             </div>
+
+            <section className="bg-card border border-border p-6 sm:p-8 mb-8">
+              <h2 className="font-display text-lg font-bold mb-2">Paiements &amp; abonnements</h2>
+              <p className="text-xs text-muted-foreground mb-4 max-w-2xl">
+                La réconciliation active les paiements Stripe encaissés mais jamais réclamés (client parti avant le
+                retour sur le site) et vérifie que les annulations sont bien effectives. Elle tourne aussi
+                automatiquement toutes les 10 minutes. Le webhook Stripe rend les activations instantanées.
+              </p>
+              <div className="flex flex-wrap gap-3 items-center">
+                <button
+                  onClick={reconcile}
+                  disabled={reconciling}
+                  data-testid="admin-reconcile-button"
+                  className="bg-primary text-white font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
+                >
+                  {reconciling ? "Vérification Stripe…" : "🔁 Réconcilier maintenant"}
+                </button>
+                <button
+                  onClick={setupWebhook}
+                  data-testid="admin-webhook-setup-button"
+                  className="border border-border px-4 py-2.5 text-xs font-osd tracking-wider hover:border-foreground transition-colors"
+                >
+                  {webhook?.configured ? "WEBHOOK STRIPE ✓ ACTIF" : "⚡ ACTIVER LE WEBHOOK STRIPE"}
+                </button>
+              </div>
+              {webhook?.url && (
+                <p className="mt-2 text-xs text-muted-foreground font-osd" data-testid="admin-webhook-url">{webhook.url}</p>
+              )}
+              {reconcileResult && (
+                <div className="mt-4 text-sm space-y-1" data-testid="admin-reconcile-result">
+                  <p>
+                    Paiements vérifiés : {reconcileResult.payments.checked} —{" "}
+                    <span className="text-primary font-bold">{reconcileResult.payments.activated} accès activé(s)</span>
+                    {reconcileResult.payments.activated_emails?.length > 0 &&
+                      ` (${reconcileResult.payments.activated_emails.join(", ")})`}
+                  </p>
+                  <p>
+                    Abonnements vérifiés : {reconcileResult.subscriptions.checked} —{" "}
+                    {reconcileResult.subscriptions.status_changed} statut(s) mis à jour
+                    {(reconcileResult.subscriptions.changes || [])
+                      .map((c) => ` · ${c.email} : ${c.avant || "?"} → ${c.apres}`)
+                      .join("")}
+                  </p>
+                </div>
+              )}
+            </section>
 
             <section className="bg-card border border-border p-6 sm:p-8 mb-8">
               <h2 className="font-display text-lg font-bold mb-4">Créer un code promo</h2>
