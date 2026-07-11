@@ -234,3 +234,12 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ `_stripe_revenue_stats()` : calcul direct depuis Stripe (source de vérité), cache 10 min — `stripe_mrr` (somme des abonnements actifs avec vrais montants, annuels prorata /12, coupons appliqués), `stripe_active_subs`, `revenue_this_month` + `revenue_total` (charges succeeded − remboursements)
 - ✅ /admin : cartes « MRR RÉEL (STRIPE) », « ENCAISSÉ CE MOIS », « ENCAISSÉ TOTAL », « Abos Stripe actifs » (fallback sur le MRR estimé si Stripe indisponible)
 - ✅ Vérifié en preview (même compte Stripe LIVE que la prod) : MRR réel 317,97 €, 29 abos actifs, 408,72 € encaissés — contre 0 € avec l'ancien calcul local. Confirme au passage l'ampleur du bug des accès non délivrés (29 abos Stripe vs 0 liés en base preview)
+
+## Implémenté (11 juillet 2026) — Transcodage externalisé via Mux (fix des 10 min de transcodage en prod)
+- Contexte : en prod (CPU limité), le transcodage FFmpeg local prenait ~10 min/vidéo. Choix user : externaliser avec Mux
+- ✅ `_mux_transcode()` dans server.py : Direct Upload Mux (PUT serveur→Mux) → asset `video_quality: basic` (encodage GRATUIT, fallback `encoding_tier: baseline` si 400) + `max_resolution_tier: 1080p` + `static_renditions: highest` → poll asset ready + rendition MP4 → téléchargement `stream.mux.com/{playback_id}/highest.mp4` → **suppression de l'asset Mux** (finally, zéro stockage récurrent)
+- ✅ `_transcode_media` : Mux d'abord, **repli FFmpeg local automatique** si Mux indisponible/échec. Tout le reste inchangé (statuts, badge studio, migration, import Pexels passent par le même chemin)
+- ✅ Clés dans backend/.env : `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` (fournies par l'user)
+- ✅ Testé e2e : 4K portrait 50 Mo → 1080x1920 H.264+AAC 2,1 Mo en ~35 s ; asset supprimé (204) ; 0 asset restant sur le compte Mux
+- ⚠️ Compromis : keyframes Mux ~5 s (vs 0,5 s FFmpeg) — pas de contrôle GOP chez Mux. Le moteur double-lecteur pré-cale les seeks en avance → devrait rester fluide ; à valider par l'user. Option de repli si micro-lags : rendition 720p ou re-densification locale
+- ⚠️ Nécessite un REDÉPLOIEMENT (+ les 2 clés Mux dans les env vars de prod si les .env ne sont pas repris automatiquement)

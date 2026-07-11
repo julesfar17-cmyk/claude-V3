@@ -1367,8 +1367,100 @@ async def _ffmpeg_transcode(src_bytes: bytes, suffix: str):
             return f.read()
 
 
+# --- Mux : transcodage externalisé (encodage "basic" gratuit, asset supprimé après) ---
+MUX_TOKEN_ID = os.environ.get('MUX_TOKEN_ID', '')
+MUX_TOKEN_SECRET = os.environ.get('MUX_TOKEN_SECRET', '')
+MUX_API = "https://api.mux.com/video/v1"
+
+
+async def _mux_transcode(src_bytes: bytes):
+    """Upload vers Mux → asset H.264 1080p max → télécharge le MP4 → supprime l'asset.
+    Retourne les octets MP4, ou None si échec (repli FFmpeg local)."""
+    if not MUX_TOKEN_ID or not MUX_TOKEN_SECRET:
+        return None
+    asset_id = None
+    auth = (MUX_TOKEN_ID, MUX_TOKEN_SECRET)
+    try:
+        async with httpx.AsyncClient(auth=auth, timeout=120) as cx:
+            settings = {
+                "playback_policies": ["public"],
+                "video_quality": "basic",
+                "max_resolution_tier": "1080p",
+                "static_renditions": [{"resolution": "highest"}],
+            }
+            r = await cx.post(f"{MUX_API}/uploads", json={"cors_origin": "*", "new_asset_settings": settings})
+            if r.status_code == 400 and "video_quality" in r.text:
+                settings.pop("video_quality")
+                settings["encoding_tier"] = "baseline"
+                r = await cx.post(f"{MUX_API}/uploads", json={"cors_origin": "*", "new_asset_settings": settings})
+            if r.status_code >= 300:
+                logger.warning("Mux upload create %s : %s", r.status_code, r.text[:300])
+                return None
+            up = r.json()["data"]
+            # Envoi du fichier (client sans auth : l'URL d'upload est déjà signée)
+            async with httpx.AsyncClient(timeout=300) as plain:
+                pr = await plain.put(up["url"], content=src_bytes,
+                                     headers={"Content-Type": "application/octet-stream"})
+                if pr.status_code >= 300:
+                    logger.warning("Mux upload PUT %s", pr.status_code)
+                    return None
+            # Upload → asset_id
+            for _ in range(60):
+                r = await cx.get(f"{MUX_API}/uploads/{up['id']}")
+                d = r.json().get("data") or {}
+                asset_id = d.get("asset_id")
+                if asset_id:
+                    break
+                if d.get("status") in ("errored", "cancelled", "timed_out"):
+                    logger.warning("Mux upload status : %s", d.get("status"))
+                    return None
+                await asyncio.sleep(2)
+            if not asset_id:
+                return None
+            # Asset prêt + rendition MP4 prête
+            mp4_name = playback_id = None
+            for _ in range(200):
+                r = await cx.get(f"{MUX_API}/assets/{asset_id}")
+                a = r.json().get("data") or {}
+                if a.get("status") == "errored":
+                    logger.warning("Mux asset errored : %s", a.get("errors"))
+                    return None
+                if a.get("status") == "ready":
+                    pids = a.get("playback_ids") or []
+                    playback_id = pids[0]["id"] if pids else None
+                    files = ((a.get("static_renditions") or {}).get("files")) or []
+                    ready = [f for f in files if str(f.get("name", "")).endswith(".mp4")
+                             and f.get("status", "ready") in ("ready", "skipped")]
+                    ready = [f for f in ready if f.get("status", "ready") == "ready"]
+                    if ready and playback_id:
+                        mp4_name = ready[0]["name"]
+                        break
+                await asyncio.sleep(3)
+            if not (mp4_name and playback_id):
+                logger.warning("Mux : rendition MP4 non prête (asset %s)", asset_id)
+                return None
+            async with httpx.AsyncClient(timeout=300, follow_redirects=True) as plain:
+                dl = await plain.get(f"https://stream.mux.com/{playback_id}/{mp4_name}")
+                if dl.status_code >= 300 or not dl.content:
+                    logger.warning("Mux download %s", dl.status_code)
+                    return None
+                logger.info("Transcodage Mux OK (asset %s) : %d → %d octets", asset_id, len(src_bytes), len(dl.content))
+                return dl.content
+    except Exception:
+        logger.exception("Transcodage Mux échoué")
+        return None
+    finally:
+        if asset_id:
+            try:
+                async with httpx.AsyncClient(auth=auth, timeout=60) as cx:
+                    await cx.delete(f"{MUX_API}/assets/{asset_id}")
+            except Exception:
+                logger.warning("Suppression asset Mux %s impossible (à nettoyer)", asset_id)
+
+
 async def _transcode_media(oid):
-    """Remplace le fichier GridFS par sa version optimisée (même _id conservé)."""
+    """Remplace le fichier GridFS par sa version optimisée (même _id conservé).
+    Transcodage via Mux (rapide, externalisé) avec repli FFmpeg local."""
     async with TRANSCODE_SEM:
         doc = await db["media.files"].find_one({"_id": oid})
         if not doc:
@@ -1378,7 +1470,9 @@ async def _transcode_media(oid):
             grid_out = await media_fs.open_download_stream(oid)
             raw = await grid_out.read()
             suffix = os.path.splitext(doc.get("filename") or "")[1]
-            out = await _ffmpeg_transcode(raw, suffix)
+            out = await _mux_transcode(raw)
+            if not out:
+                out = await _ffmpeg_transcode(raw, suffix)
             if out:
                 fname = os.path.splitext(doc.get("filename") or "media")[0] + ".mp4"
                 new_meta = {**meta, "content_type": "video/mp4", "transcoded": True, "processing": False}
