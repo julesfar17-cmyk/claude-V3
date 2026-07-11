@@ -1406,7 +1406,12 @@ function addClip(file, meta={}){
       let ok=false;
       try{
         const s=await API.mediaStatus(id);
-        if(s && s.transcoded){ swapClipMedia(clip, await API.fetchMedia(id, clip.name)); ok=true; }
+        if(s && s.transcoded){
+          swapClipMedia(clip, await API.fetchMedia(id, clip.name)); ok=true;
+          // régénère les vignettes depuis la version optimisée (l'original HEVC peut être indécodable)
+          clip.thumbs=[];
+          makeThumbs(clip, ()=>{ renderClips(); drawTimeline(); });
+        }
         else if(s && s.failed) toast('⚠ Optimisation impossible pour cette vidéo — elle peut saccader à la lecture');
       }catch(e){}
       clip._optimizing=false; renderClips(); dirty();
@@ -1478,7 +1483,11 @@ function openPicker(ci,e){
   pickCi=ci;
   const c=clips[ci], pop=$('#pickPop'), v=$('#pickVid');
   v.src=c.url; v.currentTime=0;
-  v.addEventListener('loadedmetadata',()=>{ $('#pickRange').max=Math.max(0.1,(v.duration||10)-0.3); },{once:true});
+  v.addEventListener('loadedmetadata',()=>{
+    $('#pickRange').max=Math.max(0.1,(v.duration||10)-0.3);
+    // iOS Safari : force le rendu de la première image (sinon cadre noir)
+    const p=v.play(); if(p&&p.then) p.then(()=>v.pause()).catch(()=>{});
+  },{once:true});
   pop.classList.add('show');
   pop.style.left=Math.min(e.clientX, innerWidth-270)+'px';
   pop.style.top=Math.max(10, Math.min(e.clientY-120, innerHeight-330))+'px';
@@ -1502,6 +1511,7 @@ document.addEventListener('click',()=>{ $('#pickPop').classList.remove('show');
   if(pendingPick){ pendingPick=null; $$('.subclip').forEach(x=>x.classList.remove('sel')); } });
 function makeThumbAt(clip, time, index, done){
   const v=document.createElement('video'); v.src=clip.url; v.muted=true; v.preload='auto';
+  v.playsInline=true; v.setAttribute('playsinline','');
   const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
   const ctx=cvs.getContext('2d');
   v.addEventListener('seeked',()=>{
@@ -1513,11 +1523,18 @@ function makeThumbAt(clip, time, index, done){
     }catch(e){}
     done&&done();
   },{once:true});
-  v.addEventListener('loadedmetadata',()=>{ v.currentTime=Math.min(time,(v.duration||1)-0.1); },{once:true});
+  v.addEventListener('loadedmetadata',()=>{
+    const go=()=>{ try{ v.currentTime=Math.min(time,(v.duration||1)-0.1); }catch(e){} };
+    const p=v.play();
+    if(p&&p.then) p.then(()=>{ v.pause(); go(); }).catch(go);
+    else go();
+  },{once:true});
+  v.load();
 }
 function makeThumbs(clip, done){
   // capture une vignette par sous-plan (timeline, choix, et secours plein écran → taille généreuse)
   const v=document.createElement('video'); v.src=clip.url; v.muted=true; v.preload='auto';
+  v.playsInline=true; v.setAttribute('playsinline','');
   const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
   const ctx=cvs.getContext('2d');
   let i=0;
@@ -1533,7 +1550,13 @@ function makeThumbs(clip, done){
     }catch(e){}
     i++; grab();
   });
-  v.addEventListener('loadedmetadata',grab,{once:true});
+  // iOS Safari : une frame n'est dessinable qu'après un play() (muet + playsinline = autorisé)
+  v.addEventListener('loadedmetadata',()=>{
+    const p=v.play();
+    if(p&&p.then) p.then(()=>{ v.pause(); grab(); }).catch(grab);
+    else grab();
+  },{once:true});
+  v.load();
 }
 function autoAssign(){
   // répartit aléatoirement les sous-plans disponibles sur les plans non verrouillés vides
@@ -2382,14 +2405,20 @@ async function exportVideo(nameSuffix){
   if(await offlineSupported()) return exportOffline(nameSuffix);
   return exportRealtime(nameSuffix);
 }
+let _avcCodec=null;
+const _AVC_TRY=['avc1.640033','avc1.640028','avc1.4d4028','avc1.42e01f'];
 async function offlineSupported(){
   try{
     if(!window.VideoEncoder||!window.AudioEncoder||!window.Mp4Muxer||!window.VideoFrame||!window.AudioData) return false;
     const f=FORMATS[(M&&M.format)||'916'];
     const nch=Math.min(2,buffer.numberOfChannels||1);
-    const v=await VideoEncoder.isConfigSupported({codec:'avc1.640033',width:f[0],height:f[1],bitrate:12000000,framerate:30});
+    _avcCodec=null;
+    for(const c of _AVC_TRY){
+      try{ const r=await VideoEncoder.isConfigSupported({codec:c,width:f[0],height:f[1],bitrate:12000000,framerate:30}); if(r.supported){ _avcCodec=c; break; } }catch(e){}
+    }
+    if(!_avcCodec) return false;
     const a=await AudioEncoder.isConfigSupported({codec:'mp4a.40.2',sampleRate:buffer.sampleRate,numberOfChannels:nch,bitrate:192000});
-    return !!(v.supported&&a.supported);
+    return !!a.supported;
   }catch(e){ return false; }
 }
 /* Cale le lecteur du plan actif EXACTEMENT sur l'image voulue, et attend qu'elle soit décodée */
@@ -2428,7 +2457,7 @@ async function exportOffline(nameSuffix){
     const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},audio:{codec:'aac',numberOfChannels:nch,sampleRate:sr},fastStart:'in-memory'});
     let encErr=null;
     const venc=new VideoEncoder({output:(ch,m)=>muxer.addVideoChunk(ch,m),error:e=>{encErr=e;}});
-    venc.configure({codec:'avc1.640033',width:W,height:H,bitrate:12000000,framerate:fps});
+    venc.configure({codec:_avcCodec||'avc1.640033',width:W,height:H,bitrate:12000000,framerate:fps});
     const aenc=new AudioEncoder({output:(ch,m)=>muxer.addAudioChunk(ch,m),error:e=>{encErr=e;}});
     aenc.configure({codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:nch,bitrate:192000});
     // — Audio : extrait encodé en AAC
@@ -2482,12 +2511,16 @@ async function exportRealtime(nameSuffix){
   const canvas=$('#preview');
   const fmt=FORMATS[(M&&M.format)||'916'];
   canvas.width=fmt[0]; canvas.height=fmt[1]; fitPreview();   // pleine résolution le temps de l'export
+  const isSafari=/^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
   const dest=audioCtx.createMediaStreamDestination();
-  const stream=canvas.captureStream(30);
-  dest.stream.getAudioTracks().forEach(tr=>stream.addTrack(tr));
+  // Flux composite construit explicitement : sur Safari, addTrack sur le flux canvas perd l'audio
+  const stream=new MediaStream([
+    ...canvas.captureStream(30).getVideoTracks(),
+    ...dest.stream.getAudioTracks(),
+  ]);
   // construction de l'enregistreur avec repli : certains navigateurs annoncent un
   // codec puis échouent à la création — on essaie chaque option pour de vrai
-  const mimes=['video/mp4;codecs=avc1.640028,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm'];
+  const mimes=['video/mp4;codecs=avc1.640028,mp4a.40.2','video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9,opus','video/webm'];
   let rec=null, mime='';
   for(const mm of mimes){
     if(!MediaRecorder.isTypeSupported(mm)) continue;
@@ -2540,7 +2573,8 @@ async function exportRealtime(nameSuffix){
   srcNode.connect(audioCtx.destination); srcNode.connect(dest);
   srcNode.start(0,ext.start,ext.dur);
   startedAt=audioCtx.currentTime; startOff=ext.start; playing=true;
-  rec.start(1000);                                          // chunks réguliers : rien ne se perd
+  if(isSafari) rec.start();                                 // Safari : le timeslice fragmente mal le MP4 (son perdu)
+  else rec.start(1000);                                     // chunks réguliers : rien ne se perd
   aiBar.set('Export vidéo… 0 s / '+Math.round(ext.dur)+' s', 2);
   expTick=setInterval(()=>{
     const el=(performance.now()-startTs)/1000;
