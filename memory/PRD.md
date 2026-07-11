@@ -243,3 +243,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Testé e2e : 4K portrait 50 Mo → 1080x1920 H.264+AAC 2,1 Mo en ~35 s ; asset supprimé (204) ; 0 asset restant sur le compte Mux
 - ⚠️ Compromis : keyframes Mux ~5 s (vs 0,5 s FFmpeg) — pas de contrôle GOP chez Mux. Le moteur double-lecteur pré-cale les seeks en avance → devrait rester fluide ; à valider par l'user. Option de repli si micro-lags : rendition 720p ou re-densification locale
 - ⚠️ Nécessite un REDÉPLOIEMENT (+ les 2 clés Mux dans les env vars de prod si les .env ne sont pas repris automatiquement)
+
+## Corrigé (12 juillet 2026) — Bugs iPhone Safari : export sans son, vignettes vides, export lent
+- ✅ **Export sans son (Safari)** : flux MediaRecorder construit via `new MediaStream([videoTracks, audioTracks])` (addTrack sur le flux canvas fait perdre l'audio sur Safari) + mime `video/mp4;codecs=h264,aac` ajouté + `rec.start()` SANS timeslice sur Safari (le timeslice fragmente mal le MP4)
+- ✅ **Vignettes vides** : (1) régénération des vignettes après `swapClipMedia` (elles étaient générées depuis l'original HEVC .mov indécodable puis jamais refaites) ; (2) `makeThumbs`/`makeThumbAt` : playsinline + nudge `play().then(pause)` + `v.load()` (iOS ne dessine pas les frames d'une vidéo jamais jouée) ; (3) même nudge dans `openPicker` (#pickVid)
+- ✅ **Export lent (Safari)** : négociation multi-codecs AVC (`_avcCodec` : 640033→640028→4d4028→42e01f) dans offlineSupported/exportOffline → l'export rapide WebCodecs s'active sur Safari 26+ (AudioEncoder dispo depuis Safari 26). Sur iOS < 26 : reste en temps réel (limite navigateur, AudioEncoder absent — documenté)
+- ✅ Non-régression Chrome : testing agent iteration_8 = 100 %, 0 erreur JS (export realtime 879 Ko téléchargé, vignettes webm régénérées, badge optimisation OK avec Mux ~23 s)
+- ⚠️ Validation Safari iPhone par l'USER requise (impossible en headless) + REDÉPLOIEMENT nécessaire
+- Notes testeur : env headless sans codecs h264 → tester les vignettes avec des WEBM (voir context_for_next_testing_agent d'iteration_8)

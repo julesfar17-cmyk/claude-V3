@@ -1482,12 +1482,12 @@ let pendingPick=null;
 function openPicker(ci,e){
   pickCi=ci;
   const c=clips[ci], pop=$('#pickPop'), v=$('#pickVid');
-  v.src=c.url; v.currentTime=0;
   v.addEventListener('loadedmetadata',()=>{
     $('#pickRange').max=Math.max(0.1,(v.duration||10)-0.3);
     // iOS Safari : force le rendu de la première image (sinon cadre noir)
     const p=v.play(); if(p&&p.then) p.then(()=>v.pause()).catch(()=>{});
   },{once:true});
+  v.src=c.url; v.currentTime=0;
   pop.classList.add('show');
   pop.style.left=Math.min(e.clientX, innerWidth-270)+'px';
   pop.style.top=Math.max(10, Math.min(e.clientY-120, innerHeight-330))+'px';
@@ -2561,7 +2561,7 @@ async function exportRealtime(nameSuffix){
     if(API.plan!=='pro' && API.quota.left>0) API.quota.left--;
     DB.exports++; M.videos=(M.videos||0)+1; dirty();
     updateQuotaUI();
-    finish('Vidéo exportée en '+fmt[0]+'×'+fmt[1]+' ✓', true);
+    finish('Vidéo exportée en '+fmt[0]+'×'+fmt[1]+' avec le son ✓', true);
   };
   const visWarn=()=>{ if(document.hidden) toast('⚠ Reste sur cet onglet : en arrière-plan, la vidéo se fige'); };
   document.addEventListener('visibilitychange',visWarn);
