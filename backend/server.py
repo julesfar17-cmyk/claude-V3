@@ -1678,6 +1678,71 @@ async def delete_project(project_id: str, user: dict = Depends(get_current_user)
     return {"message": "Projet supprimé", "media_deleted": deleted_media}
 
 
+_STRIPE_STATS_CACHE = {"at": None, "data": None}
+
+
+async def _stripe_revenue_stats() -> dict:
+    """MRR réel + encaissements calculés directement depuis Stripe (source de vérité)."""
+    now = now_utc()
+    if _STRIPE_STATS_CACHE["data"] and (now - _STRIPE_STATS_CACHE["at"]) < timedelta(minutes=10):
+        return _STRIPE_STATS_CACHE["data"]
+
+    def compute():
+        mrr_cents = 0.0
+        active_count = 0
+        for s in stripe.Subscription.list(status="active", limit=100).auto_paging_iter():
+            active_count += 1
+            sub_monthly = 0.0
+            for it in ((s.get("items") or {}).get("data") or []):
+                price = it.get("price") or {}
+                amount = float((price.get("unit_amount") or 0) * (it.get("quantity") or 1))
+                rec = price.get("recurring") or {}
+                interval, cnt = rec.get("interval"), rec.get("interval_count") or 1
+                if interval == "year":
+                    amount /= 12 * cnt
+                elif interval == "month":
+                    amount /= cnt
+                elif interval == "week":
+                    amount = amount * 4.345 / cnt
+                elif interval == "day":
+                    amount = amount * 30.44 / cnt
+                sub_monthly += amount
+            coupon = ((s.get("discount") or {}).get("coupon") or {})
+            if coupon.get("percent_off"):
+                sub_monthly *= 1 - coupon["percent_off"] / 100.0
+            elif coupon.get("amount_off"):
+                sub_monthly = max(0.0, sub_monthly - coupon["amount_off"])
+            mrr_cents += sub_monthly
+        month_start = int(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp())
+        total_cents = month_cents = 0
+        n = 0
+        for ch in stripe.Charge.list(limit=100).auto_paging_iter():
+            n += 1
+            if n > 5000:
+                break
+            if ch.get("status") != "succeeded":
+                continue
+            net = (ch.get("amount") or 0) - (ch.get("amount_refunded") or 0)
+            total_cents += net
+            if (ch.get("created") or 0) >= month_start:
+                month_cents += net
+        return {
+            "stripe_mrr": round(mrr_cents / 100.0, 2),
+            "stripe_active_subs": active_count,
+            "revenue_this_month": round(month_cents / 100.0, 2),
+            "revenue_total": round(total_cents / 100.0, 2),
+        }
+
+    try:
+        data = await asyncio.to_thread(compute)
+    except Exception as e:
+        logger.warning("Stats Stripe indisponibles : %s", e)
+        return {"stripe_mrr": None, "stripe_active_subs": None,
+                "revenue_this_month": None, "revenue_total": None}
+    _STRIPE_STATS_CACHE.update({"at": now, "data": data})
+    return data
+
+
 @api_router.get("/admin/stats")
 async def admin_stats(user: dict = Depends(get_current_user)):
     await require_admin(user)
@@ -1708,6 +1773,7 @@ async def admin_stats(user: dict = Depends(get_current_user)):
     sep_count = await db.separation_logs.count_documents({"created_at": {"$gt": start_month}})
     est_sep_cost = round(sep_count * 0.015, 2)
     promos = await db.promo_codes.find({}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    stripe_stats = await _stripe_revenue_stats()
     return {
         "total_users": total_users,
         "paid_users": paid_users,
@@ -1720,6 +1786,7 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "basic_subscribers": basic,
         "yearly_subscribers": yearly,
         "mrr": mrr,
+        **stripe_stats,
         "separations_this_month": sep_count,
         "estimated_separation_cost_eur": est_sep_cost,
         "promo_codes": promos,

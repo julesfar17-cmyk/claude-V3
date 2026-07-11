@@ -228,3 +228,9 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Refactor : `_stripe_sub_status()` + `_apply_stripe_sub_state()` partagés (sync polling + webhook + réconciliation)
 - ✅ Testé en preview : reconcile 4 sessions vérifiées (0 payées — normal, les vrais clients sont en base PROD) ; webhook créé sur le compte Stripe LIVE, signature vérifiée (400 payload non signé), puis endpoint preview SUPPRIMÉ du compte Stripe (nettoyage)
 - ⚠️ **ACTIONS PROD après redéploiement** : (1) la réconciliation tourne toute seule dès le démarrage → clients réparés automatiquement ; (2) admin → « Réconcilier maintenant » pour vérifier immédiatement + voir les emails réparés ; (3) admin → « ⚡ Activer le webhook Stripe » UNE FOIS depuis beat-cut.com
+
+## Corrigé (11 juillet 2026) — MRR admin juste vis-à-vis des vrais paiements
+- Cause : le MRR était théorique (abonnés actifs en base locale × prix catalogue). Base locale incomplète (paiements non réclamés) → MRR faux
+- ✅ `_stripe_revenue_stats()` : calcul direct depuis Stripe (source de vérité), cache 10 min — `stripe_mrr` (somme des abonnements actifs avec vrais montants, annuels prorata /12, coupons appliqués), `stripe_active_subs`, `revenue_this_month` + `revenue_total` (charges succeeded − remboursements)
+- ✅ /admin : cartes « MRR RÉEL (STRIPE) », « ENCAISSÉ CE MOIS », « ENCAISSÉ TOTAL », « Abos Stripe actifs » (fallback sur le MRR estimé si Stripe indisponible)
+- ✅ Vérifié en preview (même compte Stripe LIVE que la prod) : MRR réel 317,97 €, 29 abos actifs, 408,72 € encaissés — contre 0 € avec l'ancien calcul local. Confirme au passage l'ampleur du bug des accès non délivrés (29 abos Stripe vs 0 liés en base preview)
