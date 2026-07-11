@@ -174,6 +174,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 .clip-grid{display:block;min-width:0}
 .clip-box{margin-top:10px;border:1px solid var(--line);border-radius:var(--r-s);padding:7px;background:var(--panel-2);min-width:0;position:relative}
 .clip-opt{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:rgba(10,10,14,.62);backdrop-filter:blur(2px);border-radius:inherit;color:#ffd166;font-size:12px;font-weight:600;text-align:center;padding:4px}
+.clip-opt-chip{position:absolute;top:6px;right:6px;z-index:5;pointer-events:none;background:rgba(10,10,14,.82);border:1px solid rgba(255,209,102,.4);color:#ffd166;font-size:10px;font-weight:600;padding:3px 8px;border-radius:99px;white-space:nowrap}
 #loadOverlay{position:fixed;inset:0;z-index:9999;display:none;place-items:center;background:rgba(8,8,12,.82);backdrop-filter:blur(6px)}
 #loadOverlay.show{display:grid}
 #loadOverlay .box{width:min(420px,86vw);text-align:center}
@@ -723,11 +724,23 @@ const API = {
   /* Médias : stockage GridFS serveur — cross-device.
      Les vidéos sont TRANSCODÉES côté serveur (H.264 1080p, keyframes 0.5s) :
      on attend la fin de l'optimisation avant de rendre le média « prêt ». */
-  async uploadMedia(file){
-    const fd=new FormData(); fd.append('file', file);
-    const r=await fetch('/api/media/upload',{method:'POST',credentials:'include',body:fd});
-    if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||'Upload impossible'); }
-    return this._pollMedia(await r.json());
+  async uploadMedia(file, onProgress){
+    const j=await new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();
+      xhr.open('POST','/api/media/upload');
+      xhr.withCredentials=true;
+      xhr.upload.onprogress=e=>{ if(onProgress&&e.lengthComputable) onProgress(Math.round(e.loaded/e.total*100)); };
+      xhr.onload=()=>{
+        let d={}; try{ d=JSON.parse(xhr.responseText); }catch(err){}
+        if(xhr.status>=200&&xhr.status<300) resolve(d);
+        else reject(new Error(d.detail||'Upload impossible'));
+      };
+      xhr.onerror=()=>reject(new Error('Upload impossible'));
+      const fd=new FormData(); fd.append('file', file);
+      xhr.send(fd);
+    });
+    if(onProgress) onProgress(null);
+    return this._pollMedia(j);
   },
   /* Import serveur d'un clip Pexels : le serveur télécharge + transcode (zéro re-upload client) */
   async importMedia(url, name){
@@ -809,6 +822,7 @@ const loadOv=(()=>{const d=document.createElement('div');d.id='loadOverlay';d.se
 function showLoad(txt,frac,sub){loadOv.classList.add('show');$('#loadOvTxt').textContent=txt;$('#loadOvBar').style.width=Math.round(Math.max(0,Math.min(1,frac||0))*100)+'%';$('#loadOvSub').textContent=sub||'';}
 function hideLoad(){loadOv.classList.remove('show');}
 function clipsOptimizing(){ return clips.some(c=>c._optimizing); }
+function clipsBlocking(){ return clips.some(c=>c._optimizing && !c._playable); }
 /* Barre de progression des actions IA (haut de page) */
 const aiBar={
   _t:null,_pct:0,
@@ -1311,7 +1325,7 @@ function toggleExtract(){
 function toggleLoop(){ looping?stopAll():startLoop(); }
 function startLoop(){
   if(!buffer||exporting)return;
-  if(clipsOptimizing()){ toast('⏳ Optimisation de ta vidéo en cours — la lecture sera prête dans un instant'); return; }
+  if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
   stopAll(); looping=true;
   warmUpPlans(ext.start);
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer; srcNode.loop=true;
@@ -1390,24 +1404,28 @@ function addClip(file, meta={}){
   const clip={url,el:v,els:[v],thumbs:[],seeks:[],name:file.name,mediaId:meta.mediaId||null,pexelsUrl:meta.pexelsUrl||null};
   clips.push(clip);
   v.addEventListener('loadedmetadata',()=>{
+    if(v.videoWidth>0) clip._playable=true;                  // l'original est lisible ici → pas besoin de bloquer
     const D=v.duration||6;
     const n=Math.min(8, Math.max(2, Math.floor(D/2)));      // jusqu'à 8 plans proposés (~2 s chacun)
     clip.seeks=Array.from({length:n},(_,i)=> (i+0.15)*(D/n));
     makeThumbs(clip, ()=>{ autoAssign(); renderClips(); drawTimeline(); });
     if(!meta.skipUpload) toast(file.name.slice(0,24)+' → '+n+' plans proposés, placés sur le beat 🎲');
+    renderClips();
   },{once:true});
+  v.addEventListener('error',()=>{ clip._playable=false; renderClips(); },{once:true});
   renderClips();
-  // Stockage serveur + optimisation (les clips Pexels gardent leur URL de référence)
+  // Stockage serveur + optimisation EN ARRIÈRE-PLAN (les clips Pexels gardent leur URL de référence)
   if(!meta.skipUpload && !clip.pexelsUrl){
-    clip._optimizing=true; renderClips();
-    toast('⏳ Optimisation de ta vidéo en cours… (lecture fluide garantie)');
-    API.uploadMedia(file).then(async id=>{
+    clip._optimizing=true; clip._upPct=0; renderClips();
+    API.uploadMedia(file, pct=>{ clip._upPct=pct; updateClipChip(clip); }).then(async id=>{
       clip.mediaId=id;
       let ok=false;
       try{
         const s=await API.mediaStatus(id);
         if(s && s.transcoded){
-          swapClipMedia(clip, await API.fetchMedia(id, clip.name)); ok=true;
+          const f=await API.fetchMedia(id, clip.name);
+          while(playing||looping){ await new Promise(r=>setTimeout(r,800)); }   // pas de swap en pleine lecture
+          swapClipMedia(clip, f); ok=true;
           // régénère les vignettes depuis la version optimisée (l'original HEVC peut être indécodable)
           clip.thumbs=[];
           makeThumbs(clip, ()=>{ renderClips(); drawTimeline(); });
@@ -1423,6 +1441,12 @@ function addClip(file, meta={}){
   }
   if(!meta.skipUpload) dirty();
 }
+/* Libellé + mise à jour légère du badge d'optimisation (sans re-render complet) */
+function clipOptLabel(clip){
+  if(typeof clip._upPct==='number' && clip._upPct<100) return '☁ Envoi '+clip._upPct+' %';
+  return '⏳ Optimisation en arrière-plan…';
+}
+function updateClipChip(clip){ if(clip._chip) clip._chip.textContent=clipOptLabel(clip); }
 /* Remplace le média local d'un clip par sa version optimisée serveur */
 function swapClipMedia(clip, file){
   const old=clip.url;
@@ -1443,7 +1467,14 @@ function renderClips(){
     const del=document.createElement('button'); del.textContent='✕'; del.title='Retirer la vidéo';
     del.onclick=()=>removeClip(ci);
     head.append(nm,add,del); box.append(head);
-    if(clip._optimizing){ const ov=document.createElement('div'); ov.className='clip-opt'; ov.setAttribute('data-testid','clip-optimizing-badge'); ov.textContent='⏳ Optimisation de ta vidéo…'; box.append(ov); }
+    if(clip._optimizing){
+      const ov=document.createElement('div');
+      ov.setAttribute('data-testid','clip-optimizing-badge');
+      ov.className = clip._playable ? 'clip-opt-chip' : 'clip-opt';   // lisible → petit badge non bloquant
+      ov.textContent = clipOptLabel(clip);
+      clip._chip=ov;
+      box.append(ov);
+    }
     const grid=document.createElement('div'); grid.className='subgrid';
     (clip.seeks||[]).forEach((s,si)=>{
       const d=document.createElement('div'); d.className='subclip'; d.draggable=true;
@@ -2030,7 +2061,7 @@ function warmUpPlans(fromT){
 function togglePlay(){ if(exporting){toast('Export en cours — attends la fin');return;} playing&&!looping? stopAll() : play(ext.start); }
 function play(from){
   if(!buffer||exporting)return;
-  if(clipsOptimizing()){ toast('⏳ Optimisation de ta vidéo en cours — la lecture sera prête dans un instant'); return; }
+  if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
   stopAll();
   warmUpPlans(from);
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer;

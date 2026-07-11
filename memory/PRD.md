@@ -251,3 +251,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Non-régression Chrome : testing agent iteration_8 = 100 %, 0 erreur JS (export realtime 879 Ko téléchargé, vignettes webm régénérées, badge optimisation OK avec Mux ~23 s)
 - ⚠️ Validation Safari iPhone par l'USER requise (impossible en headless) + REDÉPLOIEMENT nécessaire
 - Notes testeur : env headless sans codecs h264 → tester les vignettes avec des WEBM (voir context_for_next_testing_agent d'iteration_8)
+
+## Corrigé (12 juillet 2026) — Optimisation vidéo perçue comme trop longue (« 3 plombes »)
+- Diagnostic chiffré (vidéo 45 s / 79 Mo) : PUT→Mux 6,6 s · encodage 2,2 s · rendition MP4 23,7 s (incompressible chez Mux) · download 6,7 s = ~41 s serveur + upload mobile client. Le vrai problème : TOUT était bloqué pendant ce temps
+- ✅ **Optimisation non bloquante** : `clip._playable` (loadedmetadata + videoWidth>0) → la lecture/boucle n'est bloquée QUE si l'original est indécodable (`clipsBlocking()`), sinon montage + lecture immédiats avec l'original, remplacement silencieux à la fin (jamais en pleine lecture : attente `playing||looping`)
+- ✅ Badge : overlay bloquant → petit chip discret `clip-opt-chip` (« ☁ Envoi X % » puis « ⏳ Optimisation en arrière-plan… ») quand le clip est lisible
+- ✅ **Progression d'envoi réelle** : API.uploadMedia passé en XHR avec upload.onprogress (le % s'affiche dans le chip)
+- ✅ Parallélisation : TRANSCODE_SEM 2→6 (Mux = network-bound, plusieurs clips uploadés d'affilée ne font plus la queue)
+- ✅ Export/genSerie restent verrouillés pendant l'optimisation (l'export doit être parfait) avec message clair
+- ✅ Testé e2e Playwright : chip non bloquant affiché, lecture démarrée PENDANT l'optimisation (tcNow avance), optimisation finie en ~18 s, badge disparu, vignettes régénérées
+- ⚠️ REDÉPLOIEMENT nécessaire

@@ -1329,7 +1329,7 @@ import tempfile
 import imageio_ffmpeg
 
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
-TRANSCODE_SEM = asyncio.Semaphore(2)
+TRANSCODE_SEM = asyncio.Semaphore(6)
 _VIDEO_EXT_RE = _re.compile(r"\.(mp4|mov|m4v|webm|avi|mkv|3gp|hevc)$", _re.I)
 
 
