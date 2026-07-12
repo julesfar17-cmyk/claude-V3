@@ -2613,11 +2613,11 @@ async function exportRealtime(nameSuffix){
   canvas.width=fmt[0]; canvas.height=fmt[1]; fitPreview();   // pleine résolution le temps de l'export
   const isSafari=/^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
   const dest=audioCtx.createMediaStreamDestination();
-  // Flux composite construit explicitement : sur Safari, addTrack sur le flux canvas perd l'audio
-  const stream=new MediaStream([
-    ...canvas.captureStream(30).getVideoTracks(),
-    ...dest.stream.getAudioTracks(),
-  ]);
+  // Safari : on n'enregistre QUE la vidéo (l'audio MediaRecorder y est trop peu fiable) —
+  // le serveur ajoute la piste son après coup via /api/export/finalize
+  const tracks=[...canvas.captureStream(30).getVideoTracks()];
+  if(!isSafari) tracks.push(...dest.stream.getAudioTracks());
+  const stream=new MediaStream(tracks);
   // construction de l'enregistreur avec repli : certains navigateurs annoncent un
   // codec puis échouent à la création — on essaie chaque option pour de vrai
   const mimes=['video/mp4;codecs=avc1.640028,mp4a.40.2','video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9,opus','video/webm'];
@@ -2644,17 +2644,33 @@ async function exportRealtime(nameSuffix){
     if(msg) toast(msg);
     resolveExport(!!ok);
   };
-  rec.onstop=()=>{
+  rec.onstop=async()=>{
     stopAll();
-    const blob=new Blob(parts,{type:mime.split(';')[0]||'video/webm'});
+    let blob=new Blob(parts,{type:mime.split(';')[0]||'video/webm'});
     const elapsed=(performance.now()-startTs)/1000;
     // LE COMPTEUR NE BOUGE QUE SI LE FICHIER EST RÉEL **ET COMPLET**
     if(failed||!parts.length||blob.size<20000||elapsed<ext.dur-0.8){
       finish('⚠ Export interrompu ('+elapsed.toFixed(1)+' s sur '+Math.round(ext.dur)+' s) — rien n\u2019a été décompté. Réessaie en restant sur l\u2019onglet.');
       return;
     }
+    if(isSafari){
+      // Safari : la vidéo est muette par construction → le serveur ajoute la piste son exacte
+      try{
+        aiBar.set('Ajout du son (serveur)…',98);
+        const fd=new FormData();
+        fd.append('video', blob, 'v.mp4');
+        fd.append('audio', extractWavStereoBlob(ext.start, ext.dur), 'a.wav');
+        const r=await fetch('/api/export/finalize',{method:'POST',credentials:'include',body:fd});
+        if(!r.ok) throw new Error('finalize '+r.status);
+        blob=await r.blob();
+        if(blob.size<20000) throw new Error('fichier vide');
+      }catch(err){
+        finish('⚠ Ajout du son impossible ('+((err&&err.message)||'réseau')+') — rien n\u2019a été décompté. Réessaie.');
+        return;
+      }
+    }
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=(M.title||'beatcut')+(nameSuffix||'')+(mime.includes('mp4')?'.mp4':'.webm'); a.click();
+    a.download=(M.title||'beatcut')+(nameSuffix||'')+(mime.includes('mp4')||isSafari?'.mp4':'.webm'); a.click();
     // 2) NE DÉCOMPTER qu'après un export réellement réussi (serveur = vérité)
     fetch('/api/export/register',{method:'POST',credentials:'include'})
       .then(()=>API.refreshQuota()).catch(()=>{});

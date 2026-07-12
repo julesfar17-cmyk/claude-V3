@@ -2,6 +2,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Logo } from "@/components/Navbar";
 
+const BUST = Date.now(); // anti-cache : garantit la dernière version du studio après chaque déploiement
+
 export default function Studio() {
   const [params] = useSearchParams();
   const projectId = params.get("project");
@@ -21,7 +23,7 @@ export default function Studio() {
         </span>
       </div>
       <iframe
-        src={projectId ? `/studio.html?project=${projectId}` : "/studio.html"}
+        src={projectId ? `/studio.html?project=${projectId}&v=${BUST}` : `/studio.html?v=${BUST}`}
         title="Studio BEATCUT"
         data-testid="studio-iframe"
         className="block w-full flex-1 border-0"

@@ -289,3 +289,14 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Bonus migration : à la réouverture d'ANCIENS projets, les clips Pexels sans mediaId déclenchent l'import en arrière-plan (condition dans addClip : `pexelsUrl && !mediaId`, indépendante de skipUpload) → migration douce vers GridFS
 - ✅ Testé e2e : clip apparu en ~2 s, lecture pendant l'optimisation OK, 0 erreur JS
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (12 juillet 2026) — Son toujours absent des exports iPhone : audio 100 % serveur sur Safari
+- Diagnostic factuel : export realtime reproduit en headless Chromium → le fichier CONTIENT une piste audio réelle (opus stéréo, max -2,9 dB) → notre code realtime est sain, le problème est exclusivement le MediaRecorder audio de Safari
+- ✅ **Décision radicale : plus AUCUN chemin d'export Safari ne dépend de l'audio MediaRecorder** :
+  - `exportRealtime` sur Safari : enregistre la VIDÉO SEULE (pas de piste audio dans le flux), puis `rec.onstop` (passé async) envoie vidéo + WAV stéréo à `/api/export/finalize` → le serveur mux la piste son exacte (-c:v copy). Échec réseau → rien décompté, message clair
+  - mode hybride (WebCodecs) : déjà audio serveur
+  - Chrome/desktop : inchangé (audio client validé)
+- ✅ **Anti-cache** : `Studio.js` charge l'iframe avec `/studio.html?v=${Date.now()}` → chaque chargement récupère la DERNIÈRE version du studio (Safari gardait potentiellement une vieille version en cache après les déploiements !)
+- ✅ Non-régression Chromium testée : export téléchargé, piste audio opus présente et audible
+- 📢 Signal de vérification pour l'user : sur iPhone, pendant l'export, l'étape « Ajout du son (serveur)… » DOIT apparaître — si absente, l'app tourne encore sur l'ancien build (fermer l'onglet Safari et rouvrir)
+- ⚠️ REDÉPLOIEMENT nécessaire
