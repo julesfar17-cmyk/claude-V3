@@ -271,3 +271,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Smoke test headless : 0 erreur JS, lecture OK, offlineSupported()=false en headless → repli realtime intact (testé iter_8)
 - ⚠️ Le mode hybride ne peut PAS être testé en headless (pas de codecs H.264) — validation par l'USER sur iPhone requise
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (12 juillet 2026) — « Certaines vidéos ne sont pas sauvegardées »
+- Cause : un clip n'est rattaché au projet QUE si l'upload serveur réussit. Échecs silencieux : fichier > 80 Mo (une vidéo iPhone 4K dépasse ça en ~1 min !), fermeture de la page avant la fin de l'envoi, stockage plein. Seul signal : un toast fugace
+- ✅ Limite d'upload 80 → **300 Mo** (`MAX_MEDIA_SIZE`). Vérifié : l'ingress accepte 260 Mo en POST direct (200 OK, 7 s)
+- ✅ Pré-contrôle taille côté client (`MAX_UPLOAD_MO=300`) avec message immédiat et explicite
+- ✅ **Badge rouge persistant** « ⚠ Non sauvegardée — réessayer » (`data-testid=clip-save-failed-badge`, cliquable → `retryClipUpload` re-upload depuis le blob local) au lieu d'un toast éphémère
+- ✅ Refactor : flux d'upload extrait dans `startClipUpload(clip, file)` (réutilisé par le retry)
+- ✅ `beforeunload` : alerte navigateur si on ferme l'onglet pendant un envoi/optimisation (clips `_optimizing` ou `M._uploadingAudio`)
+- ✅ Testé e2e Playwright : badge rouge rendu + cliquable, toast taille, 0 erreur JS. Fichiers de test GridFS supprimés
+- ⚠️ REDÉPLOIEMENT nécessaire

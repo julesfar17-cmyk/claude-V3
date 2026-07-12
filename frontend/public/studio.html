@@ -175,6 +175,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 .clip-box{margin-top:10px;border:1px solid var(--line);border-radius:var(--r-s);padding:7px;background:var(--panel-2);min-width:0;position:relative}
 .clip-opt{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:rgba(10,10,14,.62);backdrop-filter:blur(2px);border-radius:inherit;color:#ffd166;font-size:12px;font-weight:600;text-align:center;padding:4px}
 .clip-opt-chip{position:absolute;top:6px;right:6px;z-index:5;pointer-events:none;background:rgba(10,10,14,.82);border:1px solid rgba(255,209,102,.4);color:#ffd166;font-size:10px;font-weight:600;padding:3px 8px;border-radius:99px;white-space:nowrap}
+.clip-fail{pointer-events:auto;cursor:pointer;color:#ff6b6b;border-color:rgba(255,107,107,.55)}
 #loadOverlay{position:fixed;inset:0;z-index:9999;display:none;place-items:center;background:rgba(8,8,12,.82);backdrop-filter:blur(6px)}
 #loadOverlay.show{display:grid}
 #loadOverlay .box{width:min(420px,86vw);text-align:center}
@@ -1431,32 +1432,53 @@ function addClip(file, meta={}){
   v.addEventListener('error',()=>{ clip._playable=false; renderClips(); },{once:true});
   renderClips();
   // Stockage serveur + optimisation EN ARRIÈRE-PLAN (les clips Pexels gardent leur URL de référence)
-  if(!meta.skipUpload && !clip.pexelsUrl){
-    clip._optimizing=true; clip._upPct=0; renderClips();
-    API.uploadMedia(file, pct=>{ clip._upPct=pct; updateClipChip(clip); }).then(async id=>{
-      clip.mediaId=id;
-      let ok=false;
-      try{
-        const s=await API.mediaStatus(id);
-        if(s && s.transcoded){
-          const f=await API.fetchMedia(id, clip.name);
-          while(playing||looping){ await new Promise(r=>setTimeout(r,800)); }   // pas de swap en pleine lecture
-          swapClipMedia(clip, f); ok=true;
-          // régénère les vignettes depuis la version optimisée (l'original HEVC peut être indécodable)
-          clip.thumbs=[];
-          makeThumbs(clip, ()=>{ renderClips(); drawTimeline(); });
-        }
-        else if(s && s.failed) toast('⚠ Optimisation impossible pour cette vidéo — elle peut saccader à la lecture');
-      }catch(e){}
-      clip._optimizing=false; renderClips(); dirty();
-      if(ok) toast('✓ '+(clip.name||'Vidéo').slice(0,24)+' optimisée — prête à jouer');
-    }).catch(e=>{
-      clip._optimizing=false; renderClips();
-      toast('⚠ Vidéo non sauvegardée en ligne : '+(e.message||'upload impossible'));
-    });
-  }
+  if(!meta.skipUpload && !clip.pexelsUrl) startClipUpload(clip, file);
   if(!meta.skipUpload) dirty();
 }
+const MAX_UPLOAD_MO=300;
+function startClipUpload(clip, file){
+  if(file.size>MAX_UPLOAD_MO*1e6){
+    clip._saveFailed='Vidéo trop lourde ('+Math.round(file.size/1e6)+' Mo, max '+MAX_UPLOAD_MO+' Mo)';
+    renderClips();
+    toast('⚠ '+(clip.name||'Vidéo').slice(0,20)+' : trop lourde pour être sauvegardée ('+Math.round(file.size/1e6)+' Mo, max '+MAX_UPLOAD_MO+' Mo) — coupe-la ou compresse-la');
+    return;
+  }
+  clip._saveFailed=null; clip._optimizing=true; clip._upPct=0; renderClips();
+  API.uploadMedia(file, pct=>{ clip._upPct=pct; updateClipChip(clip); }).then(async id=>{
+    clip.mediaId=id;
+    let ok=false;
+    try{
+      const s=await API.mediaStatus(id);
+      if(s && s.transcoded){
+        const f=await API.fetchMedia(id, clip.name);
+        while(playing||looping){ await new Promise(r=>setTimeout(r,800)); }   // pas de swap en pleine lecture
+        swapClipMedia(clip, f); ok=true;
+        // régénère les vignettes depuis la version optimisée (l'original HEVC peut être indécodable)
+        clip.thumbs=[];
+        makeThumbs(clip, ()=>{ renderClips(); drawTimeline(); });
+      }
+      else if(s && s.failed) toast('⚠ Optimisation impossible pour cette vidéo — elle peut saccader à la lecture');
+    }catch(e){}
+    clip._optimizing=false; renderClips(); dirty();
+    if(ok) toast('✓ '+(clip.name||'Vidéo').slice(0,24)+' optimisée — prête à jouer');
+  }).catch(e=>{
+    clip._optimizing=false;
+    clip._saveFailed=(e&&e.message)||'upload impossible';
+    renderClips();
+    toast('⚠ '+(clip.name||'Vidéo').slice(0,20)+' NON sauvegardée ('+clip._saveFailed+') — clique le badge rouge pour réessayer');
+  });
+}
+async function retryClipUpload(ci){
+  const clip=clips[ci]; if(!clip||clip._optimizing) return;
+  try{
+    const b=await fetch(clip.url).then(r=>r.blob());
+    startClipUpload(clip, new File([b], clip.name||'video.mp4', {type:b.type||'video/mp4'}));
+  }catch(e){ toast('Réessai impossible — re-dépose la vidéo'); }
+}
+// Prévenir la perte : alerte si on ferme pendant un envoi/optimisation
+window.addEventListener('beforeunload',e=>{
+  if(clips.some(c=>c._optimizing)||(M&&M._uploadingAudio)){ e.preventDefault(); e.returnValue=''; }
+});
 /* Libellé + mise à jour légère du badge d'optimisation (sans re-render complet) */
 function clipOptLabel(clip){
   if(typeof clip._upPct==='number' && clip._upPct<100) return '☁ Envoi '+clip._upPct+' %';
@@ -1489,6 +1511,15 @@ function renderClips(){
       ov.className = clip._playable ? 'clip-opt-chip' : 'clip-opt';   // lisible → petit badge non bloquant
       ov.textContent = clipOptLabel(clip);
       clip._chip=ov;
+      box.append(ov);
+    }
+    else if(clip._saveFailed && !clip.mediaId && !clip.pexelsUrl){
+      const ov=document.createElement('div');
+      ov.className='clip-opt-chip clip-fail';
+      ov.setAttribute('data-testid','clip-save-failed-badge');
+      ov.textContent='⚠ Non sauvegardée — réessayer';
+      ov.title=clip._saveFailed;
+      ov.onclick=e=>{ e.stopPropagation(); retryClipUpload(ci); };
       box.append(ov);
     }
     const grid=document.createElement('div'); grid.className='subgrid';

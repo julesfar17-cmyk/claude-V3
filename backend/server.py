@@ -1321,7 +1321,7 @@ from fastapi.responses import StreamingResponse as _SR  # alias local
 
 PROJECT_QUOTAS = {"free": 1, "basic": 10, "pro": None}          # None = illimité
 STORAGE_QUOTAS = {"free": 200_000_000, "basic": 2_000_000_000, "pro": 10_000_000_000}
-MAX_MEDIA_SIZE = 80_000_000  # 80 Mo par fichier
+MAX_MEDIA_SIZE = 300_000_000  # 300 Mo par fichier (les vidéos iPhone 4K dépassent vite 80 Mo)
 
 # --- Transcodage vidéo (H.264 1080p, keyframes 0.5s, AAC, faststart) -------
 import re as _re
