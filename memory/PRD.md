@@ -281,3 +281,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ `beforeunload` : alerte navigateur si on ferme l'onglet pendant un envoi/optimisation (clips `_optimizing` ou `M._uploadingAudio`)
 - ✅ Testé e2e Playwright : badge rouge rendu + cliquable, toast taille, 0 erreur JS. Fichiers de test GridFS supprimés
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (12 juillet 2026) — Clips Pexels passés au système non bloquant
+- Avant : clic vignette Pexels → attente BLOQUANTE du transcodage serveur complet avant que le clip apparaisse
+- ✅ Maintenant : clic → fetch direct du MP4 Pexels (~2 s) → clip utilisable/lisible IMMÉDIATEMENT → `startPexelsImport(clip)` en arrière-plan (import serveur + Mux) → swap silencieux + vignettes régénérées, même chip discret que les uploads perso
+- ✅ Échec d'import silencieux : le clip reste référencé par son URL Pexels (comportement historique, pas de badge rouge)
+- ✅ Bonus migration : à la réouverture d'ANCIENS projets, les clips Pexels sans mediaId déclenchent l'import en arrière-plan (condition dans addClip : `pexelsUrl && !mediaId`, indépendante de skipUpload) → migration douce vers GridFS
+- ✅ Testé e2e : clip apparu en ~2 s, lecture pendant l'optimisation OK, 0 erreur JS
+- ⚠️ REDÉPLOIEMENT nécessaire

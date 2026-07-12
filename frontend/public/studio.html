@@ -1431,8 +1431,9 @@ function addClip(file, meta={}){
   },{once:true});
   v.addEventListener('error',()=>{ clip._playable=false; renderClips(); },{once:true});
   renderClips();
-  // Stockage serveur + optimisation EN ARRIÈRE-PLAN (les clips Pexels gardent leur URL de référence)
-  if(!meta.skipUpload && !clip.pexelsUrl) startClipUpload(clip, file);
+  // Stockage serveur + optimisation EN ARRIÈRE-PLAN (Pexels : import serveur direct, zéro re-upload)
+  if(clip.pexelsUrl && !clip.mediaId) startPexelsImport(clip);
+  else if(!meta.skipUpload && !clip.pexelsUrl) startClipUpload(clip, file);
   if(!meta.skipUpload) dirty();
 }
 const MAX_UPLOAD_MO=300;
@@ -2974,12 +2975,12 @@ $('#bankSearch').addEventListener('keydown', async e=>{
           const files=(v.video_files||[]).filter(f=>f.link&&(f.height||0)<=1280).sort((a,b)=>(b.height||0)-(a.height||0));
           const f=files[0]||v.video_files[0];
           const nm='pexels-'+v.id+'.mp4';
-          toast('⏳ Optimisation du clip en cours…');
-          const id=await API.importMedia(f.link, nm);
-          const file=await API.fetchMedia(id, nm);
-          addClip(file,{mediaId:id,pexelsUrl:f.link});
-          toast('✓ Clip ajouté — optimisé pour une lecture fluide');
-        }catch(err){ toast(err.message||'Clip indisponible — essaie un autre'); }
+          const rr=await fetch(f.link);
+          if(!rr.ok) throw new Error('indisponible');
+          // clip utilisable IMMÉDIATEMENT — l'optimisation serveur tourne en arrière-plan (addClip la déclenche)
+          addClip(new File([await rr.blob()], nm, {type:'video/mp4'}), {pexelsUrl:f.link});
+          toast('✓ Clip ajouté — optimisation en arrière-plan');
+        }catch(err){ toast('Clip indisponible — essaie un autre'); }
         img.style.opacity='1';
       };
       root.appendChild(img);
