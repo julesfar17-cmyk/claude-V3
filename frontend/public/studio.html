@@ -801,6 +801,22 @@ function extractWavBlob(start, dur){
   for(let i=0;i<n;i++){ const v=Math.max(-1,Math.min(1,ch[i])); out.setInt16(44+i*2, v*0x7FFF, true); }
   return new Blob([out],{type:'audio/wav'});
 }
+/* WAV stéréo 16 bits de l'extrait (pour l'assemblage serveur de l'export hybride) */
+function extractWavStereoBlob(start, dur){
+  if(!buffer) throw new Error('Aucun audio chargé');
+  const sr=buffer.sampleRate, nch=Math.min(2,buffer.numberOfChannels||1);
+  const s0=Math.floor(start*sr), n=Math.min(Math.floor(dur*sr), buffer.length-s0);
+  const dv=new DataView(new ArrayBuffer(44+n*nch*2));
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF'); dv.setUint32(4,36+n*nch*2,true); ws(8,'WAVE'); ws(12,'fmt ');
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,nch,true);
+  dv.setUint32(24,sr,true); dv.setUint32(28,sr*nch*2,true); dv.setUint16(32,nch*2,true); dv.setUint16(34,16,true);
+  ws(36,'data'); dv.setUint32(40,n*nch*2,true);
+  const chs=[...Array(nch)].map((_,k)=>buffer.getChannelData(k));
+  let o=44;
+  for(let i=0;i<n;i++) for(let k=0;k<nch;k++){ const x=Math.max(-1,Math.min(1,chs[k][s0+i])); dv.setInt16(o, x*0x7FFF, true); o+=2; }
+  return new Blob([dv],{type:'audio/wav'});
+}
 /* RÈGLE WATERMARK (à reproduire telle quelle côté prod) :
    - Gratuit : 1 export découverte SANS watermark. Quota épuisé → watermark sur l'aperçu.
    - Basic  : 10 exports/mois propres. Quota épuisé → watermark sur l'aperçu jusqu'au reset mensuel.
@@ -2433,14 +2449,15 @@ async function exportVideo(nameSuffix){
     return false;
   }
   try{ await audioCtx.resume(); }catch(e){}
-  if(await offlineSupported()) return exportOffline(nameSuffix);
+  const mode=await offlineSupported();
+  if(mode) return exportOffline(nameSuffix, mode);
   return exportRealtime(nameSuffix);
 }
 let _avcCodec=null;
 const _AVC_TRY=['avc1.640033','avc1.640028','avc1.4d4028','avc1.42e01f'];
 async function offlineSupported(){
   try{
-    if(!window.VideoEncoder||!window.AudioEncoder||!window.Mp4Muxer||!window.VideoFrame||!window.AudioData) return false;
+    if(!window.VideoEncoder||!window.Mp4Muxer||!window.VideoFrame) return false;
     const f=FORMATS[(M&&M.format)||'916'];
     const nch=Math.min(2,buffer.numberOfChannels||1);
     _avcCodec=null;
@@ -2448,8 +2465,13 @@ async function offlineSupported(){
       try{ const r=await VideoEncoder.isConfigSupported({codec:c,width:f[0],height:f[1],bitrate:12000000,framerate:30}); if(r.supported){ _avcCodec=c; break; } }catch(e){}
     }
     if(!_avcCodec) return false;
-    const a=await AudioEncoder.isConfigSupported({codec:'mp4a.40.2',sampleRate:buffer.sampleRate,numberOfChannels:nch,bitrate:192000});
-    return !!a.supported;
+    if(window.AudioEncoder&&window.AudioData){
+      try{
+        const a=await AudioEncoder.isConfigSupported({codec:'mp4a.40.2',sampleRate:buffer.sampleRate,numberOfChannels:nch,bitrate:192000});
+        if(a.supported) return 'full';
+      }catch(e){}
+    }
+    return 'hybrid';   // Safari : vidéo WebCodecs (rapide), son assemblé par le serveur
   }catch(e){ return false; }
 }
 /* Cale le lecteur du plan actif EXACTEMENT sur l'image voulue, et attend qu'elle soit décodée */
@@ -2470,7 +2492,7 @@ async function seekPlanFrame(t){
 }
 /* Export offline (comme les logiciels de montage) : chaque image est rendue une par une
    après décodage exact du clip, puis encodée en H.264 haut débit. Zéro freeze possible. */
-async function exportOffline(nameSuffix){
+async function exportOffline(nameSuffix, mode='full'){
   exporting=true;
   const btn=$('#exportBtn'), btnLabel=btn.textContent;
   btn.disabled=true; btn.textContent='⏺ Export en cours…';
@@ -2485,22 +2507,27 @@ async function exportOffline(nameSuffix){
     clips.forEach(c=>(c.els||[c.el]).forEach(v=>{ if(v){ try{ v.pause(); }catch(e){} } }));
     const {Muxer,ArrayBufferTarget}=Mp4Muxer;
     const sr=buffer.sampleRate, nch=Math.min(2,buffer.numberOfChannels||1);
-    const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},audio:{codec:'aac',numberOfChannels:nch,sampleRate:sr},fastStart:'in-memory'});
+    const muxOpts={target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},fastStart:'in-memory'};
+    if(mode==='full') muxOpts.audio={codec:'aac',numberOfChannels:nch,sampleRate:sr};
+    const muxer=new Muxer(muxOpts);
     let encErr=null;
     const venc=new VideoEncoder({output:(ch,m)=>muxer.addVideoChunk(ch,m),error:e=>{encErr=e;}});
     venc.configure({codec:_avcCodec||'avc1.640033',width:W,height:H,bitrate:12000000,framerate:fps});
-    const aenc=new AudioEncoder({output:(ch,m)=>muxer.addAudioChunk(ch,m),error:e=>{encErr=e;}});
-    aenc.configure({codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:nch,bitrate:192000});
-    // — Audio : extrait encodé en AAC
-    const s0=Math.floor(ext.start*sr), n=Math.min(Math.floor(ext.dur*sr), buffer.length-s0);
-    const chans=[...Array(nch)].map((_,k)=>buffer.getChannelData(k));
-    const CH=4096;
-    for(let off=0;off<n;off+=CH){
-      const len=Math.min(CH,n-off);
-      const data=new Float32Array(len*nch);
-      for(let k=0;k<nch;k++) data.set(chans[k].subarray(s0+off,s0+off+len), k*len);
-      const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:len,numberOfChannels:nch,timestamp:Math.round(off/sr*1e6),data});
-      aenc.encode(ad); ad.close();
+    let aenc=null;
+    if(mode==='full'){
+      // — Audio : extrait encodé en AAC côté client
+      aenc=new AudioEncoder({output:(ch,m)=>muxer.addAudioChunk(ch,m),error:e=>{encErr=e;}});
+      aenc.configure({codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:nch,bitrate:192000});
+      const s0=Math.floor(ext.start*sr), n=Math.min(Math.floor(ext.dur*sr), buffer.length-s0);
+      const chans=[...Array(nch)].map((_,k)=>buffer.getChannelData(k));
+      const CH=4096;
+      for(let off=0;off<n;off+=CH){
+        const len=Math.min(CH,n-off);
+        const data=new Float32Array(len*nch);
+        for(let k=0;k<nch;k++) data.set(chans[k].subarray(s0+off,s0+off+len), k*len);
+        const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:len,numberOfChannels:nch,timestamp:Math.round(off/sr*1e6),data});
+        aenc.encode(ad); ad.close();
+      }
     }
     // — Vidéo : image par image
     for(let i=0;i<total;i++){
@@ -2513,10 +2540,20 @@ async function exportOffline(nameSuffix){
       if(encErr) throw encErr;
       if((i&7)===0) aiBar.set('Export studio '+W+'×'+H+'… '+Math.round(i/total*100)+' %', 2+i/total*92);
     }
-    aiBar.set('Finalisation du MP4…',96);
-    await venc.flush(); await aenc.flush();
+    aiBar.set('Finalisation du MP4…',95);
+    await venc.flush(); if(aenc) await aenc.flush();
     muxer.finalize();
-    const blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
+    let blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
+    if(mode!=='full'){
+      // Safari : le serveur ajoute la piste audio (aucun ré-encodage vidéo, 2-3 s)
+      aiBar.set('Ajout du son (serveur)…',96);
+      const fd=new FormData();
+      fd.append('video', blob, 'v.mp4');
+      fd.append('audio', extractWavStereoBlob(ext.start, ext.dur), 'a.wav');
+      const r=await fetch('/api/export/finalize',{method:'POST',credentials:'include',body:fd});
+      if(!r.ok) throw new Error('assemblage du son impossible');
+      blob=await r.blob();
+    }
     if(blob.size<20000) throw new Error('fichier vide');
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
     a.download=(M.title||'beatcut')+(nameSuffix||'')+'.mp4'; a.click();

@@ -1651,6 +1651,42 @@ async def admin_media_migrate_status(user: dict = Depends(get_current_user)):
     return MIGRATION_STATE
 
 
+@api_router.post("/export/finalize")
+async def export_finalize(video: UploadFile = File(...), audio: UploadFile = File(...),
+                          user: dict = Depends(get_current_user)):
+    """Assemble le MP4 vidéo (encodé côté client via WebCodecs) avec la piste audio WAV.
+    Utilisé par Safari (pas d'AudioEncoder) : -c:v copy → zéro ré-encodage vidéo, très rapide."""
+    v = await video.read()
+    a = await audio.read()
+    if not v or not a:
+        raise HTTPException(status_code=400, detail="Fichiers manquants")
+    if len(v) > 500_000_000 or len(a) > 100_000_000:
+        raise HTTPException(status_code=413, detail="Export trop volumineux")
+    with tempfile.TemporaryDirectory() as td:
+        vp, ap, op = os.path.join(td, "v.mp4"), os.path.join(td, "a.wav"), os.path.join(td, "out.mp4")
+        with open(vp, "wb") as f:
+            f.write(v)
+        with open(ap, "wb") as f:
+            f.write(a)
+        cmd = [FFMPEG_EXE, "-y", "-i", vp, "-i", ap,
+               "-map", "0:v:0", "-map", "1:a:0",
+               "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+               "-shortest", "-movflags", "+faststart", op]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=180)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise HTTPException(status_code=504, detail="Assemblage trop long — réessaie")
+        if proc.returncode != 0 or not os.path.exists(op):
+            logger.warning("export_finalize ffmpeg : %s", (err or b"")[-300:])
+            raise HTTPException(status_code=500, detail="Assemblage audio impossible")
+        with open(op, "rb") as f:
+            out = f.read()
+    return Response(content=out, media_type="video/mp4")
+
+
 def _project_media_ids(state: dict) -> set:
     ids = set()
     audio = (state or {}).get("audio") or {}

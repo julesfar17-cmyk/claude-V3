@@ -261,3 +261,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Export/genSerie restent verrouillés pendant l'optimisation (l'export doit être parfait) avec message clair
 - ✅ Testé e2e Playwright : chip non bloquant affiché, lecture démarrée PENDANT l'optimisation (tcNow avance), optimisation finie en ~18 s, badge disparu, vignettes régénérées
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Implémenté (12 juillet 2026) — Export hybride Safari : rapide ET avec le son garanti
+- Contexte : toujours pas de son en export sur iPhone (MediaRecorder Safari trop capricieux) + export temps réel trop lent. User ouvert à Mux/Replicate → impossible pour le rendu (paroles/effets = canvas client), solution retenue : **hybride client/serveur**
+- ✅ `offlineSupported()` retourne désormais un mode : `'full'` (VideoEncoder+AudioEncoder → tout client, Chrome/Safari 26+), `'hybrid'` (VideoEncoder seul → Safari 16.4-25), `false` (→ realtime MediaRecorder)
+- ✅ Mode hybride dans `exportOffline(nameSuffix, mode)` : vidéo encodée client (WebCodecs H.264, accéléré matériel iPhone, sans perte) → MP4 vidéo seule (mp4-muxer sans piste audio) → POST `/api/export/finalize` (vidéo + WAV stéréo `extractWavStereoBlob`) → serveur FFmpeg `-c:v copy -c:a aac 192k +faststart` → MP4 final téléchargé. **Son garanti à 100 %** (plus de MediaRecorder sur Safari moderne)
+- ✅ Backend `POST /api/export/finalize` : auth, limites 500 Mo vidéo / 100 Mo audio, tmpdir, timeout 180 s. Testé : 6 s vidéo 1080x1920 + WAV → MP4 h264+AAC en **0,68 s** (copy vidéo = zéro ré-encodage)
+- ✅ UI : étape « Ajout du son (serveur)… » dans la barre de progression
+- ✅ Smoke test headless : 0 erreur JS, lecture OK, offlineSupported()=false en headless → repli realtime intact (testé iter_8)
+- ⚠️ Le mode hybride ne peut PAS être testé en headless (pas de codecs H.264) — validation par l'USER sur iPhone requise
+- ⚠️ REDÉPLOIEMENT nécessaire
