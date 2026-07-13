@@ -646,6 +646,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 <div class="ai-bar" id="aiBar" data-testid="ai-progress-bar"><div class="track"><div class="fill" id="aiBarFill"></div></div><div class="lbl" id="aiBarLbl">IA en cours…</div></div>
 
 <script src="/vendor/mp4-muxer.min.js"></script>
+<script src="/vendor/mp4box.all.min.js"></script>
 <script>
 'use strict';
 /* =====================================================================
@@ -859,7 +860,7 @@ const loadOv=(()=>{const d=document.createElement('div');d.id='loadOverlay';d.se
 function showLoad(txt,frac,sub){loadOv.classList.add('show');$('#loadOvTxt').textContent=txt;$('#loadOvBar').style.width=Math.round(Math.max(0,Math.min(1,frac||0))*100)+'%';$('#loadOvSub').textContent=sub||'';}
 function hideLoad(){loadOv.classList.remove('show');}
 function clipsOptimizing(){ return clips.some(c=>c._optimizing); }
-function clipsBlocking(){ return clips.some(c=>c._optimizing && !c._playable); }
+function clipsBlocking(){ return clips.some(c=>(c._optimizing && !c._playable) || (WC_ON() && !c._wcReady && !c._wcFail)); }
 let restoreIncomplete=false;   // chargement partiel → sauvegarde DÉSACTIVÉE (anti-écrasement de projet)
 /* Barre de progression des actions IA (haut de page) */
 const aiBar={
@@ -1364,11 +1365,13 @@ function toggleExtract(){
   fitSoon();
 }
 function toggleLoop(){ looping?stopAll():startLoop(); }
-function startLoop(){
+async function startLoop(){
   if(!buffer||exporting)return;
   if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
   stopAll(); looping=true;
-  warmUpPlans(ext.start);
+  const warm=warmUpPlans(ext.start);
+  if(WC_ON()) await warm;
+  if(exporting||!looping) return;
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer; srcNode.loop=true;
   srcNode.loopStart=ext.start; srcNode.loopEnd=ext.start+ext.dur;
   srcNode.connect(audioCtx.destination); srcNode.start(0,ext.start);
@@ -1441,19 +1444,32 @@ cDrop.addEventListener('drop',e=>{ [...e.dataTransfer.files].filter(f=>f.type.st
 }));
 function addClip(file, meta={}){
   const url=URL.createObjectURL(file);
-  const v=makePoolVideo(url);
-  const clip={url,el:v,els:[v],thumbs:[],seeks:[],name:file.name,mediaId:meta.mediaId||null,pexelsUrl:meta.pexelsUrl||null};
+  const clip={url,el:null,els:[],thumbs:[],seeks:[],name:file.name,mediaId:meta.mediaId||null,pexelsUrl:meta.pexelsUrl||null};
   clips.push(clip);
-  v.addEventListener('loadedmetadata',()=>{
-    if(v.videoWidth>0) clip._playable=true;                  // l'original est lisible ici → pas besoin de bloquer
-    const D=v.duration||6;
+  const onMeta=D=>{
     const n=Math.min(8, Math.max(2, Math.floor(D/2)));      // jusqu'à 8 plans proposés (~2 s chacun)
     clip.seeks=Array.from({length:n},(_,i)=> (i+0.15)*(D/n));
     makeThumbs(clip, ()=>{ autoAssign(); renderClips(); drawTimeline(); });
     if(!meta.skipUpload) toast(file.name.slice(0,24)+' → '+n+' plans proposés, placés sur le beat 🎲');
     renderClips();
-  },{once:true});
-  v.addEventListener('error',()=>{ clip._playable=false; renderClips(); },{once:true});
+  };
+  const tagMeta=()=>{
+    const v=makePoolVideo(url); clip.el=v; clip.els=[v];
+    v.addEventListener('loadedmetadata',()=>{
+      if(v.videoWidth>0) clip._playable=true;                // l'original est lisible ici → pas besoin de bloquer
+      onMeta(v.duration||6);
+    },{once:true});
+    v.addEventListener('error',()=>{ clip._playable=false; renderClips(); },{once:true});
+  };
+  if(WC_ON()){
+    clip._wcParse=parseClipWC(clip, file)
+      .then(()=>{ onMeta(clip.wc.durationS||6); })
+      .catch(e=>{
+        // codec indécodable ici (ex. HEVC iPhone) → vignettes/métadonnées via <video> en attendant la version optimisée serveur
+        clip._wcFail=true; console.warn('[wc]', clip.name, e&&e.message); renderClips();
+        tagMeta();
+      });
+  } else tagMeta();
   renderClips();
   // Stockage serveur + optimisation EN ARRIÈRE-PLAN (Pexels : import serveur direct, zéro re-upload)
   if(clip.pexelsUrl && !clip.mediaId) startPexelsImport(clip);
@@ -1573,8 +1589,13 @@ function swapClipMedia(clip, file){
   const old=clip.url;
   (clip.els||[clip.el]).filter(Boolean).forEach(v=>{ try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} });
   clip.url=URL.createObjectURL(file);
-  const v=makePoolVideo(clip.url);
-  clip.el=v; clip.els=[v];
+  if(WC_ON()){
+    clip.el=null; clip.els=[]; clip.wc=null; clip._wcReady=false; clip._wcFail=false;
+    clip._wcParse=parseClipWC(clip, file).catch(e=>{ clip._wcFail=true; console.warn('[wc] swap', clip.name, e&&e.message); renderClips(); });
+  } else {
+    const v=makePoolVideo(clip.url);
+    clip.el=v; clip.els=[v];
+  }
   if(old){ try{ URL.revokeObjectURL(old); }catch(e){} }
 }
 function renderClips(){
@@ -1671,6 +1692,10 @@ function addPickedSubclip(){
 document.addEventListener('click',()=>{ $('#pickPop').classList.remove('show');
   if(pendingPick){ pendingPick=null; $$('.subclip').forEach(x=>x.classList.remove('sel')); } });
 function makeThumbAt(clip, time, index, done){
+  if(WC_ON()&&clip.wc&&!clip._wcFail){ wcMakeThumbs(clip,[index]).then(()=>{ done&&done(); }); return; }
+  return makeThumbAtTag(clip, time, index, done);
+}
+function makeThumbAtTag(clip, time, index, done){
   const v=document.createElement('video'); v.src=clip.url; v.muted=true; v.preload='auto';
   v.playsInline=true; v.setAttribute('playsinline','');
   const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
@@ -1693,6 +1718,43 @@ function makeThumbAt(clip, time, index, done){
   v.load();
 }
 function makeThumbs(clip, done){
+  if(WC_ON()){
+    (clip._wcParse||Promise.resolve()).then(()=>{
+      if(clip.wc&&!clip._wcFail){ wcMakeThumbs(clip).then(()=>{ done&&done(); }); return; }
+      makeThumbsTag(clip, done);
+    });
+    return;
+  }
+  return makeThumbsTag(clip, done);
+}
+/* Vignettes via WebCodecs : un seul décodeur, re-calé sur chaque sous-plan */
+async function wcMakeThumbs(clip, indices){
+  const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
+  const ctx=cvs.getContext('2d');
+  const p=new SegPlayer(); p.setClip(clip.wc);
+  const list=indices||clip.seeks.map((_,k)=>k);
+  for(const i of list){
+    if(clip.seeks[i]==null) continue;
+    const t=Math.min(clip.seeks[i], Math.max(0,(clip.wc.durationS||1)-0.1));
+    p.seek(t);
+    let f=null; const t0=performance.now();
+    while(performance.now()-t0<1500){
+      p.fill(); f=p.frameAt(t);
+      if(f&&f.timestamp>=(t-0.3)*1e6) break;
+      if(p.err) break;
+      await new Promise(r=>setTimeout(r,16));
+    }
+    if(f){
+      const fw=f.displayWidth||f.codedWidth, fh=f.displayHeight||f.codedHeight;
+      const s=Math.max(cvs.width/fw, cvs.height/fh);
+      ctx.drawImage(f,(cvs.width-fw*s)/2,(cvs.height-fh*s)/2,fw*s,fh*s);
+      clip.thumbs[i]=cvs.toDataURL('image/jpeg',0.7);
+      if(clip._timgs) delete clip._timgs[i];
+    }
+  }
+  p.destroy();
+}
+function makeThumbsTag(clip, done){
   // capture une vignette par sous-plan (timeline, choix, et secours plein écran → taille généreuse)
   const v=document.createElement('video'); v.src=clip.url; v.muted=true; v.preload='auto';
   v.playsInline=true; v.setAttribute('playsinline','');
@@ -2079,7 +2141,8 @@ function planThumbImg(cl, target){
   if(!cl.thumbs||!cl.thumbs.length) return null;
   let i=0;
   if(cl.seeks&&cl.seeks.length){
-    const tt=cl.el&&cl.el.duration? target%cl.el.duration : target;
+    const D=(cl.wc&&cl.wc.durationS)||(cl.el&&cl.el.duration)||0;
+    const tt=D? target%D : target;
     for(let k=1;k<cl.seeks.length;k++) if(Math.abs(cl.seeks[k]-tt)<Math.abs(cl.seeks[i]-tt)) i=k;
   }
   if(!cl.thumbs[i]) i=cl.thumbs.findIndex(Boolean);
@@ -2088,6 +2151,211 @@ function planThumbImg(cl, target){
   if(!cl._timgs[i]){ const im=new Image(); im.src=cl.thumbs[i]; cl._timgs[i]=im; }
   return cl._timgs[i];
 }
+/* ================== MOTEUR WEBCODECS (façon LYRC) ==================
+   AUCUNE balise <video> pendant la lecture : chaque mp4 est démuxé UNE fois
+   (mp4box.js, échantillons conservés en ORDRE DE DÉCODAGE — jamais triés),
+   puis décodé à la demande par VideoDecoder et dessiné dans le canvas.
+   - DOUBLE DÉCODEUR (wcA/wcB) : pendant qu'un plan joue, le suivant est
+     déjà pré-décodé → à la coupure la 1re frame est PRÊTE (latence ~0).
+   - Backpressure : ~10 frames max en file, frames consommées fermées.
+   L'ancien moteur <video> ci-dessous ne sert plus que de repli navigateur. */
+function WC_ON(){ return !!(window.VideoDecoder && window.EncodedVideoChunk && typeof MP4Box!=='undefined'); }
+(function(){ /* mp4 iPhone : atomes Apple propriétaires loggués en "error" par mp4box — bruit sans conséquence */
+  try{
+    if(typeof Log!=='undefined'&&typeof Log.error==='function'){
+      const orig=Log.error.bind(Log);
+      Log.error=function(mod,msg){
+        const m=String(mod)+' '+String(msg);
+        if(m.indexOf('BoxParser')>-1 && m.indexOf('greater than its container')>-1) return;
+        orig(mod,msg);
+      };
+    }
+  }catch(e){}
+})();
+async function parseClipWC(clip, blob){
+  const buf=await blob.arrayBuffer();
+  const wc={samples:[],config:null,durationS:0};
+  await new Promise((resolve,reject)=>{
+    const mp4=MP4Box.createFile();
+    let done=false, poll=null;
+    const fail=err=>{ if(done)return; done=true; clearTimeout(timeout); clearInterval(poll); reject(err); };
+    const timeout=setTimeout(()=>fail(new Error('démuxage trop long — format non mp4 ?')),30000);
+    mp4.onError=()=>{};   // avertissement de conteneur : non fatal si des frames sortent
+    mp4.onReady=info=>{
+      const track=info.videoTracks&&info.videoTracks[0];
+      if(!track){ fail(new Error('pas de piste vidéo')); return; }
+      wc.durationS=(track.duration&&track.timescale)? track.duration/track.timescale : (info.duration/info.timescale||0);
+      // description du codec (avcC/hvcC…) — recette W3C standard
+      let description=null;
+      try{
+        const trak=mp4.getTrackById(track.id);
+        for(const entry of trak.mdia.minf.stbl.stsd.entries){
+          const box=entry.avcC||entry.hvcC||entry.vpcC||entry.av1C;
+          if(box){ const ds=new DataStream(undefined,0,DataStream.BIG_ENDIAN); box.write(ds);
+            description=new Uint8Array(ds.buffer,8); break; }
+        }
+      }catch(e){}
+      /* PAS de optimizeForLatency : ce mode court-circuite le réordonnancement
+         des B-frames (mp4 iPhone) → image corrompue. On laisse le décodeur faire. */
+      wc.config={ codec:track.codec, codedWidth:track.video?track.video.width:track.track_width,
+                  codedHeight:track.video?track.video.height:track.track_height, description };
+      const et=(track.codec||'').slice(0,4);
+      if(!description&&(et==='avc1'||et==='avc2'||et==='hvc1'||et==='hev1')){ fail(new Error('paramètres codec ('+et+') introuvables')); return; }
+      mp4.setExtractionOptions(track.id, null, {nbSamples:2000});
+      mp4.start();
+    };
+    mp4.onSamples=(id,user,samples)=>{
+      /* IMPORTANT : ne PAS trier par cts — mp4box livre en ordre de DÉCODAGE,
+         exigé par le décodeur (B-frames : les références d'abord). */
+      for(const s of samples){
+        wc.samples.push({ key:!!s.is_sync, ts:Math.round(s.cts*1e6/s.timescale),
+          dur:Math.round(s.duration*1e6/s.timescale), data:s.data });
+      }
+    };
+    buf.fileStart=0;
+    mp4.appendBuffer(buf);
+    mp4.flush();
+    // fin d'extraction : le compte d'échantillons doit se stabiliser (fichiers longs inclus)
+    let last=-1, stable=0;
+    poll=setInterval(async()=>{
+      if(done) return;
+      if(wc.samples.length===last) stable++; else { stable=0; last=wc.samples.length; }
+      if(stable<2) return;
+      clearInterval(poll);
+      try{ mp4.stop(); }catch(e){}
+      if(!wc.samples.length){ fail(new Error('aucune frame extraite')); return; }
+      // le codec est-il décodable sur CETTE machine ? (cas HEVC iPhone)
+      try{
+        const sup=await VideoDecoder.isConfigSupported(wc.config);
+        if(!sup.supported){ fail(new Error('codec '+wc.config.codec+' non décodable sur cette machine')); return; }
+      }catch(e){ fail(new Error('codec non décodable')); return; }
+      if(done) return;
+      done=true; clearTimeout(timeout); resolve();
+    },200);
+  });
+  clip.wc=wc; clip._wcReady=true; clip._playable=true;
+  renderClips();
+  return true;
+}
+/* Lecteur de segment à double tampon — logique du prototype LYRC, à l'identique */
+class SegPlayer{
+  constructor(){ this.clip=null; this.cfgFor=null; this.dec=null; this.frames=[]; this.cur=null; this.si=0; this.targetUs=0; this.err=null; }
+  setClip(wc){ this.clip=wc; }
+  _newDecoder(){
+    if(this.dec){ try{this.dec.close();}catch(e){} }
+    this.dec=new VideoDecoder({ output:f=>this._onFrame(f), error:e=>{this.err=e.message;} });
+    this.dec.configure(this.clip.config); this.cfgFor=this.clip;
+  }
+  _onFrame(f){
+    if(f.timestamp < this.targetUs-40000){ f.close(); return; }   // frames d'avant la cible (décodées depuis la keyframe) : jetées
+    this.frames.push(f);
+  }
+  clearFrames(){ if(this.cur){try{this.cur.close();}catch(e){} this.cur=null;} this.frames.forEach(f=>{try{f.close();}catch(e){}}); this.frames=[]; }
+  seek(tSec){
+    if(!this.clip) return;
+    this.targetUs=Math.max(0, Math.min(tSec, this.clip.durationS-0.05))*1e6;
+    this.clearFrames();
+    if(!this.dec || this.cfgFor!==this.clip){ this._newDecoder(); }
+    else { try{ this.dec.reset(); this.dec.configure(this.clip.config); }catch(e){ this._newDecoder(); } }
+    const S=this.clip.samples; let k=0;
+    for(let i=0;i<S.length;i++){ if(S[i].key && S[i].ts<=this.targetUs) k=i; }   // cts non monotone (B-frames) : on scanne tout, seules les keyframes comptent
+    this.si=k;
+    this.fill();
+  }
+  fill(){
+    if(!this.dec||this.dec.state!=='configured') return;
+    const S=this.clip.samples;
+    while(this.frames.length<10 && this.dec.decodeQueueSize<14 && this.si<S.length){
+      const s=S[this.si++];
+      try{ this.dec.decode(new EncodedVideoChunk({type:s.key?'key':'delta', timestamp:s.ts, duration:s.dur, data:s.data})); }
+      catch(e){ this.err=e.message; break; }
+    }
+    if(this.si>=S.length){ try{ this.dec.flush().catch(()=>{}); }catch(e){} }
+  }
+  frameAt(tSec){
+    const wantUs=tSec*1e6;
+    this.fill();
+    while(this.frames.length && this.frames[0].timestamp<=wantUs){
+      if(this.cur){ try{this.cur.close();}catch(e){} }
+      this.cur=this.frames.shift();
+    }
+    return this.cur;
+  }
+  buffered(){ return this.frames.length; }
+  destroy(){ this.clearFrames(); if(this.dec){try{this.dec.close();}catch(e){}} this.dec=null; }
+}
+/* --- double lecteur de la prévisualisation --- */
+let wcA=null, wcB=null, wcPtr=-1, wcPrepFor=-1;
+function wcSeekOf(p){
+  const cl=clips[p.clip]; const d=cl&&cl.wc? cl.wc.durationS:0; const s=p.seek||0;
+  return d? s%Math.max(0.05,d) : s;
+}
+function wcReset(){ if(wcA){wcA.destroy();wcA=null;} if(wcB){wcB.destroy();wcB=null;} wcPtr=-1; wcPrepFor=-1; }
+function wcActivate(i){
+  const plans=(M&&M.plans)||[]; const p=plans[i]; wcPtr=i;
+  if(p&&p.clip!==null&&clips[p.clip]&&clips[p.clip].wc){
+    if(wcPrepFor===i&&wcB&&wcB.clip===clips[p.clip].wc){ const tmp=wcA; wcA=wcB; wcB=tmp; }   // permutation : le pré-décodé devient actif (latence ~0)
+    else { if(!wcA) wcA=new SegPlayer(); wcA.setClip(clips[p.clip].wc); wcA.seek(wcSeekOf(p)); }
+    wcA._lastTgt=wcSeekOf(p);
+  }
+  wcPrepFor=-1;
+  const nx=plans[i+1];
+  if(nx&&nx.clip!==null&&clips[nx.clip]&&clips[nx.clip].wc){
+    if(!wcB) wcB=new SegPlayer();
+    wcB.setClip(clips[nx.clip].wc); wcB.seek(wcSeekOf(nx)); wcPrepFor=i+1;
+  }
+}
+/* --- scrub à l'arrêt : décodeur dédié, re-calé à la demande --- */
+let wcScrub=null, wcScrubClip=null, wcScrubT=-1;
+function wcScrubFrame(cl, target){
+  if(!cl.wc||!cl.wc.config) return null;
+  if(!wcScrub) wcScrub=new SegPlayer();
+  const d=cl.wc.durationS||0; if(d) target%=Math.max(0.05,d);
+  let sought=false;
+  if(wcScrubClip!==cl.wc){ wcScrubClip=cl.wc; wcScrub.setClip(cl.wc); wcScrub.seek(target); wcScrubT=target; sought=true; }
+  else if(Math.abs(target-wcScrubT)>0.06){
+    if(!(target>wcScrubT && target-wcScrubT<0.8)){ wcScrub.seek(target); sought=true; }   // petite avance : on consomme, sinon re-seek
+    wcScrubT=target;
+  }
+  const f=wcScrub.frameAt(target);
+  if(!f&&sought&&!playing) wcScrubRedraw();
+  return f;
+}
+let _wcRedrawN=0;
+function wcScrubRedraw(){
+  _wcRedrawN=0;
+  const tick=()=>{
+    if(playing) return;
+    drawPreview(curTime());
+    if(++_wcRedrawN<8 && !(wcScrub&&wcScrub.cur)) setTimeout(tick,70);
+  };
+  setTimeout(tick,60);
+}
+/* --- export : décodage séquentiel frame-accurate (zéro seek <video>) --- */
+let wcExpFrame=null, _wcExpPi=-1;
+async function wcExportSeek(pl, t){
+  const plans=(M&&M.plans)||[]; const pi=plans.findIndex(p=>t>=p.start&&t<p.end);
+  wcExpFrame=null;
+  if(pi<0) return;
+  const p=plans[pi]; if(p.clip===null||!clips[p.clip]||!clips[p.clip].wc) return;
+  const wc=clips[p.clip].wc; const d=wc.durationS||0;
+  let target=(p.seek||0)+(t-p.start); if(d) target%=Math.max(0.05,d);
+  if(_wcExpPi!==pi || pl.clip!==wc || target<(pl._lastT||0)-0.2){
+    pl.setClip(wc); pl.seek(target); _wcExpPi=pi;
+  }
+  pl._lastT=target;
+  const t0=performance.now(); let f=null;
+  while(performance.now()-t0<1500){
+    pl.fill(); f=pl.frameAt(target);
+    // exactitude : on sort quand la frame SUIVANTE dépasserait la cible → f est LA bonne frame
+    if(f && pl.frames.length && pl.frames[0].timestamp>target*1e6) break;
+    if(f && pl.si>=pl.clip.samples.length && !pl.frames.length) break;   // fin du flux
+    if(pl.err) break;
+    await new Promise(r=>setTimeout(r,5));
+  }
+  wcExpFrame=f;
+}
+
 /* Certains navigateurs mettent les <video> en pause (onglet, mémoire) → frames noires. On les réveille. */
 /* ================== Moteur vidéo des plans ==================
    video.currentTime est ASYNCHRONE ('seeked' arrive 50-300 ms après, bien plus sur
@@ -2161,14 +2429,57 @@ function ensureActive(t){
 }
 function syncLivePlan(t){
   const plans=(M&&M.plans)||[];
-  if(planAssign.length!==plans.length) assignPlanPlayers();
   if(!plans.length) return;
+  if(WC_ON()){
+    const cur=plans.findIndex(p=>t>=p.start&&t<p.end);
+    if(cur>=0&&cur!==wcPtr) wcActivate(cur);
+    else if(cur>=0&&wcA&&wcA.clip){
+      const p=plans[cur]; const d=wcA.clip.durationS||0;
+      if(d){
+        const raw=(p.seek||0)+(t-p.start); const tgt=raw%Math.max(0.05,d);
+        if(raw>=d && tgt<(wcA._lastTgt||0)-0.2) wcA.seek(tgt);   // le plan dépasse la durée du clip → reboucle
+        wcA._lastTgt=tgt;
+      }
+    }
+    return;
+  }
+  if(planAssign.length!==plans.length) assignPlanPlayers();
   const cur=plans.findIndex(p=>t>=p.start&&t<p.end);
   if(cur>=0&&cur!==livePtr) activatePlan(cur);
   else if(cur>=0) ensureActive(t);
 }
 /* Pré-cale les lecteurs des 2 premiers plans avant de démarrer (zéro frame floue au lancement) */
 function warmUpPlans(fromT){
+  if(WC_ON()) return wcWarmUp(fromT);
+  return warmUpPlansTag(fromT);
+}
+function wcWarmUp(fromT){
+  const plans=(M&&M.plans)||[];
+  wcReset();
+  let i=plans.findIndex(p=>fromT>=p.start&&fromT<p.end);
+  if(i<0) i=plans.findIndex(p=>p.end>fromT);
+  if(i<0) return Promise.resolve();
+  const p=plans[i]; wcPtr=i;
+  if(p.clip!==null&&clips[p.clip]&&clips[p.clip].wc){
+    const wc=clips[p.clip].wc; const d=wc.durationS||0;
+    let tgt=(p.seek||0)+Math.max(0,fromT-p.start); if(d) tgt%=Math.max(0.05,d);
+    wcA=new SegPlayer(); wcA.setClip(wc); wcA.seek(tgt); wcA._lastTgt=tgt;
+  }
+  const nx=plans[i+1];
+  if(nx&&nx.clip!==null&&clips[nx.clip]&&clips[nx.clip].wc){
+    wcB=new SegPlayer(); wcB.setClip(clips[nx.clip].wc); wcB.seek(wcSeekOf(nx)); wcPrepFor=i+1;
+  }
+  // attendre la 1re frame décodée (max 2,5 s) — zéro frame noire au lancement
+  return new Promise(res=>{
+    const t0=performance.now();
+    const tick=()=>{
+      if(!wcA||wcA.buffered()>0||wcA.cur||wcA.err||performance.now()-t0>2500){ res(); return; }
+      wcA.fill(); setTimeout(tick,30);
+    };
+    tick();
+  });
+}
+function warmUpPlansTag(fromT){
   assignPlanPlayers();
   const plans=(M&&M.plans)||[]; const idx=[];
   for(let i=0;i<plans.length&&idx.length<2;i++){
@@ -2189,11 +2500,13 @@ function warmUpPlans(fromT){
   })));
 }
 function togglePlay(){ if(exporting){toast('Export en cours — attends la fin');return;} playing&&!looping? stopAll() : play(ext.start); }
-function play(from){
+async function play(from){
   if(!buffer||exporting)return;
   if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
   stopAll();
-  warmUpPlans(from);
+  const warm=warmUpPlans(from);
+  if(WC_ON()) await warm;   // WebCodecs : la 1re frame est décodée AVANT le départ du son
+  if(exporting) return;
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer;
   srcNode.connect(audioCtx.destination);
   srcNode.start(0, from, ext.start+ext.dur-from);
@@ -2204,6 +2517,7 @@ function play(from){
 function stopAll(){
   if(srcNode){ srcNode.onended=null; try{srcNode.stop()}catch(e){} srcNode=null; }
   playing=false; looping=false;
+  if(WC_ON()) wcReset();
   if(liveEl){ try{ liveEl.pause(); }catch(e){} }
   livePtr=-1; liveEl=null;
   $('#playBtn').textContent='▶'; $('#loopBtn').textContent='▶ Écouter l\u2019extrait';
@@ -2333,8 +2647,34 @@ function drawPreview(t, cvOverride){
   let drewMedia=false;
   if(plan&&plan.clip!==null&&clips[plan.clip]){
     const cl=clips[plan.clip];
-    let v=poolEl(cl, planAssign[pi]===1?1:0);
     const target=(plan.seek||0)+(t-plan.start);
+    if(WC_ON()){
+      // moteur WebCodecs : frame décodée à la demande, jamais de <video>
+      let f=null;
+      if(offlineRender) f=wcExpFrame;
+      else if(playing&&pi===wcPtr&&wcA&&cl.wc&&wcA.clip===cl.wc){
+        const d=cl.wc.durationS||0; let tt=target; if(d) tt%=Math.max(0.05,d);
+        f=wcA.frameAt(tt);
+      }
+      else if(!playing&&cl.wc) f=wcScrubFrame(cl,target);
+      if(f){
+        const fw=f.displayWidth||f.codedWidth, fh=f.displayHeight||f.codedHeight;
+        const s=Math.max(W/fw,H/fh);
+        c.drawImage(f,(W-fw*s)/2,(H-fh*s)/2,fw*s,fh*s);
+        c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
+        drewMedia=true;
+      } else {
+        // frame pas encore décodée (rare) : vignette du plan → jamais d'écran noir
+        const img=planThumbImg(cl, target);
+        if(img&&img.complete&&img.naturalWidth){
+          const s=Math.max(W/img.naturalWidth,H/img.naturalHeight);
+          c.drawImage(img,(W-img.naturalWidth*s)/2,(H-img.naturalHeight*s)/2,img.naturalWidth*s,img.naturalHeight*s);
+          c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
+          drewMedia=true;
+        }
+      }
+    } else {
+    let v=poolEl(cl, planAssign[pi]===1?1:0);
     if(!offlineRender){
       if(playing){
         if(livePtr===pi&&liveEl) v=liveEl;   // lecture : lecteur activé à la coupure, jamais re-seeké ici
@@ -2358,6 +2698,7 @@ function drawPreview(t, cvOverride){
         c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
         drewMedia=true;
       }
+    }
     }
   }
   if(!drewMedia){
@@ -2581,6 +2922,20 @@ let _avcCodec=null;
 async function ensureClipsReady(){
   const used=[...new Set((((M&&M.plans)||[]).map(p=>p.clip)).filter(i=>i!=null&&clips[i]))];
   const dead=[];
+  if(WC_ON()){
+    await Promise.all(used.map(async i=>{
+      const cl=clips[i];
+      const t0=Date.now();
+      while(Date.now()-t0<8000){
+        if(cl._wcReady&&cl.wc) return;
+        if(cl._wcFail) break;
+        await new Promise(r=>setTimeout(r,300));
+      }
+      dead.push(cl.name||('clip '+(i+1)));
+      console.warn('[export] clip non décodable (WebCodecs) :', cl.name);
+    }));
+    return dead;
+  }
   await Promise.all(used.map(async i=>{
     const cl=clips[i];
     const els=(cl.els||[cl.el]).filter(Boolean);
@@ -2642,7 +2997,8 @@ async function exportOffline(nameSuffix, mode='full'){
   const fps=30, fmt=FORMATS[(M&&M.format)||'916'], W=fmt[0], H=fmt[1];
   const total=Math.max(1,Math.round(ext.dur*fps));
   const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
-  const cleanup=()=>{ offlineRender=false; exporting=false; btn.disabled=false; btn.textContent=btnLabel; aiBar.done(); };
+  const wcExp=WC_ON()? new SegPlayer() : null;
+  const cleanup=()=>{ offlineRender=false; exporting=false; btn.disabled=false; btn.textContent=btnLabel; if(wcExp) wcExp.destroy(); wcExpFrame=null; _wcExpPi=-1; aiBar.done(); };
   try{
     aiBar.set('Préparation de l\u2019export studio…',1);
     assignPlanPlayers();
@@ -2674,7 +3030,7 @@ async function exportOffline(nameSuffix, mode='full'){
     // — Vidéo : image par image
     for(let i=0;i<total;i++){
       const t=ext.start+i/fps;
-      await seekPlanFrame(t);
+      if(wcExp) await wcExportSeek(wcExp,t); else await seekPlanFrame(t);
       offlineRender=true; drawPreview(t,cv); offlineRender=false;
       const frame=new VideoFrame(cv,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
       venc.encode(frame,{keyFrame:i%(fps*2)===0}); frame.close();
@@ -2851,7 +3207,8 @@ async function serieLoadMorceau(m){
 }
 async function serieWaitClips(){
   for(let i=0;i<60;i++){
-    if(clips.every(c=>c.seeks&&c.seeks.length&&c.el.readyState>=2)) return;
+    if(WC_ON()){ if(clips.every(c=>c.seeks&&c.seeks.length&&(c._wcReady||c._wcFail))) return; }
+    else if(clips.every(c=>c.seeks&&c.seeks.length&&c.el&&c.el.readyState>=2)) return;
     await new Promise(r=>setTimeout(r,200));
   }
 }
@@ -2863,11 +3220,24 @@ function withVariant(va, fn){
 async function drawVariantFrame(cvs, va, t){
   const plan=(va.plans||[]).find(p=>t>=p.start&&t<p.end);
   if(plan&&plan.clip!==null&&clips[plan.clip]){
-    const v=clips[plan.clip].el;
-    try{
-      v.currentTime=((plan.seek||0)+(t-plan.start))%(v.duration||1);
-      await new Promise(r=>{ const done=()=>{v.removeEventListener('seeked',done);r();}; v.addEventListener('seeked',done); setTimeout(r,800); });
-    }catch(e){}
+    const cl=clips[plan.clip];
+    if(WC_ON()&&cl.wc){
+      const target=(plan.seek||0)+(t-plan.start);
+      const d=cl.wc.durationS||0; let tt=target; if(d) tt%=Math.max(0.05,d);
+      wcScrubFrame(cl, target);
+      const t0=performance.now();
+      while(performance.now()-t0<900){
+        const f=wcScrubFrame(cl, target);
+        if(f && Math.abs(f.timestamp/1e6-tt)<0.3) break;
+        await new Promise(r=>setTimeout(r,30));
+      }
+    } else if(cl.el){
+      const v=cl.el;
+      try{
+        v.currentTime=((plan.seek||0)+(t-plan.start))%(v.duration||1);
+        await new Promise(r=>{ const done=()=>{v.removeEventListener('seeked',done);r();}; v.addEventListener('seeked',done); setTimeout(r,800); });
+      }catch(e){}
+    }
   }
   withVariant(va, ()=>drawPreview(t, cvs));
 }
@@ -3144,17 +3514,4 @@ window.API=API; window.DBref=()=>DB;
 </script>
 </body>
 </html>
-tion.href='/login';
-    return;
-  }
-  bootRemote();
-});
-// Protège l'upload audio en cours (fermeture d'onglet = morceau sans son)
-window.addEventListener('beforeunload', e=>{
-  if(M && M._uploadingAudio){ e.preventDefault(); e.returnValue='Sauvegarde du son en cours…'; }
-});
-// Exposé pour les tests E2E
-window.API=API; window.DBref=()=>DB;
-</script>
-</body>
-</html>
+
