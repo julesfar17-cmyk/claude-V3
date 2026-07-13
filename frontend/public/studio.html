@@ -339,6 +339,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
     <div class="crumb"><span>Morceau</span><input class="title" id="editTitle" value="Sans titre"></div>
     <button class="small ghost" id="undoBtn" onclick="undo()" disabled title="Annuler (Ctrl+Z)">↶ Annuler</button>
     <div class="savestate ok" id="saveState">Enregistré</div>
+    <button class="small" id="backupsBtn" onclick="openBackups()" data-testid="backups-button" title="Historique des versions du morceau">🕘 Versions</button>
     <button class="primary" id="exportBtn" onclick="exportVideo()">⏺ Exporter la vidéo</button>
   </div>
 
@@ -354,6 +355,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
         <input type="text" id="bankSearch" placeholder="ex : néon, fumée, ville la nuit…">
         <div id="bankResults" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
         <p class="hint" style="margin-top:6px">Entrée pour chercher — clique une vignette pour l'ajouter.</p>
+        <button class="small" id="recoverBtn" onclick="recoverMedia()" data-testid="recover-media-button" style="margin-top:10px;width:100%">☁ Récupérer mes vidéos déjà envoyées</button>
       </div>
     </div>
 
@@ -767,23 +769,41 @@ const API = {
     }catch(e){ return null; }
   },
   async fetchMedia(mediaId, name, onProgress){
-    const r=await fetch('/api/media/'+mediaId,{credentials:'include'});
-    if(!r.ok) throw new Error('Média introuvable');
-    const total=+r.headers.get('Content-Length')||0;
-    let blob;
-    if(r.body && total && onProgress){
-      const reader=r.body.getReader(); const chunks=[]; let got=0;
-      while(true){
-        const {done,value}=await reader.read();
-        if(done) break;
-        chunks.push(value); got+=value.length;
-        onProgress(Math.min(1, got/total));
+    let lastErr;
+    for(let att=0;att<3;att++){
+      try{ return await this._fetchMediaOnce(mediaId, name, onProgress); }
+      catch(e){
+        lastErr=e;
+        if(String(e&&e.message||'').includes('introuvable')) throw e;   // 404 : inutile de réessayer
+        await new Promise(r=>setTimeout(r, 800*(att+1)));
       }
-      blob=new Blob(chunks,{type:r.headers.get('Content-Type')||'application/octet-stream'});
-    }else{
-      blob=await r.blob();
     }
-    return new File([blob], name||'media', {type:blob.type||'application/octet-stream'});
+    throw lastErr;
+  },
+  async _fetchMediaOnce(mediaId, name, onProgress){
+    // garde anti-blocage : si aucun octet ne circule pendant 30 s, on coupe et on réessaie
+    const ac=new AbortController();
+    let stall=setTimeout(()=>ac.abort(), 30000);
+    const bump=()=>{ clearTimeout(stall); stall=setTimeout(()=>ac.abort(), 30000); };
+    try{
+      const r=await fetch('/api/media/'+mediaId,{credentials:'include',signal:ac.signal});
+      if(!r.ok) throw new Error('Média introuvable');
+      const total=+r.headers.get('Content-Length')||0;
+      let blob;
+      if(r.body && total){
+        const reader=r.body.getReader(); const chunks=[]; let got=0;
+        while(true){
+          const {done,value}=await reader.read();
+          if(done) break;
+          bump(); chunks.push(value); got+=value.length;
+          if(onProgress) onProgress(Math.min(1, got/total));
+        }
+        blob=new Blob(chunks,{type:r.headers.get('Content-Type')||'application/octet-stream'});
+      }else{
+        blob=await r.blob();
+      }
+      return new File([blob], name||'media', {type:blob.type||'application/octet-stream'});
+    }finally{ clearTimeout(stall); }
   },
 };
 
@@ -840,6 +860,7 @@ function showLoad(txt,frac,sub){loadOv.classList.add('show');$('#loadOvTxt').tex
 function hideLoad(){loadOv.classList.remove('show');}
 function clipsOptimizing(){ return clips.some(c=>c._optimizing); }
 function clipsBlocking(){ return clips.some(c=>c._optimizing && !c._playable); }
+let restoreIncomplete=false;   // chargement partiel → sauvegarde DÉSACTIVÉE (anti-écrasement de projet)
 /* Barre de progression des actions IA (haut de page) */
 const aiBar={
   _t:null,_pct:0,
@@ -881,6 +902,7 @@ async function bootRemote(){
 let persistTimer=null;
 async function persistRemote(){
   if(!API.user||!M) return;
+  if(restoreIncomplete){ $('#saveState').textContent='⚠ Sauvegarde désactivée (chargement incomplet)'; $('#saveState').classList.remove('ok'); return; }
   const stateDoc={
     v2:true, title:M.title, videos:M.videos||0,
     bpm:M.bpm||bpm||0, beatAnchor, format:M.format||'916',
@@ -1068,6 +1090,8 @@ async function fetchRemoteMorceau(m){
   if(st.ext) ext={...st.ext};
   if(st.beatAnchor!=null) beatAnchor=st.beatAnchor;
   // Verrou de chargement : audio + clips ENTIÈREMENT téléchargés avant lecture
+  restoreIncomplete=false;
+  let restoreFails=0;
   const total=(m.audioMediaId?1:0)+((m.clipRefs||[]).length);
   let step=0;
   const prog=f=>showLoad('Chargement de ton morceau…',total?(step+f)/total:1,total?Math.min(step+1,total)+' / '+total+' fichiers':'');
@@ -1480,6 +1504,64 @@ async function retryClipUpload(ci){
 window.addEventListener('beforeunload',e=>{
   if(clips.some(c=>c._optimizing)||(M&&M._uploadingAudio)){ e.preventDefault(); e.returnValue=''; }
 });
+/* Récupération : ré-ajoute à la banque toutes les vidéos déjà envoyées au serveur (projet abîmé) */
+async function recoverMedia(){
+  try{
+    const r=await fetch('/api/media/mine',{credentials:'include'});
+    if(!r.ok) throw new Error();
+    const {media}=await r.json();
+    const have=new Set(clips.map(c=>c.mediaId).filter(Boolean));
+    const vids=media.filter(m=>(m.content_type||'').startsWith('video/')&&!have.has(m.media_id));
+    if(!vids.length){ toast('Aucune vidéo à récupérer — tout est déjà dans la banque'); return; }
+    toast('☁ Récupération de '+vids.length+' vidéo(s)…');
+    let done=0;
+    for(const m of vids){
+      try{
+        showLoad('Récupération de tes vidéos…', done/vids.length, (done+1)+' / '+vids.length);
+        addClip(await API.fetchMedia(m.media_id, m.filename||'video.mp4'),{mediaId:m.media_id,skipUpload:true});
+        done++;
+      }catch(e){}
+    }
+    hideLoad();
+    restoreIncomplete=false;   // la banque est reconstruite → la sauvegarde peut reprendre
+    dirty();
+    toast('✓ '+done+' vidéo(s) récupérée(s) — repositionne-les sur tes plans si besoin');
+  }catch(e){ hideLoad(); toast('Récupération impossible — réessaie'); }
+}
+/* Historique des versions du morceau (sauvegardes automatiques serveur) */
+async function openBackups(){
+  if(!M||!M._remote){ toast('Aucune version sauvegardée pour ce morceau'); return; }
+  const r=await fetch('/api/projects/'+M.id+'/backups',{credentials:'include'});
+  if(!r.ok){ toast('Historique indisponible'); return; }
+  const {backups}=await r.json();
+  if(!backups||!backups.length){ toast('Pas encore de versions — elles se créent automatiquement pendant que tu montes'); return; }
+  const old=document.getElementById('bkPop'); if(old) old.remove();
+  const d=document.createElement('div'); d.id='bkPop';
+  d.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(8,8,12,.8);display:grid;place-items:center';
+  const box=document.createElement('div');
+  box.style.cssText='background:#15181f;border:1px solid #2a2f3a;border-radius:12px;padding:18px;width:min(440px,92vw);max-height:70vh;overflow:auto';
+  box.innerHTML='<div style="font-weight:700;margin-bottom:6px">🕘 Versions du morceau</div><div class="hint" style="margin-bottom:8px">Sauvegardées automatiquement — restaure si ton projet a un problème.</div>';
+  backups.forEach(b=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #232833;font-size:13px';
+    const dt=new Date(b.created_at);
+    const lbl=document.createElement('span');
+    lbl.textContent=dt.toLocaleDateString('fr-FR')+' '+dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+' · '+b.clips+' vidéo(s) · '+b.plans+' plan(s)';
+    const btn=document.createElement('button'); btn.className='small'; btn.textContent='Restaurer';
+    btn.setAttribute('data-testid','backup-restore-button');
+    btn.onclick=async()=>{
+      if(!confirm('Restaurer cette version ? La version actuelle sera d\u2019abord conservée dans l\u2019historique.')) return;
+      const rr=await fetch('/api/projects/'+M.id+'/backups/'+b.backup_id+'/restore',{method:'POST',credentials:'include'});
+      if(rr.ok){ toast('✓ Version restaurée — rechargement…'); setTimeout(()=>location.reload(),800); }
+      else toast('Restauration impossible');
+    };
+    row.append(lbl,btn); box.append(row);
+  });
+  const close=document.createElement('button'); close.className='small'; close.style.marginTop='12px'; close.textContent='Fermer'; close.onclick=()=>d.remove();
+  box.append(close); d.append(box);
+  d.onclick=e=>{ if(e.target===d) d.remove(); };
+  document.body.append(d);
+}
 /* Libellé + mise à jour légère du badge d'optimisation (sans re-render complet) */
 function clipOptLabel(clip){
   if(typeof clip._upPct==='number' && clip._upPct<100) return '☁ Envoi '+clip._upPct+' %';
@@ -2472,6 +2554,14 @@ async function exportVideo(nameSuffix){
   if(exporting){ toast('Un export est déjà en cours — attends la fin'); return false; }
   if(!buffer){toast('Dépose d\u2019abord ton morceau');return false;}
   if(clipsOptimizing()){ toast('⏳ Optimisation de tes vidéos en cours — l\u2019export sera prêt dans un instant'); return false; }
+  // GARDE ANTI-DIAPORAMA : chaque vidéo utilisée par un plan doit être décodable MAINTENANT
+  aiBar.set('Vérification des vidéos…',1);
+  const deadClips=await ensureClipsReady();
+  if(deadClips.length){
+    aiBar.done();
+    toast('⚠ '+deadClips.length+' vidéo(s) pas prête(s) ('+String(deadClips[0]).slice(0,20)+'…) — recharge le projet avant d\u2019exporter, sinon l\u2019export serait en images fixes');
+    return false;
+  }
   // 1) Plan + quota côté serveur AVANT (source de vérité)
   await API.refreshQuota();
   if(API.plan!=='pro' && API.quota.left<=0){
@@ -2486,6 +2576,26 @@ async function exportVideo(nameSuffix){
   return exportRealtime(nameSuffix);
 }
 let _avcCodec=null;
+/* Vérifie que chaque vidéo utilisée par un plan est réellement décodable (anti-export-diaporama).
+   Tente un réveil (load) puis attend jusqu'à 6 s ; renvoie la liste des vidéos mortes. */
+async function ensureClipsReady(){
+  const used=[...new Set((((M&&M.plans)||[]).map(p=>p.clip)).filter(i=>i!=null&&clips[i]))];
+  const dead=[];
+  await Promise.all(used.map(async i=>{
+    const cl=clips[i];
+    const els=(cl.els||[cl.el]).filter(Boolean);
+    if(!els.length){ dead.push(cl.name||('clip '+(i+1))); return; }
+    els.forEach(v=>{ if(v.readyState<2){ try{ v.load(); }catch(e){} } });
+    const t0=Date.now();
+    while(Date.now()-t0<6000){
+      if(els.every(v=>v.readyState>=2&&v.videoWidth>0)) return;
+      await new Promise(r=>setTimeout(r,300));
+    }
+    dead.push(cl.name||('clip '+(i+1)));
+    console.warn('[export] clip non décodable :', cl.name, 'readyState=', (cl.els||[cl.el]).map(v=>v&&v.readyState));
+  }));
+  return dead;
+}
 const _AVC_TRY=['avc1.640033','avc1.640028','avc1.4d4028','avc1.42e01f'];
 async function offlineSupported(){
   try{
@@ -3021,6 +3131,20 @@ API.init().then(()=>{
   if(!API.user){
     // Pas de session : le studio est derrière /studio (route protégée) — on renvoie au login
     window.top.location.href='/login';
+    return;
+  }
+  bootRemote();
+});
+// Protège l'upload audio en cours (fermeture d'onglet = morceau sans son)
+window.addEventListener('beforeunload', e=>{
+  if(M && M._uploadingAudio){ e.preventDefault(); e.returnValue='Sauvegarde du son en cours…'; }
+});
+// Exposé pour les tests E2E
+window.API=API; window.DBref=()=>DB;
+</script>
+</body>
+</html>
+tion.href='/login';
     return;
   }
   bootRemote();

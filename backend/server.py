@@ -1563,6 +1563,21 @@ async def media_import_url(payload: dict, user: dict = Depends(get_current_user)
     return await _store_media(user, r.content, name, r.headers.get("content-type") or "video/mp4")
 
 
+@api_router.get("/media/mine")
+async def media_mine(user: dict = Depends(get_current_user)):
+    """Liste des médias de l'utilisateur (récupération de vidéos orphelines dans le studio)."""
+    docs = await db["media.files"].find(
+        {"metadata.user_id": user["user_id"]},
+        {"filename": 1, "length": 1, "uploadDate": 1, "metadata.content_type": 1, "metadata.transcoded": 1},
+    ).sort("uploadDate", -1).to_list(1000)
+    return {"media": [{
+        "media_id": str(d["_id"]), "filename": d.get("filename"),
+        "size": d.get("length"),
+        "content_type": ((d.get("metadata") or {}).get("content_type")) or "",
+        "transcoded": bool(((d.get("metadata") or {}).get("transcoded"))),
+    } for d in docs]}
+
+
 @api_router.get("/media/{media_id}")
 async def media_download(media_id: str, user: dict = Depends(get_current_user)):
     try:
@@ -1698,6 +1713,33 @@ def _project_media_ids(state: dict) -> set:
     return ids
 
 
+def _refs_count(st) -> int:
+    return len([c for c in ((st or {}).get("clipRefs") or []) if c.get("mediaId") or c.get("pexelsUrl")])
+
+
+async def _backup_project(doc, reason="auto"):
+    """Snapshot de l'état courant dans project_backups (15 versions max par projet)."""
+    await db.project_backups.insert_one({
+        "backup_id": uuid.uuid4().hex[:10], "project_id": doc["project_id"], "user_id": doc["user_id"],
+        "title": doc.get("title"), "state": doc.get("state"),
+        "state_updated_at": doc.get("updated_at"), "created_at": iso(now_utc()), "reason": reason,
+    })
+    old = [d["_id"] async for d in db.project_backups.find(
+        {"project_id": doc["project_id"]}, {"_id": 1}).sort("created_at", -1).skip(15)]
+    if old:
+        await db.project_backups.delete_many({"_id": {"$in": old}})
+
+
+async def _maybe_backup_project(existing, new_state):
+    old_n, new_n = _refs_count(existing.get("state")), _refs_count(new_state)
+    losing = new_n < old_n
+    last = await db.project_backups.find_one(
+        {"project_id": existing["project_id"]}, {"created_at": 1}, sort=[("created_at", -1)])
+    stale = (not last) or (parse_dt(last["created_at"]) < now_utc() - timedelta(minutes=10))
+    if losing or stale:
+        await _backup_project(existing, "perte-de-clips" if losing else "auto")
+
+
 @api_router.get("/projects")
 async def list_projects(user: dict = Depends(get_current_user)):
     docs = await db.projects.find(
@@ -1721,6 +1763,10 @@ async def save_project(payload: dict, user: dict = Depends(get_current_user)):
     project_id = payload.get("project_id")
     now = iso(now_utc())
     if project_id:
+        existing = await db.projects.find_one({"project_id": project_id, "user_id": user["user_id"]})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Projet introuvable")
+        await _maybe_backup_project(existing, state)
         res = await db.projects.update_one(
             {"project_id": project_id, "user_id": user["user_id"]},
             {"$set": {"title": title, "state": state, "updated_at": now,
@@ -1756,6 +1802,36 @@ async def get_project(project_id: str, user: dict = Depends(get_current_user)):
     if not doc:
         raise HTTPException(status_code=404, detail="Projet introuvable")
     return doc
+
+
+@api_router.get("/projects/{project_id}/backups")
+async def list_project_backups(project_id: str, user: dict = Depends(get_current_user)):
+    docs = await db.project_backups.find(
+        {"project_id": project_id, "user_id": user["user_id"]},
+        {"_id": 0, "backup_id": 1, "created_at": 1, "title": 1, "state": 1, "reason": 1},
+    ).sort("created_at", -1).to_list(20)
+    return {"backups": [{
+        "backup_id": d["backup_id"], "created_at": d["created_at"], "title": d.get("title"),
+        "reason": d.get("reason"), "clips": _refs_count(d.get("state")),
+        "plans": len(((d.get("state") or {}).get("plans")) or []),
+    } for d in docs]}
+
+
+@api_router.post("/projects/{project_id}/backups/{backup_id}/restore")
+async def restore_project_backup(project_id: str, backup_id: str, user: dict = Depends(get_current_user)):
+    bk = await db.project_backups.find_one(
+        {"project_id": project_id, "backup_id": backup_id, "user_id": user["user_id"]})
+    if not bk:
+        raise HTTPException(status_code=404, detail="Version introuvable")
+    cur = await db.projects.find_one({"project_id": project_id, "user_id": user["user_id"]})
+    if not cur:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    await _backup_project(cur, "avant-restauration")
+    await db.projects.update_one(
+        {"project_id": project_id},
+        {"$set": {"state": bk["state"], "title": bk.get("title") or cur.get("title"),
+                  "updated_at": iso(now_utc())}})
+    return {"restored": True}
 
 
 @api_router.post("/projects/{project_id}/duplicate")
@@ -2049,6 +2125,7 @@ async def startup():
     await db.user_sessions.create_index("session_token")
     await db.login_attempts.create_index("identifier")
     await db.payment_transactions.create_index("session_id")
+    await db.project_backups.create_index([("project_id", 1), ("created_at", -1)])
     await db.password_reset_tokens.create_index("token")
     await db.promo_codes.create_index("code", unique=True)
     await db.templates.create_index([("user_id", 1), ("created_at", -1)])

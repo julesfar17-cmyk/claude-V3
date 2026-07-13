@@ -300,3 +300,16 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Non-régression Chromium testée : export téléchargé, piste audio opus présente et audible
 - 📢 Signal de vérification pour l'user : sur iPhone, pendant l'export, l'étape « Ajout du son (serveur)… » DOIT apparaître — si absente, l'app tourne encore sur l'ancien build (fermer l'onglet Safari et rouvrir)
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (12 juillet 2026) — 🔴 INCIDENT « projet perdu » : protections anti-perte de données complètes
+- Incident user prod : export « diaporama » (vignettes fixes) → rechargement bloqué 3/34 → autosave a ÉCRASÉ le projet avec un état vide → projet perdu
+- Chaîne causale : fetchMedia sans timeout (blocage), restore partiel non détecté, autosave aveugle, export silencieux en mode secours vignettes
+- ✅ **Sauvegardes versionnées serveur** : `project_backups` (15 versions/projet, index (project_id, created_at)) — snapshot AVANT chaque save qui PERD des clips (`reason: perte-de-clips`) + snapshot auto max 1×/10 min. Endpoints : GET `/api/projects/{id}/backups`, POST `/api/projects/{id}/backups/{bid}/restore` (backup 'avant-restauration' d'abord)
+- ✅ **Verrou anti-écrasement** : `restoreIncomplete` → si ≥1 clip échoue au chargement, `persistRemote()` REFUSE de sauvegarder (#saveState « ⚠ Sauvegarde désactivée ») + toast explicite
+- ✅ **fetchMedia robuste** : 3 tentatives + AbortController anti-stall (30 s sans octets → abort → retry) — plus de chargement gelé à 3/34
+- ✅ **Bouton « ☁ Récupérer mes vidéos déjà envoyées »** (banque, `data-testid=recover-media-button`) : GET `/api/media/mine` (limite 1000) → ré-ajoute toutes les vidéos GridFS absentes de la banque, avec barre de progression, puis réactive la sauvegarde
+- ✅ **Bouton « 🕘 Versions »** (barre du studio, `data-testid=backups-button`) : popup listant les versions (date, nb vidéos, nb plans) avec Restaurer (confirm + reload)
+- ✅ **Garde anti-diaporama** : `ensureClipsReady()` avant TOUT export — chaque vidéo utilisée par un plan doit être décodable (readyState≥2 + videoWidth>0, réveil load() + attente 6 s) sinon export REFUSÉ avec message clair + console.warn
+- ✅ Testé (iteration_9) : backend 7/7 pytest (backup perte-de-clips, restore, throttle, scoping, 401/404), frontend : popup versions OK, verrou OK (0 POST), récupération 15 vidéos OK, lecture OK. Export bloqué en headless par la garde = comportement CORRECT (codecs H.264 absents du headless)
+- 📢 Pour le projet perdu de l'user : après redéploiement → ouvrir le projet → « ☁ Récupérer mes vidéos » restaure la banque (les plans/le montage restent à refaire, les backups n'existaient pas encore à ce moment). Les vidéos GridFS n'ont PAS été supprimées (GC uniquement à la suppression de projet)
+- ⚠️ REDÉPLOIEMENT nécessaire
