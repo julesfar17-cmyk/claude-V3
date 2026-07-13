@@ -977,6 +977,7 @@ function renderCards(root,list){
   const nw=document.createElement('div');nw.className='card new';nw.innerHTML='<div><div class="plus">＋</div>Nouveau morceau</div>';nw.onclick=newMorceau;root.append(nw);
   list.forEach(m=>{
     const c=document.createElement('div');c.className='card';c.style.position='relative';
+    c.setAttribute('data-testid','song-card'); c.setAttribute('data-song-id',m.id);
     c.innerHTML=`<div class="thumb">${Array.from({length:18},()=>`<i style="height:${10+Math.random()*80}%"></i>`).join('')}</div>
       <h3>${m.title}</h3><div class="meta">${m.bpm?Math.round(m.bpm)+' BPM · ':''}${m.videos||0} vidéo${(m.videos||0)>1?'s':''}</div>`;
     const del=document.createElement('button');
@@ -1466,7 +1467,9 @@ function addClip(file, meta={}){
       .then(()=>{ onMeta(clip.wc.durationS||6); })
       .catch(e=>{
         // codec indécodable ici (ex. HEVC iPhone) → vignettes/métadonnées via <video> en attendant la version optimisée serveur
-        clip._wcFail=true; console.warn('[wc]', clip.name, e&&e.message); renderClips();
+        clip._wcFail=true;
+        if(!clip._wcWarned){ clip._wcWarned=true; console.warn('[wc]', clip.name, e&&e.message); }
+        renderClips();
         tagMeta();
       });
   } else tagMeta();
@@ -1591,7 +1594,7 @@ function swapClipMedia(clip, file){
   clip.url=URL.createObjectURL(file);
   if(WC_ON()){
     clip.el=null; clip.els=[]; clip.wc=null; clip._wcReady=false; clip._wcFail=false;
-    clip._wcParse=parseClipWC(clip, file).catch(e=>{ clip._wcFail=true; console.warn('[wc] swap', clip.name, e&&e.message); renderClips(); });
+    clip._wcParse=parseClipWC(clip, file).catch(e=>{ clip._wcFail=true; if(!clip._wcWarned){ clip._wcWarned=true; console.warn('[wc] swap', clip.name, e&&e.message); } renderClips(); });
   } else {
     const v=makePoolVideo(clip.url);
     clip.el=v; clip.els=[v];

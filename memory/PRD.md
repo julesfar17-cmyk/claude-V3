@@ -313,3 +313,26 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Testé (iteration_9) : backend 7/7 pytest (backup perte-de-clips, restore, throttle, scoping, 401/404), frontend : popup versions OK, verrou OK (0 POST), récupération 15 vidéos OK, lecture OK. Export bloqué en headless par la garde = comportement CORRECT (codecs H.264 absents du headless)
 - 📢 Pour le projet perdu de l'user : après redéploiement → ouvrir le projet → « ☁ Récupérer mes vidéos » restaure la banque (les plans/le montage restent à refaire, les backups n'existaient pas encore à ce moment). Les vidéos GridFS n'ont PAS été supprimées (GC uniquement à la suppression de projet)
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Implémenté (13 juillet 2026) — 🚀 PHASE 2 : MOTEUR VIDÉO DÉFINITIF 100 % WEBCODECS (façon LYRC)
+- Demande user : « MOTEUR VIDÉO DÉFINITIF — ON PASSE AU WEBCODECS, MODE UNIQUE » (bascule totale choisie, pas de toggle). Prototype de référence /tmp/moteur-lyrc-test.html suivi À L'IDENTIQUE (ordre de décodage mp4box jamais trié, description avcC/hvcC W3C, pas d'optimizeForLatency, backpressure 10 frames, frame.close() systématique)
+- ✅ `<script src="/vendor/mp4box.all.min.js">` chargé (vendorisé) + filtre du bruit BoxParser des mp4 iPhone
+- ✅ `parseClipWC(clip, blob)` : démuxage mp4box → `clip.wc={samples[] (ordre de décodage), config (codec+description), durationS}` + `VideoDecoder.isConfigSupported` ; fin d'extraction par stabilisation du compte d'échantillons (fiable sur gros fichiers) ; flags `_wcReady/_wcFail/_wcParse`
+- ✅ `class SegPlayer` : lecteur de segment à double tampon (seek → keyframe scan → décodage, fill() borné à 10 frames / queue 14, frameAt(t) draine jusqu'à la cible)
+- ✅ LECTURE : double lecteur wcA/wcB — pendant qu'un plan joue, wcB pré-décode le plan suivant → à la coupure, permutation (latence ~0). `syncLivePlan`/`wcActivate`/`wcWarmUp` ; `play()` et `startLoop()` attendent la 1re frame décodée (max 2,5 s) avant de lancer le son ; reboucle si un plan dépasse la durée du clip
+- ✅ SCRUB à l'arrêt : décodeur dédié `wcScrub` re-calé à la demande + redraws différés (wcScrubRedraw) → plus aucun seek `<video>`
+- ✅ EXPORT : `wcExportSeek` décode séquentiellement, critère d'exactitude « la frame suivante dépasserait la cible » → validé 12/12 timestamps EXACTS (frame-accurate). exportOffline branché dessus (plus de seekPlanFrame quand WC actif)
+- ✅ VIGNETTES : `wcMakeThumbs` génère les thumbs via WebCodecs (un seul décodeur, seek par sous-plan) — plus de <video> pour les thumbs quand le codec est décodable
+- ✅ Gating strict : `clipsBlocking()` inclut l'état de parse WC → lecture impossible tant que les clips ne sont pas démuxés/bufferisés
+- ✅ REPLI automatique : navigateur sans WebCodecs/MP4Box → ancien moteur <video> intact (warmUpPlansTag/activatePlan/poolEl conservés) ; clip au codec indécodable (ex. HEVC avant optimisation Mux) → _wcFail → métadonnées+vignettes via <video> + fallback vignettes à la lecture, ré-essai automatique après swap Mux (swapClipMedia re-parse)
+- ✅ Série de vidéos : drawVariantFrame + serieWaitClips + ensureClipsReady branchés WC
+- ✅ data-testid song-card/data-song-id sur les cartes home (testabilité) ; log [wc] dédupliqué par clip
+- ✅ TESTÉ (iteration_10, 100 % backend 5/5 + 100 % frontend) : parse VP9 240 samples, thumbs 4/4, lecture wcPtr avance + canvas non noir + arrêt auto, loop, scrub, sauvegarde+reload projet, série 3 versions, 0 erreur JS
+- ⚠️ Chromium headless du pod SANS codecs H.264 → clips H.264 = _wcFail en test (ATTENDU, pas un bug) ; clips VP9 de test : /wc_test_a.mp4 et /wc_test_b.mp4 (servis statiquement, à conserver pour les retests)
+- 📢 VALIDATION USER REQUISE sur PC Chrome (environnement réel) : lecture fluide, coupures nettes, export rapide
+- ⚠️ REDÉPLOIEMENT nécessaire
+
+## Backlog priorisé (mise à jour 13 juillet 2026)
+- P1 (après validation user du moteur) : UpChunk pour uploads reprenables
+- P1 : Emails Resend automatiques en cas d'échec d'export
+- P2 : Nettoyage systématique des fichiers orphelins GridFS
