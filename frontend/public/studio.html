@@ -2910,24 +2910,28 @@ async function exportOffline(nameSuffix, mode='full'){
     const muxOpts={target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},fastStart:'in-memory'};
     if(mode==='full') muxOpts.audio={codec:'aac',numberOfChannels:nch,sampleRate:sr};
     const muxer=new Muxer(muxOpts);
-    let encErr=null;
-    const venc=new VideoEncoder({output:(ch,m)=>muxer.addVideoChunk(ch,m),error:e=>{encErr=e;}});
+    let vencErr=null, aencErr=null, audioChunks=0;
+    const venc=new VideoEncoder({output:(ch,m)=>muxer.addVideoChunk(ch,m),error:e=>{vencErr=e;}});
     venc.configure({codec:_avcCodec||'avc1.640033',width:W,height:H,bitrate:12000000,framerate:fps});
     let aenc=null;
     if(mode==='full'){
-      // — Audio : extrait encodé en AAC côté client
-      aenc=new AudioEncoder({output:(ch,m)=>muxer.addAudioChunk(ch,m),error:e=>{encErr=e;}});
-      aenc.configure({codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:nch,bitrate:192000});
-      const s0=Math.floor(ext.start*sr), n=Math.min(Math.floor(ext.dur*sr), buffer.length-s0);
-      const chans=[...Array(nch)].map((_,k)=>buffer.getChannelData(k));
-      const CH=4096;
-      for(let off=0;off<n;off+=CH){
-        const len=Math.min(CH,n-off);
-        const data=new Float32Array(len*nch);
-        for(let k=0;k<nch;k++) data.set(chans[k].subarray(s0+off,s0+off+len), k*len);
-        const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:len,numberOfChannels:nch,timestamp:Math.round(off/sr*1e6),data});
-        aenc.encode(ad); ad.close();
-      }
+      // — Audio : extrait encodé en AAC côté client. En cas de pépin, on N'ÉCHOUE PAS :
+      //   le serveur assemblera le son (filet anti « vidéo muette » sur mobile).
+      try{
+        aenc=new AudioEncoder({output:(ch,m)=>{ try{ muxer.addAudioChunk(ch,m); audioChunks++; }catch(e){ aencErr=aencErr||e; } },error:e=>{aencErr=e;}});
+        aenc.configure({codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:nch,bitrate:192000});
+        const s0=Math.floor(ext.start*sr), n=Math.min(Math.floor(ext.dur*sr), buffer.length-s0);
+        const chans=[...Array(nch)].map((_,k)=>buffer.getChannelData(k));
+        const CH=4096;
+        for(let off=0;off<n;off+=CH){
+          const len=Math.min(CH,n-off);
+          const data=new Float32Array(len*nch);
+          for(let k=0;k<nch;k++) data.set(chans[k].subarray(s0+off,s0+off+len), k*len);
+          const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:len,numberOfChannels:nch,timestamp:Math.round(off/sr*1e6),data});
+          aenc.encode(ad); ad.close();
+          if(aencErr) break;
+        }
+      }catch(e){ aencErr=aencErr||e; }
     }
     // — Vidéo : image par image
     for(let i=0;i<total;i++){
@@ -2937,15 +2941,17 @@ async function exportOffline(nameSuffix, mode='full'){
       const frame=new VideoFrame(cv,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
       venc.encode(frame,{keyFrame:i%(fps*2)===0}); frame.close();
       if(venc.encodeQueueSize>6) await new Promise(r=>{ const to=setTimeout(r,80); venc.addEventListener('dequeue',()=>{clearTimeout(to);r();},{once:true}); });
-      if(encErr) throw encErr;
+      if(vencErr) throw vencErr;
       if((i&7)===0) aiBar.set('Export studio '+W+'×'+H+'… '+Math.round(i/total*100)+' %', 2+i/total*92);
     }
     aiBar.set('Finalisation du MP4…',95);
-    await venc.flush(); if(aenc) await aenc.flush();
+    await venc.flush();
+    if(aenc){ try{ await aenc.flush(); }catch(e){ aencErr=aencErr||e; } }
     muxer.finalize();
     let blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
-    if(mode!=='full'){
-      // Safari : le serveur ajoute la piste audio (aucun ré-encodage vidéo, 2-3 s)
+    if(mode!=='full' || aencErr || audioChunks===0){
+      // Safari / AAC client muet ou en échec : le serveur ajoute la piste audio (aucun ré-encodage vidéo, 2-3 s)
+      if(mode==='full') console.warn('[export] AAC client KO ('+((aencErr&&aencErr.message)||'0 chunk')+') → son assemblé par le serveur');
       aiBar.set('Ajout du son (serveur)…',96);
       const fd=new FormData();
       fd.append('video', blob, 'v.mp4');
