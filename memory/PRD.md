@@ -347,3 +347,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - 🐛 BONUS corrigé : duplication de clips au chargement (course hashchange + route() → loadRemoteMorceau lancé en double → addClip dupliqués PERSISTÉS). Verrou `m._loading` dans loadRemoteMorceau. Reproduit avec 3× route() → 5 clips uniques ✓. Fixture « Morceau Série Test » réparée (clipRefs restaurés depuis la backup 13:21, dédupliqués)
 - ✅ Testé : syntaxe node OK, lecture WebCodecs re-validée après suppression (wcPtr avance, canvas non noir), thumbs 4/4, écran incompatible affiché/loggué/fermé (simulation VideoEncoder=undefined), endpoints télémétrie 200
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (13 juillet 2026) — Aperçus des clips manquants après import + Mélanger
+- Bug user : « quand on importe la vidéo l'aperçu des clips marche pas et Mélanger n'utilise que les 3 seuls clips qui ont un aperçu »
+- Causes racines identifiées et corrigées :
+  1. SATURATION DÉCODEURS : import multiple → un wcMakeThumbs (décodeur WebCodecs) par clip EN PARALLÈLE → au-delà de ~3-4, les décodeurs matériels refusent → vignettes vides. FIX : file d'attente globale `_thumbQ` (une génération à la fois) + retry avec un décodeur neuf si `p.err` + jeton `_thumbGen` (annule la passe obsolète après swap Mux) + renderClips() après chaque vignette (feedback progressif)
+  2. SEEKS JAMAIS CRÉÉS : original HEVC illisible par <video> (pas de loadedmetadata) → seeks=[] → après le swap Mux, makeThumbs tournait sur 0 seeks → clip définitivement sans aperçu. FIX : startClipUpload régénère les seeks depuis clip.wc.durationS après le re-parse du swap + autoAssign()
+  3. p.seek=undefined si seeks vide dans shufflePlans/autoAssign/removeClip → FIX : garde `(c.seeks&&c.seeks.length)? … : 0`
+- ✅ Testé (pod, clips VP9) : import ×6 simultané → 6 clips avec 4/4 vignettes ; Mélanger → 20 plans, 0 seek invalide ; simulation swap Mux sans seeks → 4 seeks + 4 vignettes régénérés
+- 📢 VALIDATION USER REQUISE avec ses vrais fichiers (iPhone/HEVC) sur son navigateur
+- ⚠️ REDÉPLOIEMENT nécessaire

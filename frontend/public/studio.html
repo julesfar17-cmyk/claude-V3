@@ -1427,7 +1427,7 @@ function shufflePlans(){
   pushHistory();
   M.plans.forEach(p=>{ if(!p.locked){
     p.clip=Math.floor(Math.random()*clips.length);
-    const c=clips[p.clip]; p.seek=c.seeks? c.seeks[Math.floor(Math.random()*c.seeks.length)]:0;
+    const c=clips[p.clip]; p.seek=(c.seeks&&c.seeks.length)? c.seeks[Math.floor(Math.random()*c.seeks.length)]:0;
   }});
   drawTimeline(); dirty(); toast('Plans mélangés 🎲 (les 🔒 n\u2019ont pas bougé)');
 }
@@ -1499,9 +1499,17 @@ function startClipUpload(clip, file){
         const f=await API.fetchMedia(id, clip.name);
         while(playing||looping){ await new Promise(r=>setTimeout(r,800)); }   // pas de swap en pleine lecture
         swapClipMedia(clip, f); ok=true;
-        // régénère les vignettes depuis la version optimisée (l'original HEVC peut être indécodable)
-        clip.thumbs=[];
-        makeThumbs(clip, ()=>{ renderClips(); drawTimeline(); });
+        // régénère plans proposés + vignettes depuis la version optimisée (l'original HEVC peut être indécodable → seeks jamais créés)
+        clip._wcParse.then(()=>{
+          if(clip.wc&&(!clip.seeks||!clip.seeks.length)){
+            const D=clip.wc.durationS||6;
+            const n=Math.min(8, Math.max(2, Math.floor(D/2)));
+            clip.seeks=Array.from({length:n},(_,i)=>(i+0.15)*(D/n));
+            autoAssign();
+          }
+          clip.thumbs=[];
+          makeThumbs(clip, ()=>{ renderClips(); drawTimeline(); });
+        });
       }
       else if(s && s.failed) toast('⚠ Optimisation impossible pour cette vidéo — elle peut saccader à la lecture');
     }catch(e){}
@@ -1653,7 +1661,7 @@ function renderClips(){
 function removeClip(ci){
   clips.splice(ci,1);
   M.plans.forEach(p=>{
-    if(p.clip===ci){ p.clip=clips.length?Math.floor(Math.random()*clips.length):null; const c=clips[p.clip]; p.seek=c&&c.seeks?c.seeks[Math.floor(Math.random()*c.seeks.length)]:0; }
+    if(p.clip===ci){ p.clip=clips.length?Math.floor(Math.random()*clips.length):null; const c=clips[p.clip]; p.seek=(c&&c.seeks&&c.seeks.length)?c.seeks[Math.floor(Math.random()*c.seeks.length)]:0; }
     else if(p.clip>ci) p.clip--;
   });
   renderClips(); drawTimeline(); dirty();
@@ -1723,13 +1731,24 @@ function makeThumbs(clip, done){
     makeThumbsTag(clip, done);
   });
 }
-/* Vignettes via WebCodecs : un seul décodeur, re-calé sur chaque sous-plan */
-async function wcMakeThumbs(clip, indices){
+/* Vignettes via WebCodecs — FILE D'ATTENTE globale : une génération à la fois.
+   (importer 6 vidéos d'un coup = 6 décodeurs simultanés → saturation matérielle → vignettes vides) */
+let _thumbQ=Promise.resolve();
+function wcMakeThumbs(clip, indices){
+  const gen=clip._thumbGen=(clip._thumbGen||0)+1;
+  const run=_thumbQ.then(()=>_wcMakeThumbsNow(clip, indices, gen));
+  _thumbQ=run.catch(()=>{});
+  return run;
+}
+async function _wcMakeThumbsNow(clip, indices, gen){
+  if(!clip.wc||!clip.wc.config||clip._thumbGen!==gen) return;
   const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
   const ctx=cvs.getContext('2d');
-  const p=new SegPlayer(); p.setClip(clip.wc);
+  let p=new SegPlayer(); p.setClip(clip.wc);
+  let retried=false;
   const list=indices||clip.seeks.map((_,k)=>k);
   for(const i of list){
+    if(clip._thumbGen!==gen) break;   // vignettes reset entre-temps (swap Mux) → on abandonne cette passe
     if(clip.seeks[i]==null) continue;
     const t=Math.min(clip.seeks[i], Math.max(0,(clip.wc.durationS||1)-0.1));
     p.seek(t);
@@ -1737,15 +1756,19 @@ async function wcMakeThumbs(clip, indices){
     while(performance.now()-t0<1500){
       p.fill(); f=p.frameAt(t);
       if(f&&f.timestamp>=(t-0.3)*1e6) break;
-      if(p.err) break;
+      if(p.err){
+        if(retried) break;
+        retried=true; p.destroy(); p=new SegPlayer(); p.setClip(clip.wc); p.seek(t);   // décodeur saturé → seconde chance
+      }
       await new Promise(r=>setTimeout(r,16));
     }
-    if(f){
+    if(f&&clip._thumbGen===gen){
       const fw=f.displayWidth||f.codedWidth, fh=f.displayHeight||f.codedHeight;
       const s=Math.max(cvs.width/fw, cvs.height/fh);
       ctx.drawImage(f,(cvs.width-fw*s)/2,(cvs.height-fh*s)/2,fw*s,fh*s);
       clip.thumbs[i]=cvs.toDataURL('image/jpeg',0.7);
       if(clip._timgs) delete clip._timgs[i];
+      renderClips();   // feedback immédiat : chaque vignette apparaît dès qu'elle est prête
     }
   }
   p.destroy();
@@ -1783,7 +1806,7 @@ function autoAssign(){
   M.plans.forEach(p=>{
     if(p.clip===null&&!p.locked){
       p.clip=Math.floor(Math.random()*clips.length);
-      const c=clips[p.clip]; p.seek=c.seeks? c.seeks[Math.floor(Math.random()*c.seeks.length)] : 0;
+      const c=clips[p.clip]; p.seek=(c.seeks&&c.seeks.length)? c.seeks[Math.floor(Math.random()*c.seeks.length)] : 0;
     }
   });
 }
