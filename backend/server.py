@@ -666,6 +666,7 @@ async def log_export_telemetry(request: Request, user: dict = Depends(get_curren
         "server_audio": bool(body.get("server_audio")),
         "audio_chunks": int(body.get("audio_chunks") or 0),
         "aenc_err": (str(body.get("aenc_err"))[:200] if body.get("aenc_err") else None),
+        "build": str(body.get("build") or "")[:40],
         "src_peak": body.get("src_peak"),
         "size": int(body.get("size") or 0),
         "ua": str(body.get("ua") or "")[:300],

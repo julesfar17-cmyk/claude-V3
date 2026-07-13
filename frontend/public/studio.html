@@ -854,6 +854,8 @@ function updateQuotaUI(){
 }
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const BC_BUILD='v13.07-son-serveur';   // affiché au toast d'export : permet de vérifier la version réellement exécutée
+console.log('[BeatCut studio]', BC_BUILD);
 const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2800);};
 /* Verrou de chargement : overlay plein écran avec barre de progression */
 const loadOv=(()=>{const d=document.createElement('div');d.id='loadOverlay';d.setAttribute('data-testid','load-overlay');d.innerHTML='<div class="box"><div class="txt" id="loadOvTxt">Chargement…</div><div class="bar"><i id="loadOvBar"></i></div><div class="sub" id="loadOvSub"></div></div>';document.body.appendChild(d);return d;})();
@@ -3006,7 +3008,7 @@ async function exportOffline(nameSuffix, mode='full'){
     try{
       fetch('/api/telemetry/export',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({mode, server_audio:usedServerAudio, audio_chunks:audioChunks, aenc_err:(aencErr&&String(aencErr.message||aencErr))||null,
-          src_peak:Math.round(srcPeak*1000)/1000, size:blob.size, ua:navigator.userAgent})}).catch(()=>{});
+          build:BC_BUILD, src_peak:Math.round(srcPeak*1000)/1000, size:blob.size, ua:navigator.userAgent})}).catch(()=>{});
     }catch(e){}
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
     a.download=(M.title||'beatcut')+(nameSuffix||'')+'.mp4'; a.click();
@@ -3015,7 +3017,7 @@ async function exportOffline(nameSuffix, mode='full'){
     if(API.plan!=='pro' && API.quota.left>0) API.quota.left--;
     DB.exports++; M.videos=(M.videos||0)+1; dirty(); updateQuotaUI();
     cleanup();
-    toast('Vidéo exportée en '+W+'×'+H+' ✓ · son : '+(usedServerAudio?'assemblé par le serveur':'direct'));
+    toast('Vidéo exportée en '+W+'×'+H+' ✓ · son : '+(usedServerAudio?'assemblé par le serveur':'direct')+' · '+BC_BUILD);
     return true;
   }catch(e){
     cleanup();
