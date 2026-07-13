@@ -2885,10 +2885,25 @@ async function offlineSupported(){
     if(window.AudioEncoder&&window.AudioData){
       try{
         const a=await AudioEncoder.isConfigSupported({codec:'mp4a.40.2',sampleRate:buffer.sampleRate,numberOfChannels:nch,bitrate:192000});
-        if(a.supported) return 'full';
+        // isConfigSupported MENT sur certains navigateurs (WebKit iOS) : on teste un VRAI encodage
+        if(a.supported && await _aacReallyWorks(buffer.sampleRate,nch)) return 'full';
       }catch(e){}
     }
-    return 'hybrid';   // Safari : vidéo WebCodecs (rapide), son assemblé par le serveur
+    return 'hybrid';   // iOS/Safari & co : vidéo WebCodecs (rapide), son assemblé par le serveur
+  }catch(e){ return false; }
+}
+/* Encode ~0,3 s de silence et vérifie qu'un chunk AAC EXPLOITABLE sort
+   (avec la description codec exigée par le muxer) — sinon le mp4 serait MUET */
+async function _aacReallyWorks(sr,nch){
+  try{
+    let desc=false, got=0, err=null;
+    const enc=new AudioEncoder({output:(ch,m)=>{ got++; if(m&&m.decoderConfig&&m.decoderConfig.description&&m.decoderConfig.description.byteLength>0) desc=true; },error:e=>{err=e;}});
+    enc.configure({codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:nch,bitrate:192000});
+    const N=4096, data=new Float32Array(N*nch);
+    for(let i=0;i<3;i++){ const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:N,numberOfChannels:nch,timestamp:Math.round(i*N/sr*1e6),data}); enc.encode(ad); ad.close(); }
+    await enc.flush();
+    try{ enc.close(); }catch(e){}
+    return !err && got>0 && desc;
   }catch(e){ return false; }
 }
 /* Export offline (comme les logiciels de montage) : chaque image est décodée
@@ -2918,7 +2933,14 @@ async function exportOffline(nameSuffix, mode='full'){
       // — Audio : extrait encodé en AAC côté client. En cas de pépin, on N'ÉCHOUE PAS :
       //   le serveur assemblera le son (filet anti « vidéo muette » sur mobile).
       try{
-        aenc=new AudioEncoder({output:(ch,m)=>{ try{ muxer.addAudioChunk(ch,m); audioChunks++; }catch(e){ aencErr=aencErr||e; } },error:e=>{aencErr=e;}});
+        let aDescOk=false;
+        aenc=new AudioEncoder({output:(ch,m)=>{
+          if(!aDescOk){
+            if(m&&m.decoderConfig&&m.decoderConfig.description&&m.decoderConfig.description.byteLength>0) aDescOk=true;
+            else { aencErr=aencErr||new Error('AAC sans description codec'); return; }   // piste inutilisable → filet serveur
+          }
+          try{ muxer.addAudioChunk(ch,m); audioChunks++; }catch(e){ aencErr=aencErr||e; }
+        },error:e=>{aencErr=e;}});
         aenc.configure({codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:nch,bitrate:192000});
         const s0=Math.floor(ext.start*sr), n=Math.min(Math.floor(ext.dur*sr), buffer.length-s0);
         const chans=[...Array(nch)].map((_,k)=>buffer.getChannelData(k));

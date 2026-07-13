@@ -366,3 +366,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Fichier de test long supprimé de public/ (les petits wc_test_a/b.mp4 restent pour les retests)
 - 📢 VALIDATION USER REQUISE avec ses vrais clips longs
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (13 juillet 2026) — Export MUET depuis téléphone (PRODUCTION, iPhone Safari + Chrome iOS)
+- Diagnostic confirmé avec le user : la vidéo se télécharge mais est MUETTE. Cause : WebKit iOS expose AudioEncoder et `isConfigSupported('mp4a.40.2')` répond supported → mode export 'full' (AAC client) → mais l'encodage AAC réel produit une piste inutilisable (pas de description codec / chunks invalides) → mp4 muet livré
+- FIX en 3 couches (mp4 muet désormais impossible) :
+  1. `_aacReallyWorks()` : AVANT l'export, encodage RÉEL de ~0,3 s de silence → exige un chunk AVEC decoderConfig.description ; sinon mode 'hybrid' (son assemblé serveur)
+  2. Pendant l'export 'full' : le 1er chunk AAC sans description → rejeté (aencErr), rien de muxé
+  3. Filet final : si `aencErr` ou `audioChunks===0` après flush → bascule automatique vers /api/export/finalize (serveur ajoute la piste, -c:v copy, 2-3 s) au lieu de livrer un mp4 muet. Erreur audio ≠ erreur fatale (seule la vidéo peut faire échouer l'export)
+- ✅ Vérifié : /api/export/finalize testé en preview (HTTP 200, sortie avec Stream audio aac stéréo 192k) ; _aacReallyWorks/offlineSupported s'exécutent proprement (pod sans AAC → hybrid/false honnête) ; syntaxe OK
+- ⚠️ Le fix est en PREVIEW : le user doit REDÉPLOYER pour corriger la production (beat-cut.com)
+- ⚠️ Point de vigilance prod : le chemin hybrid POST ~50 Mo (vidéo+wav) vers /api/export/finalize — si l'ingress prod limite la taille du body, l'utilisateur verrait « assemblage du son impossible » → contacter le support Emergent dans ce cas
