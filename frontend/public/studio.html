@@ -860,7 +860,7 @@ const loadOv=(()=>{const d=document.createElement('div');d.id='loadOverlay';d.se
 function showLoad(txt,frac,sub){loadOv.classList.add('show');$('#loadOvTxt').textContent=txt;$('#loadOvBar').style.width=Math.round(Math.max(0,Math.min(1,frac||0))*100)+'%';$('#loadOvSub').textContent=sub||'';}
 function hideLoad(){loadOv.classList.remove('show');}
 function clipsOptimizing(){ return clips.some(c=>c._optimizing); }
-function clipsBlocking(){ return clips.some(c=>(c._optimizing && !c._playable) || (WC_ON() && !c._wcReady && !c._wcFail)); }
+function clipsBlocking(){ return clips.some(c=>(c._optimizing && !c._playable) || (!c._wcReady && !c._wcFail)); }
 let restoreIncomplete=false;   // chargement partiel → sauvegarde DÉSACTIVÉE (anti-écrasement de projet)
 /* Barre de progression des actions IA (haut de page) */
 const aiBar={
@@ -1051,12 +1051,12 @@ function resetAudioState(){
   stopAll();
   buffer=null; env=[]; beats=[]; bpm=0; ext={start:0,dur:30};
   clips.length=0; $('#clipGrid').innerHTML=''; loopBars=0;
-  planAssign=[];   // le moteur vidéo repart de zéro avec le nouveau morceau
   selWord=-1; hist.length=0; updateUndoBtn();
   $('#bpmVal').textContent='— BPM'; $('#tcNow').textContent='0:00.0'; $('#tcEnd').textContent='0:00.0';
   $('#lyricsChoice').style.display='grid'; $('#pasteZone').style.display='none';
 }
 function openEditor(id){
+  if(!engineGuard()) return;
   M=DB.morceaux.find(x=>x.id===id); if(!M){go('morceaux');return;}
   if(loadedFor!==M.id){
     resetAudioState(); loadedFor=M.id;
@@ -1120,6 +1120,8 @@ async function fetchRemoteMorceau(m){
   }
 }
 async function loadRemoteMorceau(m){
+  if(m._loading) return;   // verrou : hashchange + route() peuvent arriver en double → un seul chargement, jamais de clips dupliqués
+  m._loading=true;
   toast('Ouverture du morceau…');
   try{
     await fetchRemoteMorceau(m);
@@ -1128,7 +1130,7 @@ async function loadRemoteMorceau(m){
   }catch(e){
     toast('Ouverture impossible : '+e.message);
     go('morceaux');
-  }finally{ hideLoad(); }
+  }finally{ m._loading=false; hideLoad(); }
 }
 
 /* ---------- Audio ---------- */
@@ -1370,8 +1372,7 @@ async function startLoop(){
   if(!buffer||exporting)return;
   if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
   stopAll(); looping=true;
-  const warm=warmUpPlans(ext.start);
-  if(WC_ON()) await warm;
+  await warmUpPlans(ext.start);
   if(exporting||!looping) return;
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer; srcNode.loop=true;
   srcNode.loopStart=ext.start; srcNode.loopEnd=ext.start+ext.dur;
@@ -1455,24 +1456,25 @@ function addClip(file, meta={}){
     renderClips();
   };
   const tagMeta=()=>{
-    const v=makePoolVideo(url); clip.el=v; clip.els=[v];
+    // repli MÉTADONNÉES/VIGNETTES uniquement (codec indécodable en attendant l'optimisation Mux) — jamais utilisé pour la lecture
+    const v=document.createElement('video');
+    v.src=url; v.muted=true; v.playsInline=true; v.setAttribute('playsinline',''); v.preload='metadata';
+    clip.el=v; clip.els=[v];
     v.addEventListener('loadedmetadata',()=>{
-      if(v.videoWidth>0) clip._playable=true;                // l'original est lisible ici → pas besoin de bloquer
+      if(v.videoWidth>0) clip._playable=true;
       onMeta(v.duration||6);
     },{once:true});
     v.addEventListener('error',()=>{ clip._playable=false; renderClips(); },{once:true});
   };
-  if(WC_ON()){
-    clip._wcParse=parseClipWC(clip, file)
-      .then(()=>{ onMeta(clip.wc.durationS||6); })
-      .catch(e=>{
-        // codec indécodable ici (ex. HEVC iPhone) → vignettes/métadonnées via <video> en attendant la version optimisée serveur
-        clip._wcFail=true;
-        if(!clip._wcWarned){ clip._wcWarned=true; console.warn('[wc]', clip.name, e&&e.message); }
-        renderClips();
-        tagMeta();
-      });
-  } else tagMeta();
+  clip._wcParse=parseClipWC(clip, file)
+    .then(()=>{ onMeta(clip.wc.durationS||6); })
+    .catch(e=>{
+      // codec indécodable ici (ex. HEVC iPhone) → vignettes/métadonnées via <video> en attendant la version optimisée serveur
+      clip._wcFail=true;
+      if(!clip._wcWarned){ clip._wcWarned=true; console.warn('[wc]', clip.name, e&&e.message); }
+      renderClips();
+      tagMeta();
+    });
   renderClips();
   // Stockage serveur + optimisation EN ARRIÈRE-PLAN (Pexels : import serveur direct, zéro re-upload)
   if(clip.pexelsUrl && !clip.mediaId) startPexelsImport(clip);
@@ -1592,13 +1594,8 @@ function swapClipMedia(clip, file){
   const old=clip.url;
   (clip.els||[clip.el]).filter(Boolean).forEach(v=>{ try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} });
   clip.url=URL.createObjectURL(file);
-  if(WC_ON()){
-    clip.el=null; clip.els=[]; clip.wc=null; clip._wcReady=false; clip._wcFail=false;
-    clip._wcParse=parseClipWC(clip, file).catch(e=>{ clip._wcFail=true; if(!clip._wcWarned){ clip._wcWarned=true; console.warn('[wc] swap', clip.name, e&&e.message); } renderClips(); });
-  } else {
-    const v=makePoolVideo(clip.url);
-    clip.el=v; clip.els=[v];
-  }
+  clip.el=null; clip.els=[]; clip.wc=null; clip._wcReady=false; clip._wcFail=false;
+  clip._wcParse=parseClipWC(clip, file).catch(e=>{ clip._wcFail=true; if(!clip._wcWarned){ clip._wcWarned=true; console.warn('[wc] swap', clip.name, e&&e.message); } renderClips(); });
   if(old){ try{ URL.revokeObjectURL(old); }catch(e){} }
 }
 function renderClips(){
@@ -1695,7 +1692,7 @@ function addPickedSubclip(){
 document.addEventListener('click',()=>{ $('#pickPop').classList.remove('show');
   if(pendingPick){ pendingPick=null; $$('.subclip').forEach(x=>x.classList.remove('sel')); } });
 function makeThumbAt(clip, time, index, done){
-  if(WC_ON()&&clip.wc&&!clip._wcFail){ wcMakeThumbs(clip,[index]).then(()=>{ done&&done(); }); return; }
+  if(clip.wc&&!clip._wcFail){ wcMakeThumbs(clip,[index]).then(()=>{ done&&done(); }); return; }
   return makeThumbAtTag(clip, time, index, done);
 }
 function makeThumbAtTag(clip, time, index, done){
@@ -1721,14 +1718,10 @@ function makeThumbAtTag(clip, time, index, done){
   v.load();
 }
 function makeThumbs(clip, done){
-  if(WC_ON()){
-    (clip._wcParse||Promise.resolve()).then(()=>{
-      if(clip.wc&&!clip._wcFail){ wcMakeThumbs(clip).then(()=>{ done&&done(); }); return; }
-      makeThumbsTag(clip, done);
-    });
-    return;
-  }
-  return makeThumbsTag(clip, done);
+  (clip._wcParse||Promise.resolve()).then(()=>{
+    if(clip.wc&&!clip._wcFail){ wcMakeThumbs(clip).then(()=>{ done&&done(); }); return; }
+    makeThumbsTag(clip, done);
+  });
 }
 /* Vignettes via WebCodecs : un seul décodeur, re-calé sur chaque sous-plan */
 async function wcMakeThumbs(clip, indices){
@@ -2162,7 +2155,41 @@ function planThumbImg(cl, target){
      déjà pré-décodé → à la coupure la 1re frame est PRÊTE (latence ~0).
    - Backpressure : ~10 frames max en file, frames consommées fermées.
    L'ancien moteur <video> ci-dessous ne sert plus que de repli navigateur. */
-function WC_ON(){ return !!(window.VideoDecoder && window.EncodedVideoChunk && typeof MP4Box!=='undefined'); }
+/* MODE UNIQUE : pas de moteur de repli. Navigateur incompatible → écran bloquant à
+   l'ouverture de l'éditeur, chaque affichage est loggué côté serveur pour mesure. */
+function engineSupported(){
+  return !!(window.VideoDecoder && window.VideoEncoder && window.VideoFrame && window.EncodedVideoChunk && window.Mp4Muxer && typeof MP4Box!=='undefined');
+}
+function engineGuard(){
+  if(engineSupported()) return true;
+  showUnsupportedScreen();
+  return false;
+}
+function showUnsupportedScreen(){
+  fetch('/api/telemetry/unsupported-browser',{method:'POST',credentials:'include',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({ua:navigator.userAgent})}).catch(()=>{});
+  let d=document.getElementById('unsupportedOv');
+  if(!d){
+    d=document.createElement('div'); d.id='unsupportedOv';
+    d.setAttribute('data-testid','unsupported-browser-screen');
+    d.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(8,8,12,.96);display:grid;place-items:center;padding:20px';
+    d.innerHTML=
+      '<div style="max-width:520px;background:#15181f;border:1px solid #2a2f3a;border-radius:14px;padding:28px;text-align:center">'+
+      '<div style="font-size:38px;margin-bottom:10px">🎬</div>'+
+      '<h2 style="font-size:20px;margin-bottom:10px">BeatCut a besoin d\u2019un navigateur récent</h2>'+
+      '<p class="hint" style="margin-bottom:16px;line-height:1.6">L\u2019éditeur vidéo utilise les toutes dernières technologies (WebCodecs). Mets ton navigateur à jour ou installe l\u2019un de ceux-ci — Chrome, Edge, Safari ou Firefox à jour. <b style="color:var(--text)">Tes vidéos exportées, elles, se lisent partout.</b></p>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:16px">'+
+      '<a class="small" data-testid="link-chrome" href="https://www.google.com/chrome/" target="_blank" rel="noopener" style="text-decoration:none;padding:9px 14px;border:1px solid #2a2f3a;border-radius:8px;color:var(--text)">Chrome</a>'+
+      '<a class="small" data-testid="link-edge" href="https://www.microsoft.com/edge" target="_blank" rel="noopener" style="text-decoration:none;padding:9px 14px;border:1px solid #2a2f3a;border-radius:8px;color:var(--text)">Edge</a>'+
+      '<a class="small" data-testid="link-firefox" href="https://www.mozilla.org/firefox/new/" target="_blank" rel="noopener" style="text-decoration:none;padding:9px 14px;border:1px solid #2a2f3a;border-radius:8px;color:var(--text)">Firefox</a>'+
+      '<a class="small" data-testid="link-safari" href="https://support.apple.com/fr-fr/108382" target="_blank" rel="noopener" style="text-decoration:none;padding:9px 14px;border:1px solid #2a2f3a;border-radius:8px;color:var(--text)">Safari (mise à jour)</a>'+
+      '</div>'+
+      '<button class="small" data-testid="unsupported-back-btn" onclick="document.getElementById(\'unsupportedOv\').style.display=\'none\';go(\'morceaux\')">← Retour à mes morceaux</button>'+
+      '</div>';
+    document.body.appendChild(d);
+  }
+  d.style.display='grid';
+}
 (function(){ /* mp4 iPhone : atomes Apple propriétaires loggués en "error" par mp4box — bruit sans conséquence */
   try{
     if(typeof Log!=='undefined'&&typeof Log.error==='function'){
@@ -2359,104 +2386,23 @@ async function wcExportSeek(pl, t){
   wcExpFrame=f;
 }
 
-/* Certains navigateurs mettent les <video> en pause (onglet, mémoire) → frames noires. On les réveille. */
-/* ================== Moteur vidéo des plans ==================
-   video.currentTime est ASYNCHRONE ('seeked' arrive 50-300 ms après, bien plus sur
-   GOP long). Règles :
-   1. DOUBLE TAMPON : 2 <video> par fichier source — le plan N+1 est pré-positionné
-      en pause sur le 2e élément pendant que N joue (prepareNext).
-   2. À la coupure : permutation + play() UNIQUEMENT, zéro seek (activatePlan).
-   3. Pendant un plan (ensureActive) : aucun re-seek tant que la dérive < 0,9 s ;
-      paused → play() ; ended → reprise au point d'entrée du plan.
-   4. Lecteur pas prêt (readyState<2) : vignette du plan, sinon fond dégradé —
-      jamais un canvas vide/figé (géré dans drawPreview). */
-let planAssign=[], offlineRender=false;
-let livePtr=-1, liveEl=null;
-function makePoolVideo(url){
-  const v=document.createElement('video');
-  v.src=url; v.muted=true; v.playsInline=true; v.setAttribute('playsinline','');
-  v.preload='auto'; v.loop=false;
-  try{ v.disableRemotePlayback=true; }catch(e){}
-  return v;
-}
-function poolEl(cl,k){
-  if(!cl.els) cl.els=[cl.el];
-  if(k===1&&!cl.els[1]) cl.els[1]=makePoolVideo(cl.url);
-  return cl.els[k]||cl.el;
-}
-function assignPlanPlayers(){
-  const plans=(M&&M.plans)||[]; const cnt={};
-  planAssign=plans.map(p=>{
-    if(p.clip===null||!clips[p.clip]) return -1;
-    cnt[p.clip]=(cnt[p.clip]||0)+1;
-    return (cnt[p.clip]-1)%2;   // alternance : 2 plans successifs du même fichier = 2 lecteurs différents
-  });
-}
-/* Coupure : permutation + play() uniquement — ZÉRO seek au moment du cut */
-function activatePlan(i){
-  const plans=(M&&M.plans)||[]; const p=plans[i];
-  livePtr=i;
-  let el=null;
-  if(p&&p.clip!==null&&clips[p.clip]){
-    el=poolEl(clips[p.clip], planAssign[i]===1?1:0);
-    el.play().catch(()=>{});
-  }
-  if(liveEl&&liveEl!==el){ try{ liveEl.pause(); }catch(e){} }
-  liveEl=el;
-  prepareNext(i);
-}
-/* Pendant que N joue : pose le seek du plan N+1 sur son lecteur, en pause */
-function prepareNext(i){
-  const plans=(M&&M.plans)||[];
-  const nx=plans[i+1]||plans[0];
-  const nxi=plans[i+1]? i+1 : 0;
-  if(!nx||nx===plans[i]||nx.clip===null||!clips[nx.clip]) return;
-  const nv=poolEl(clips[nx.clip], planAssign[nxi]===1?1:0);
-  if(nv===liveEl) return;   // même lecteur que le plan courant : la dérive sera corrigée par ensureActive
-  try{ nv.pause(); }catch(e){}
-  const pose=()=>{ const nt=(nx.seek||0)%(nv.duration||1); if(Math.abs(nv.currentTime-nt)>0.15){ try{ nv.currentTime=nt; }catch(e){} } };
-  if(nv.duration) pose();
-  else nv.addEventListener('loadedmetadata',pose,{once:true});
-}
-/* Surveillance douce du plan en cours — jamais de seek si dérive < 0,9 s */
-function ensureActive(t){
-  const plans=(M&&M.plans)||[];
-  const p=plans[livePtr]; if(!p||!liveEl) return;
-  const v=liveEl;
-  if(v.ended){ try{ v.currentTime=(p.seek||0)%(v.duration||1); }catch(e){} v.play().catch(()=>{}); return; }
-  if(v.paused) v.play().catch(()=>{});
-  if(v.duration&&!v.seeking){
-    const tgt=((p.seek||0)+(t-p.start))%v.duration;
-    if(Math.abs(v.currentTime-tgt)>0.9){ try{ v.currentTime=tgt; }catch(e){} }
-  }
-}
+let offlineRender=false;
 function syncLivePlan(t){
   const plans=(M&&M.plans)||[];
   if(!plans.length) return;
-  if(WC_ON()){
-    const cur=plans.findIndex(p=>t>=p.start&&t<p.end);
-    if(cur>=0&&cur!==wcPtr) wcActivate(cur);
-    else if(cur>=0&&wcA&&wcA.clip){
-      const p=plans[cur]; const d=wcA.clip.durationS||0;
-      if(d){
-        const raw=(p.seek||0)+(t-p.start); const tgt=raw%Math.max(0.05,d);
-        if(raw>=d && tgt<(wcA._lastTgt||0)-0.2) wcA.seek(tgt);   // le plan dépasse la durée du clip → reboucle
-        wcA._lastTgt=tgt;
-      }
-    }
-    return;
-  }
-  if(planAssign.length!==plans.length) assignPlanPlayers();
   const cur=plans.findIndex(p=>t>=p.start&&t<p.end);
-  if(cur>=0&&cur!==livePtr) activatePlan(cur);
-  else if(cur>=0) ensureActive(t);
+  if(cur>=0&&cur!==wcPtr) wcActivate(cur);
+  else if(cur>=0&&wcA&&wcA.clip){
+    const p=plans[cur]; const d=wcA.clip.durationS||0;
+    if(d){
+      const raw=(p.seek||0)+(t-p.start); const tgt=raw%Math.max(0.05,d);
+      if(raw>=d && tgt<(wcA._lastTgt||0)-0.2) wcA.seek(tgt);   // le plan dépasse la durée du clip → reboucle
+      wcA._lastTgt=tgt;
+    }
+  }
 }
-/* Pré-cale les lecteurs des 2 premiers plans avant de démarrer (zéro frame floue au lancement) */
+/* Pré-cale les décodeurs des 2 premiers plans avant de démarrer (zéro frame floue au lancement) */
 function warmUpPlans(fromT){
-  if(WC_ON()) return wcWarmUp(fromT);
-  return warmUpPlansTag(fromT);
-}
-function wcWarmUp(fromT){
   const plans=(M&&M.plans)||[];
   wcReset();
   let i=plans.findIndex(p=>fromT>=p.start&&fromT<p.end);
@@ -2482,33 +2428,12 @@ function wcWarmUp(fromT){
     tick();
   });
 }
-function warmUpPlansTag(fromT){
-  assignPlanPlayers();
-  const plans=(M&&M.plans)||[]; const idx=[];
-  for(let i=0;i<plans.length&&idx.length<2;i++){
-    if(plans[i].end>fromT&&plans[i].clip!==null&&clips[plans[i].clip]) idx.push(i);
-  }
-  return Promise.all(idx.map(i=>new Promise(res=>{
-    const p=plans[i], v=poolEl(clips[p.clip], planAssign[i]===1?1:0);
-    const to=setTimeout(res,2500);
-    const ok=()=>{ clearTimeout(to); res(); };
-    const seekTo=()=>{
-      const tt=(p.seek||0)%(v.duration||1);
-      if(Math.abs(v.currentTime-tt)<=0.2&&v.readyState>=2) return ok();
-      v.addEventListener('seeked',ok,{once:true});
-      try{ v.currentTime=tt; }catch(e){ ok(); }
-    };
-    if(v.duration) seekTo();
-    else v.addEventListener('loadedmetadata',seekTo,{once:true});
-  })));
-}
 function togglePlay(){ if(exporting){toast('Export en cours — attends la fin');return;} playing&&!looping? stopAll() : play(ext.start); }
 async function play(from){
   if(!buffer||exporting)return;
   if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
   stopAll();
-  const warm=warmUpPlans(from);
-  if(WC_ON()) await warm;   // WebCodecs : la 1re frame est décodée AVANT le départ du son
+  await warmUpPlans(from);   // la 1re frame est décodée AVANT le départ du son
   if(exporting) return;
   srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer;
   srcNode.connect(audioCtx.destination);
@@ -2520,9 +2445,7 @@ async function play(from){
 function stopAll(){
   if(srcNode){ srcNode.onended=null; try{srcNode.stop()}catch(e){} srcNode=null; }
   playing=false; looping=false;
-  if(WC_ON()) wcReset();
-  if(liveEl){ try{ liveEl.pause(); }catch(e){} }
-  livePtr=-1; liveEl=null;
+  wcReset();
   $('#playBtn').textContent='▶'; $('#loopBtn').textContent='▶ Écouter l\u2019extrait';
 }
 function raf(){
@@ -2635,7 +2558,6 @@ function drawPreview(t, cvOverride){
   const cv=cvOverride||$('#preview'); if(!cvOverride && cv.style.display==='none')return;  const c=cv.getContext('2d'), W=cv.width,H=cv.height;
   c.imageSmoothingEnabled=true; c.imageSmoothingQuality='high';
   const plans=(M&&M.plans)||[];
-  if(planAssign.length!==plans.length) assignPlanPlayers();
   const pi=plans.findIndex(p=>t>=p.start&&t<p.end);
   const plan=pi>=0? plans[pi] : null;
   const fx=(M&&M.fx)||{};
@@ -2651,49 +2573,22 @@ function drawPreview(t, cvOverride){
   if(plan&&plan.clip!==null&&clips[plan.clip]){
     const cl=clips[plan.clip];
     const target=(plan.seek||0)+(t-plan.start);
-    if(WC_ON()){
-      // moteur WebCodecs : frame décodée à la demande, jamais de <video>
-      let f=null;
-      if(offlineRender) f=wcExpFrame;
-      else if(playing&&pi===wcPtr&&wcA&&cl.wc&&wcA.clip===cl.wc){
-        const d=cl.wc.durationS||0; let tt=target; if(d) tt%=Math.max(0.05,d);
-        f=wcA.frameAt(tt);
-      }
-      else if(!playing&&cl.wc) f=wcScrubFrame(cl,target);
-      if(f){
-        const fw=f.displayWidth||f.codedWidth, fh=f.displayHeight||f.codedHeight;
-        const s=Math.max(W/fw,H/fh);
-        c.drawImage(f,(W-fw*s)/2,(H-fh*s)/2,fw*s,fh*s);
-        c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
-        drewMedia=true;
-      } else {
-        // frame pas encore décodée (rare) : vignette du plan → jamais d'écran noir
-        const img=planThumbImg(cl, target);
-        if(img&&img.complete&&img.naturalWidth){
-          const s=Math.max(W/img.naturalWidth,H/img.naturalHeight);
-          c.drawImage(img,(W-img.naturalWidth*s)/2,(H-img.naturalHeight*s)/2,img.naturalWidth*s,img.naturalHeight*s);
-          c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
-          drewMedia=true;
-        }
-      }
-    } else {
-    let v=poolEl(cl, planAssign[pi]===1?1:0);
-    if(!offlineRender){
-      if(playing){
-        if(livePtr===pi&&liveEl) v=liveEl;   // lecture : lecteur activé à la coupure, jamais re-seeké ici
-      } else {
-        const tgt=v.duration? target%v.duration : target;   // scrub à l'arrêt : cale à la demande
-        if(v.duration&&!v.seeking&&Math.abs(v.currentTime-tgt)>0.45){ try{ v.currentTime=tgt; }catch(e){} }
-      }
+    // moteur WebCodecs : frame décodée à la demande, jamais de <video>
+    let f=null;
+    if(offlineRender) f=wcExpFrame;
+    else if(playing&&pi===wcPtr&&wcA&&cl.wc&&wcA.clip===cl.wc){
+      const d=cl.wc.durationS||0; let tt=target; if(d) tt%=Math.max(0.05,d);
+      f=wcA.frameAt(tt);
     }
-    if(v.readyState>=2&&v.videoWidth&&(offlineRender||!v.seeking)){
-      const s=Math.max(W/v.videoWidth,H/v.videoHeight);
-      c.drawImage(v,(W-v.videoWidth*s)/2,(H-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
-      // léger voile pour la lisibilité du texte uniquement — la vidéo n'est jamais ré-encodée à l'import
+    else if(!playing&&cl.wc) f=wcScrubFrame(cl,target);
+    if(f){
+      const fw=f.displayWidth||f.codedWidth, fh=f.displayHeight||f.codedHeight;
+      const s=Math.max(W/fw,H/fh);
+      c.drawImage(f,(W-fw*s)/2,(H-fh*s)/2,fw*s,fh*s);
       c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
       drewMedia=true;
     } else {
-      // lecteur pas encore prêt (rare grâce au pré-calage) : vignette du plan → jamais d'écran noir
+      // frame pas encore décodée (rare) : vignette du plan → jamais d'écran noir
       const img=planThumbImg(cl, target);
       if(img&&img.complete&&img.naturalWidth){
         const s=Math.max(W/img.naturalWidth,H/img.naturalHeight);
@@ -2701,7 +2596,6 @@ function drawPreview(t, cvOverride){
         c.fillStyle='rgba(0,0,0,.10)'; c.fillRect(0,0,W,H);
         drewMedia=true;
       }
-    }
     }
   }
   if(!drewMedia){
@@ -2765,7 +2659,6 @@ function drawAll(){ drawWaveSel(); drawTimeline(); drawPreview(curTime()); }
 function drawPlayhead(t){ $('#playhead').style.left=Math.max(0,(t-ext.start)*PXS())+'px'; }
 function drawTimeline(){
   if(!M) return;
-  assignPlanPlayers();
   const inner=$('#tlInner'); inner.style.width=(ext.dur*PXS())+'px';
   $$('#tlInner .beatmark, #tlInner .cutmark').forEach(e=>e.remove());
   beats.filter(b=>b>=ext.start&&b<=ext.start+ext.dur).forEach(b=>{
@@ -2916,8 +2809,12 @@ async function exportVideo(nameSuffix){
   }
   try{ await audioCtx.resume(); }catch(e){}
   const mode=await offlineSupported();
-  if(mode) return exportOffline(nameSuffix, mode);
-  return exportRealtime(nameSuffix);
+  if(!mode){
+    toast('⚠ Ton navigateur ne permet pas l\u2019export vidéo — mets-le à jour (Chrome, Edge, Safari ou Firefox récents). Rien n\u2019a été décompté.');
+    aiBar.done();
+    return false;
+  }
+  return exportOffline(nameSuffix, mode);
 }
 let _avcCodec=null;
 /* Vérifie que chaque vidéo utilisée par un plan est réellement décodable (anti-export-diaporama).
@@ -2925,32 +2822,16 @@ let _avcCodec=null;
 async function ensureClipsReady(){
   const used=[...new Set((((M&&M.plans)||[]).map(p=>p.clip)).filter(i=>i!=null&&clips[i]))];
   const dead=[];
-  if(WC_ON()){
-    await Promise.all(used.map(async i=>{
-      const cl=clips[i];
-      const t0=Date.now();
-      while(Date.now()-t0<8000){
-        if(cl._wcReady&&cl.wc) return;
-        if(cl._wcFail) break;
-        await new Promise(r=>setTimeout(r,300));
-      }
-      dead.push(cl.name||('clip '+(i+1)));
-      console.warn('[export] clip non décodable (WebCodecs) :', cl.name);
-    }));
-    return dead;
-  }
   await Promise.all(used.map(async i=>{
     const cl=clips[i];
-    const els=(cl.els||[cl.el]).filter(Boolean);
-    if(!els.length){ dead.push(cl.name||('clip '+(i+1))); return; }
-    els.forEach(v=>{ if(v.readyState<2){ try{ v.load(); }catch(e){} } });
     const t0=Date.now();
-    while(Date.now()-t0<6000){
-      if(els.every(v=>v.readyState>=2&&v.videoWidth>0)) return;
+    while(Date.now()-t0<8000){
+      if(cl._wcReady&&cl.wc) return;
+      if(cl._wcFail) break;
       await new Promise(r=>setTimeout(r,300));
     }
     dead.push(cl.name||('clip '+(i+1)));
-    console.warn('[export] clip non décodable :', cl.name, 'readyState=', (cl.els||[cl.el]).map(v=>v&&v.readyState));
+    console.warn('[export] clip non décodable (WebCodecs) :', cl.name);
   }));
   return dead;
 }
@@ -2974,24 +2855,8 @@ async function offlineSupported(){
     return 'hybrid';   // Safari : vidéo WebCodecs (rapide), son assemblé par le serveur
   }catch(e){ return false; }
 }
-/* Cale le lecteur du plan actif EXACTEMENT sur l'image voulue, et attend qu'elle soit décodée */
-async function seekPlanFrame(t){
-  const plans=(M&&M.plans)||[]; const pi=plans.findIndex(p=>t>=p.start&&t<p.end);
-  if(pi<0) return;
-  const p=plans[pi]; if(p.clip===null||!clips[p.clip]) return;
-  const v=poolEl(clips[p.clip], planAssign[pi]===1?1:0);
-  if(!v.duration) await new Promise(r=>{ const to=setTimeout(r,1500); v.addEventListener('loadedmetadata',()=>{clearTimeout(to);r();},{once:true}); });
-  if(!v.duration) return;
-  const tgt=((p.seek||0)+(t-p.start))%v.duration;
-  if(Math.abs(v.currentTime-tgt)<=0.005&&v.readyState>=2&&!v.seeking) return;
-  await new Promise(r=>{
-    const to=setTimeout(r,600);
-    v.addEventListener('seeked',()=>{clearTimeout(to);r();},{once:true});
-    try{ v.currentTime=tgt; }catch(e){ clearTimeout(to); r(); }
-  });
-}
-/* Export offline (comme les logiciels de montage) : chaque image est rendue une par une
-   après décodage exact du clip, puis encodée en H.264 haut débit. Zéro freeze possible. */
+/* Export offline (comme les logiciels de montage) : chaque image est décodée
+   séquentiellement (WebCodecs), rendue, puis encodée en H.264 haut débit. Zéro freeze possible. */
 async function exportOffline(nameSuffix, mode='full'){
   exporting=true;
   const btn=$('#exportBtn'), btnLabel=btn.textContent;
@@ -3000,12 +2865,10 @@ async function exportOffline(nameSuffix, mode='full'){
   const fps=30, fmt=FORMATS[(M&&M.format)||'916'], W=fmt[0], H=fmt[1];
   const total=Math.max(1,Math.round(ext.dur*fps));
   const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
-  const wcExp=WC_ON()? new SegPlayer() : null;
-  const cleanup=()=>{ offlineRender=false; exporting=false; btn.disabled=false; btn.textContent=btnLabel; if(wcExp) wcExp.destroy(); wcExpFrame=null; _wcExpPi=-1; aiBar.done(); };
+  const wcExp=new SegPlayer();
+  const cleanup=()=>{ offlineRender=false; exporting=false; btn.disabled=false; btn.textContent=btnLabel; wcExp.destroy(); wcExpFrame=null; _wcExpPi=-1; aiBar.done(); };
   try{
     aiBar.set('Préparation de l\u2019export studio…',1);
-    assignPlanPlayers();
-    clips.forEach(c=>(c.els||[c.el]).forEach(v=>{ if(v){ try{ v.pause(); }catch(e){} } }));
     const {Muxer,ArrayBufferTarget}=Mp4Muxer;
     const sr=buffer.sampleRate, nch=Math.min(2,buffer.numberOfChannels||1);
     const muxOpts={target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},fastStart:'in-memory'};
@@ -3033,7 +2896,7 @@ async function exportOffline(nameSuffix, mode='full'){
     // — Vidéo : image par image
     for(let i=0;i<total;i++){
       const t=ext.start+i/fps;
-      if(wcExp) await wcExportSeek(wcExp,t); else await seekPlanFrame(t);
+      await wcExportSeek(wcExp,t);
       offlineRender=true; drawPreview(t,cv); offlineRender=false;
       const frame=new VideoFrame(cv,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
       venc.encode(frame,{keyFrame:i%(fps*2)===0}); frame.close();
@@ -3067,110 +2930,10 @@ async function exportOffline(nameSuffix, mode='full'){
     return true;
   }catch(e){
     cleanup();
-    toast('Export studio indisponible ('+((e&&e.message)||'erreur')+') — passage en mode direct…');
-    return exportRealtime(nameSuffix);
+    toast('⚠ Export impossible ('+((e&&e.message)||'erreur')+') — rien n\u2019a été décompté. Réessaie.');
+    return false;
   }
 }
-/* ---- Export temps réel (repli navigateurs sans WebCodecs) ---- */
-async function exportRealtime(nameSuffix){
-  try{ await audioCtx.resume(); }catch(e){}
-  exporting=true;
-  const btn=$('#exportBtn'), btnLabel=btn.textContent;
-  btn.disabled=true; btn.textContent='⏺ Export en cours…';
-  const canvas=$('#preview');
-  const fmt=FORMATS[(M&&M.format)||'916'];
-  canvas.width=fmt[0]; canvas.height=fmt[1]; fitPreview();   // pleine résolution le temps de l'export
-  const isSafari=/^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
-  const dest=audioCtx.createMediaStreamDestination();
-  // Safari : on n'enregistre QUE la vidéo (l'audio MediaRecorder y est trop peu fiable) —
-  // le serveur ajoute la piste son après coup via /api/export/finalize
-  const tracks=[...canvas.captureStream(30).getVideoTracks()];
-  if(!isSafari) tracks.push(...dest.stream.getAudioTracks());
-  const stream=new MediaStream(tracks);
-  // construction de l'enregistreur avec repli : certains navigateurs annoncent un
-  // codec puis échouent à la création — on essaie chaque option pour de vrai
-  const mimes=['video/mp4;codecs=avc1.640028,mp4a.40.2','video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9,opus','video/webm'];
-  let rec=null, mime='';
-  for(const mm of mimes){
-    if(!MediaRecorder.isTypeSupported(mm)) continue;
-    try{ rec=new MediaRecorder(stream,{mimeType:mm,videoBitsPerSecond:16000000,audioBitsPerSecond:192000}); mime=mm; break; }catch(e){}
-  }
-  if(!rec){ try{ rec=new MediaRecorder(stream); mime=rec.mimeType||'video/webm'; }
-    catch(e){ exporting=false; btn.disabled=false; btn.textContent=btnLabel;
-      toast('Ton navigateur ne permet pas l\u2019enregistrement vidéo — rien n\u2019a été décompté'); return false; } }
-  let resolveExport; const exportPromise=new Promise(r=>resolveExport=r);
-  let failed=false, watchdog=null, expTick=null;
-  const startTs=performance.now();
-  const parts=[];
-  rec.onerror=()=>{ failed=true; };
-  rec.ondataavailable=e=>{ if(e.data&&e.data.size) parts.push(e.data); };
-  const finish=(msg,ok)=>{
-    clearTimeout(watchdog); clearInterval(expTick); aiBar.done();
-    document.removeEventListener('visibilitychange',visWarn);
-    canvas.width=Math.round(fmt[0]/PREVIEW_SCALE); canvas.height=Math.round(fmt[1]/PREVIEW_SCALE);
-    fitPreview(); drawPreview(curTime());
-    exporting=false; btn.disabled=false; btn.textContent=btnLabel;
-    if(msg) toast(msg);
-    resolveExport(!!ok);
-  };
-  rec.onstop=async()=>{
-    stopAll();
-    let blob=new Blob(parts,{type:mime.split(';')[0]||'video/webm'});
-    const elapsed=(performance.now()-startTs)/1000;
-    // LE COMPTEUR NE BOUGE QUE SI LE FICHIER EST RÉEL **ET COMPLET**
-    if(failed||!parts.length||blob.size<20000||elapsed<ext.dur-0.8){
-      finish('⚠ Export interrompu ('+elapsed.toFixed(1)+' s sur '+Math.round(ext.dur)+' s) — rien n\u2019a été décompté. Réessaie en restant sur l\u2019onglet.');
-      return;
-    }
-    if(isSafari){
-      // Safari : la vidéo est muette par construction → le serveur ajoute la piste son exacte
-      try{
-        aiBar.set('Ajout du son (serveur)…',98);
-        const fd=new FormData();
-        fd.append('video', blob, 'v.mp4');
-        fd.append('audio', extractWavStereoBlob(ext.start, ext.dur), 'a.wav');
-        const r=await fetch('/api/export/finalize',{method:'POST',credentials:'include',body:fd});
-        if(!r.ok) throw new Error('finalize '+r.status);
-        blob=await r.blob();
-        if(blob.size<20000) throw new Error('fichier vide');
-      }catch(err){
-        finish('⚠ Ajout du son impossible ('+((err&&err.message)||'réseau')+') — rien n\u2019a été décompté. Réessaie.');
-        return;
-      }
-    }
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=(M.title||'beatcut')+(nameSuffix||'')+(mime.includes('mp4')||isSafari?'.mp4':'.webm'); a.click();
-    // 2) NE DÉCOMPTER qu'après un export réellement réussi (serveur = vérité)
-    fetch('/api/export/register',{method:'POST',credentials:'include'})
-      .then(()=>API.refreshQuota()).catch(()=>{});
-    if(API.plan!=='pro' && API.quota.left>0) API.quota.left--;
-    DB.exports++; M.videos=(M.videos||0)+1; dirty();
-    updateQuotaUI();
-    finish('Vidéo exportée en '+fmt[0]+'×'+fmt[1]+' avec le son ✓', true);
-  };
-  const visWarn=()=>{ if(document.hidden) toast('⚠ Reste sur cet onglet : en arrière-plan, la vidéo se fige'); };
-  document.addEventListener('visibilitychange',visWarn);
-  toast('Export haute qualité en cours… ('+Math.round(ext.dur)+' s en temps réel — reste sur cet onglet)');
-  stopAll();
-  aiBar.set('Préparation des plans vidéo…',1);
-  try{ await warmUpPlans(ext.start); }catch(e){}
-  srcNode=audioCtx.createBufferSource(); srcNode.buffer=buffer;
-  srcNode.connect(audioCtx.destination); srcNode.connect(dest);
-  srcNode.start(0,ext.start,ext.dur);
-  startedAt=audioCtx.currentTime; startOff=ext.start; playing=true;
-  if(isSafari) rec.start();                                 // Safari : le timeslice fragmente mal le MP4 (son perdu)
-  else rec.start(1000);                                     // chunks réguliers : rien ne se perd
-  aiBar.set('Export vidéo… 0 s / '+Math.round(ext.dur)+' s', 2);
-  expTick=setInterval(()=>{
-    const el=(performance.now()-startTs)/1000;
-    aiBar.set('Export vidéo… '+el.toFixed(0)+' s / '+Math.round(ext.dur)+' s', Math.min(97, el/ext.dur*100));
-  },500);
-  watchdog=setTimeout(()=>{ try{rec.stop();}catch(e){} }, (ext.dur+8)*1000);   // filet de sécurité
-  srcNode.onended=()=>{ try{rec.stop();}catch(e){} };
-  raf();
-  return exportPromise;
-}
-
 /* ---------- Série de vidéos (variantes réelles) ---------- */
 let kept=new Set(), serieVariants=[], serieSel=new Set(), seriePlayingIdx=-1, serieRaf=0, seriePlayBtn=null;
 function renderSerie(){
@@ -3210,8 +2973,7 @@ async function serieLoadMorceau(m){
 }
 async function serieWaitClips(){
   for(let i=0;i<60;i++){
-    if(WC_ON()){ if(clips.every(c=>c.seeks&&c.seeks.length&&(c._wcReady||c._wcFail))) return; }
-    else if(clips.every(c=>c.seeks&&c.seeks.length&&c.el&&c.el.readyState>=2)) return;
+    if(clips.every(c=>c.seeks&&c.seeks.length&&(c._wcReady||c._wcFail))) return;
     await new Promise(r=>setTimeout(r,200));
   }
 }
@@ -3224,7 +2986,7 @@ async function drawVariantFrame(cvs, va, t){
   const plan=(va.plans||[]).find(p=>t>=p.start&&t<p.end);
   if(plan&&plan.clip!==null&&clips[plan.clip]){
     const cl=clips[plan.clip];
-    if(WC_ON()&&cl.wc){
+    if(cl.wc){
       const target=(plan.seek||0)+(t-plan.start);
       const d=cl.wc.durationS||0; let tt=target; if(d) tt%=Math.max(0.05,d);
       wcScrubFrame(cl, target);
@@ -3234,17 +2996,12 @@ async function drawVariantFrame(cvs, va, t){
         if(f && Math.abs(f.timestamp/1e6-tt)<0.3) break;
         await new Promise(r=>setTimeout(r,30));
       }
-    } else if(cl.el){
-      const v=cl.el;
-      try{
-        v.currentTime=((plan.seek||0)+(t-plan.start))%(v.duration||1);
-        await new Promise(r=>{ const done=()=>{v.removeEventListener('seeked',done);r();}; v.addEventListener('seeked',done); setTimeout(r,800); });
-      }catch(e){}
     }
   }
   withVariant(va, ()=>drawPreview(t, cvs));
 }
 async function genSerie(){
+  if(!engineGuard()) return;
   if(exporting){toast('Attends la fin de l\u2019export en cours');return;}
   if(clipsOptimizing()){toast('⏳ Optimisation de tes vidéos en cours — réessaie dans un instant');return;}
   const m=DB.morceaux.find(x=>x.id===$('#serieMorceau').value);

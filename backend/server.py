@@ -621,6 +621,40 @@ async def logout(request: Request, response: Response):
 
 
 # ---------------------------------------------------------------------------
+# Télémétrie — navigateurs incompatibles WebCodecs (écran bloquant de l'éditeur)
+# ---------------------------------------------------------------------------
+@api_router.post("/telemetry/unsupported-browser")
+async def log_unsupported_browser(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    ua = str(body.get("ua") or request.headers.get("User-Agent") or "")[:500]
+    user_id = None
+    try:
+        user = await get_current_user(request)
+        user_id = user.get("user_id")
+    except HTTPException:
+        pass
+    await db.browser_unsupported_logs.insert_one({
+        "user_id": user_id,
+        "ua": ua,
+        "created_at": iso(now_utc()),
+    })
+    return {"ok": True}
+
+
+@api_router.get("/admin/telemetry/unsupported-browser")
+async def admin_unsupported_browsers(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    total = await db.browser_unsupported_logs.count_documents({})
+    cutoff = iso(now_utc() - timedelta(days=30))
+    last_30d = await db.browser_unsupported_logs.count_documents({"created_at": {"$gt": cutoff}})
+    samples = await db.browser_unsupported_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    return {"total": total, "last_30d": last_30d, "samples": samples}
+
+
+# ---------------------------------------------------------------------------
 # Stripe — abonnement PRO récurrent (renouvellement automatique réel)
 # ---------------------------------------------------------------------------
 async def _claim_and_activate(session_id: str, customer_id: str = None, subscription_id: str = None):

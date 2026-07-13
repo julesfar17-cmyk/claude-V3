@@ -336,3 +336,14 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - P1 (après validation user du moteur) : UpChunk pour uploads reprenables
 - P1 : Emails Resend automatiques en cas d'échec d'export
 - P2 : Nettoyage systématique des fichiers orphelins GridFS
+
+## Implémenté (13 juillet 2026) — MODE UNIQUE : suppression totale de l'ancien moteur <video>
+- Décision user : PAS de repli <video> (c'était l'ancien moteur bugué) → un seul moteur WebCodecs, point.
+- ✅ SUPPRIMÉ (~200 lignes) : exportRealtime (MediaRecorder), makePoolVideo, poolEl, assignPlanPlayers/planAssign, activatePlan, prepareNext, ensureActive, warmUpPlansTag, seekPlanFrame, livePtr/liveEl, toutes les branches WC_ON — 0 résidu (grep vérifié)
+- ✅ Navigateur incompatible : `engineSupported()` (VideoDecoder+VideoEncoder+VideoFrame+EncodedVideoChunk+Mp4Muxer+MP4Box) vérifié via `engineGuard()` à l'ouverture de l'ÉDITEUR (openEditor) et de genSerie → écran bloquant « BeatCut a besoin d'un navigateur récent — Chrome, Edge, Safari ou Firefox à jour » avec 4 liens de téléchargement + bouton retour (data-testid=unsupported-browser-screen)
+- ✅ CHAQUE affichage de l'écran est loggué : POST /api/telemetry/unsupported-browser (ua + user_id si session) → collection `browser_unsupported_logs` ; mesure admin : GET /api/admin/telemetry/unsupported-browser {total, last_30d, samples}
+- ✅ Export : offlineSupported()===false → message clair « mets ton navigateur à jour », rien décompté (plus de repli temps réel) ; échec exportOffline → message d'erreur propre, rien décompté
+- ✅ CONSERVÉ (pas un moteur) : repli <video> UNIQUEMENT pour métadonnées/vignettes d'un clip au codec indécodable (HEVC iPhone) en attendant le swap Mux → re-parse WebCodecs automatique
+- 🐛 BONUS corrigé : duplication de clips au chargement (course hashchange + route() → loadRemoteMorceau lancé en double → addClip dupliqués PERSISTÉS). Verrou `m._loading` dans loadRemoteMorceau. Reproduit avec 3× route() → 5 clips uniques ✓. Fixture « Morceau Série Test » réparée (clipRefs restaurés depuis la backup 13:21, dédupliqués)
+- ✅ Testé : syntaxe node OK, lecture WebCodecs re-validée après suppression (wcPtr avance, canvas non noir), thumbs 4/4, écran incompatible affiché/loggué/fermé (simulation VideoEncoder=undefined), endpoints télémétrie 200
+- ⚠️ REDÉPLOIEMENT nécessaire
