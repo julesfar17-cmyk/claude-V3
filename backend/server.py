@@ -1520,6 +1520,31 @@ async def _mux_transcode(src_bytes: bytes):
                 logger.warning("Suppression asset Mux %s impossible (à nettoyer)", asset_id)
 
 
+async def _probe_video(src_bytes: bytes, suffix: str):
+    """Sonde rapide (ffmpeg -i) : codec vidéo, dimensions, durée. None si illisible."""
+    with tempfile.TemporaryDirectory() as td:
+        src = os.path.join(td, "in" + (suffix or ".mp4"))
+        with open(src, "wb") as f:
+            f.write(src_bytes)
+        proc = await asyncio.create_subprocess_exec(
+            FFMPEG_EXE, "-hide_banner", "-i", src,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return None
+    out = (err or b"").decode("utf-8", "ignore")
+    m_v = _re.search(r"Video:\s*(\w+).*?(\d{2,5})x(\d{2,5})", out)
+    m_d = _re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", out)
+    if not m_v:
+        return None
+    dur = 0.0
+    if m_d:
+        dur = int(m_d.group(1)) * 3600 + int(m_d.group(2)) * 60 + float(m_d.group(3))
+    return {"codec": m_v.group(1).lower(), "w": int(m_v.group(2)), "h": int(m_v.group(3)), "duration": dur}
+
+
 async def _transcode_media(oid):
     """Remplace le fichier GridFS par sa version optimisée (même _id conservé).
     Transcodage via Mux (rapide, externalisé) avec repli FFmpeg local."""
@@ -1532,6 +1557,18 @@ async def _transcode_media(oid):
             grid_out = await media_fs.open_download_stream(oid)
             raw = await grid_out.read()
             suffix = os.path.splitext(doc.get("filename") or "")[1]
+            # Déjà propre (H.264 ≤1080p, débit raisonnable) ? → rien à faire : optimisation instantanée
+            probe = await _probe_video(raw, suffix)
+            if probe and probe["codec"] == "h264" and min(probe["w"], probe["h"]) <= 1080:
+                bitrate = (len(raw) * 8 / probe["duration"]) if probe["duration"] > 0 else 0
+                if 0 < bitrate <= 12_000_000:
+                    await db["media.files"].update_one(
+                        {"_id": oid},
+                        {"$set": {"metadata.transcoded": True, "metadata.processing": False,
+                                  "metadata.transcode_skipped": True}})
+                    logger.info("Transcodage sauté %s : déjà H.264 %dx%d @ %.1f Mbps",
+                                oid, probe["w"], probe["h"], bitrate / 1e6)
+                    return
             out = await _mux_transcode(raw)
             if not out:
                 out = await _ffmpeg_transcode(raw, suffix)
@@ -1677,6 +1714,7 @@ async def media_status(media_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Média introuvable")
     meta = doc.get("metadata") or {}
     return {"processing": bool(meta.get("processing")), "transcoded": bool(meta.get("transcoded")),
+            "skipped": bool(meta.get("transcode_skipped")),
             "failed": bool(meta.get("transcode_failed")), "size": doc["length"]}
 
 

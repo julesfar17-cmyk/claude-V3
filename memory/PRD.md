@@ -387,3 +387,10 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
   - Télémétrie : POST /api/telemetry/export {mode, server_audio, audio_chunks, aenc_err, src_peak, size, ua} → collection export_logs + GET /api/admin/telemetry/exports (admin)
 - ✅ Testé preview : endpoints télémétrie 200 (insert + lecture admin), studio charge sans erreur, MOBILE_UA=false sur desktop, /api/export/finalize déjà validé (piste AAC présente)
 - ⚠️ NÉCESSITE REDÉPLOIEMENT pour effet sur beat-cut.com. Si encore muet après ça : lire le toast final + /api/admin/telemetry/exports pour trancher (source silencieuse vs upload bloqué)
+
+## Corrigé (13 juillet 2026) — Export bloqué par « Optimisation en arrière-plan » + optimisation trop longue
+- Bug user : impossible d'exporter tant que le badge optimisation est là, et il dure longtemps
+- FIX 1 (front) : `clipsExportBlocking()` remplace `clipsOptimizing()` pour l'export — ne bloque QUE si un clip UTILISÉ dans les plans n'est pas décodable localement (`!_wcReady` et (`_optimizing` ou `!_wcFail`)). Un upload/optimisation en arrière-plan ne bloque PLUS JAMAIS l'export (le moteur WebCodecs lit l'original local). Même logique assouplie pour genSerie. `clipsOptimizing()` supprimée (orpheline)
+- FIX 2 (back) : `_probe_video()` (ffmpeg -i) avant Mux — si la vidéo est DÉJÀ H.264 ≤1080p à ≤12 Mbps → transcodage SAUTÉ (metadata.transcode_skipped), optimisation ~1 s au lieu de 30-90 s. media_status expose `skipped` ; le front ne re-télécharge pas le fichier dans ce cas (pas de swap inutile)
+- ✅ Testé : upload mp4 H.264 propre → « Transcodage sauté … @ 2.1 Mbps » en ~1 s, status {transcoded:true, skipped:true} ; gate export validé sur les 5 cas (ready+optimizing→libre, fail+optimizing→bloqué, fail seul→libre avec message ensureClipsReady, tous prêts→libre, clip non utilisé en optimisation→libre)
+- ⚠️ REDÉPLOIEMENT nécessaire

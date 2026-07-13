@@ -859,8 +859,13 @@ const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clea
 const loadOv=(()=>{const d=document.createElement('div');d.id='loadOverlay';d.setAttribute('data-testid','load-overlay');d.innerHTML='<div class="box"><div class="txt" id="loadOvTxt">Chargement…</div><div class="bar"><i id="loadOvBar"></i></div><div class="sub" id="loadOvSub"></div></div>';document.body.appendChild(d);return d;})();
 function showLoad(txt,frac,sub){loadOv.classList.add('show');$('#loadOvTxt').textContent=txt;$('#loadOvBar').style.width=Math.round(Math.max(0,Math.min(1,frac||0))*100)+'%';$('#loadOvSub').textContent=sub||'';}
 function hideLoad(){loadOv.classList.remove('show');}
-function clipsOptimizing(){ return clips.some(c=>c._optimizing); }
 function clipsBlocking(){ return clips.some(c=>(c._optimizing && !c._playable) || (!c._wcReady && !c._wcFail)); }
+/* L'export ne dépend QUE des clips UTILISÉS et décodables localement (WebCodecs) —
+   l'upload/optimisation en arrière-plan ne doit JAMAIS bloquer un export. */
+function clipsExportBlocking(){
+  const used=new Set((((M&&M.plans)||[]).map(p=>p.clip)).filter(i=>i!=null));
+  return [...used].some(i=>{ const c=clips[i]; return c && !c._wcReady && (c._optimizing || !c._wcFail); });
+}
 let restoreIncomplete=false;   // chargement partiel → sauvegarde DÉSACTIVÉE (anti-écrasement de projet)
 /* Barre de progression des actions IA (haut de page) */
 const aiBar={
@@ -1495,7 +1500,8 @@ function startClipUpload(clip, file){
     let ok=false;
     try{
       const s=await API.mediaStatus(id);
-      if(s && s.transcoded){
+      if(s && s.transcoded && s.skipped){ ok=true; }   // déjà propre : rien à re-télécharger
+      else if(s && s.transcoded){
         const f=await API.fetchMedia(id, clip.name);
         while(playing||looping){ await new Promise(r=>setTimeout(r,800)); }   // pas de swap en pleine lecture
         swapClipMedia(clip, f); ok=true;
@@ -2826,7 +2832,7 @@ let exporting=false;
 async function exportVideo(nameSuffix){
   if(exporting){ toast('Un export est déjà en cours — attends la fin'); return false; }
   if(!buffer){toast('Dépose d\u2019abord ton morceau');return false;}
-  if(clipsOptimizing()){ toast('⏳ Optimisation de tes vidéos en cours — l\u2019export sera prêt dans un instant'); return false; }
+  if(clipsExportBlocking()){ toast('⏳ Une vidéo utilisée dans le montage n\u2019est pas encore lisible — quelques secondes…'); return false; }
   // GARDE ANTI-DIAPORAMA : chaque vidéo utilisée par un plan doit être décodable MAINTENANT
   aiBar.set('Vérification des vidéos…',1);
   const deadClips=await ensureClipsReady();
@@ -3086,7 +3092,7 @@ async function drawVariantFrame(cvs, va, t){
 async function genSerie(){
   if(!engineGuard()) return;
   if(exporting){toast('Attends la fin de l\u2019export en cours');return;}
-  if(clipsOptimizing()){toast('⏳ Optimisation de tes vidéos en cours — réessaie dans un instant');return;}
+  if(clips.some(c=>!c._wcReady&&(c._optimizing||!c._wcFail))){toast('⏳ Certaines vidéos ne sont pas encore lisibles — réessaie dans un instant');return;}
   const m=DB.morceaux.find(x=>x.id===$('#serieMorceau').value);
   if(!m){toast('Crée d\u2019abord un morceau');return;}
   if(!serieSel.size){toast('Choisis au moins un style de sous-titres');return;}
