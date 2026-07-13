@@ -2872,6 +2872,9 @@ async function ensureClipsReady(){
   return dead;
 }
 const _AVC_TRY=['avc1.640033','avc1.640028','avc1.4d4028','avc1.42e01f'];
+/* Mobile (iPhone/iPad/Android) : l'encodeur AAC du navigateur est peu fiable (WebKit produit
+   des pistes muettes même quand il se dit capable) → le SON EST TOUJOURS ASSEMBLÉ PAR LE SERVEUR. */
+const MOBILE_UA=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Mac/.test(navigator.userAgent));
 async function offlineSupported(){
   try{
     if(!window.VideoEncoder||!window.Mp4Muxer||!window.VideoFrame) return false;
@@ -2882,7 +2885,7 @@ async function offlineSupported(){
       try{ const r=await VideoEncoder.isConfigSupported({codec:c,width:f[0],height:f[1],bitrate:12000000,framerate:30}); if(r.supported){ _avcCodec=c; break; } }catch(e){}
     }
     if(!_avcCodec) return false;
-    if(window.AudioEncoder&&window.AudioData){
+    if(!MOBILE_UA && window.AudioEncoder&&window.AudioData){
       try{
         const a=await AudioEncoder.isConfigSupported({codec:'mp4a.40.2',sampleRate:buffer.sampleRate,numberOfChannels:nch,bitrate:192000});
         // isConfigSupported MENT sur certains navigateurs (WebKit iOS) : on teste un VRAI encodage
@@ -2920,6 +2923,15 @@ async function exportOffline(nameSuffix, mode='full'){
   const cleanup=()=>{ offlineRender=false; exporting=false; btn.disabled=false; btn.textContent=btnLabel; wcExp.destroy(); wcExpFrame=null; _wcExpPi=-1; aiBar.done(); };
   try{
     aiBar.set('Préparation de l\u2019export studio…',1);
+    // diagnostic : l'extrait audio a-t-il du signal ? (détecte un morceau mal rechargé → export silencieux)
+    let srcPeak=-1;
+    try{
+      const ch0=buffer.getChannelData(0);
+      const ps0=Math.floor(ext.start*buffer.sampleRate), pn=Math.min(Math.floor(ext.dur*buffer.sampleRate), buffer.length-ps0);
+      let m=0; for(let i=0;i<pn;i+=97){ const v=Math.abs(ch0[ps0+i]); if(v>m)m=v; }
+      srcPeak=m;
+    }catch(e){}
+    if(srcPeak>=0&&srcPeak<0.001) toast('⚠ L\u2019extrait audio semble SILENCIEUX — rouvre le morceau pour recharger le son avant d\u2019exporter.');
     const {Muxer,ArrayBufferTarget}=Mp4Muxer;
     const sr=buffer.sampleRate, nch=Math.min(2,buffer.numberOfChannels||1);
     const muxOpts={target:new ArrayBufferTarget(),video:{codec:'avc',width:W,height:H},fastStart:'in-memory'};
@@ -2971,18 +2983,25 @@ async function exportOffline(nameSuffix, mode='full'){
     if(aenc){ try{ await aenc.flush(); }catch(e){ aencErr=aencErr||e; } }
     muxer.finalize();
     let blob=new Blob([muxer.target.buffer],{type:'video/mp4'});
-    if(mode!=='full' || aencErr || audioChunks===0){
-      // Safari / AAC client muet ou en échec : le serveur ajoute la piste audio (aucun ré-encodage vidéo, 2-3 s)
+    const usedServerAudio=(mode!=='full' || !!aencErr || audioChunks===0);
+    if(usedServerAudio){
+      // Mobile / AAC client KO : le serveur ajoute la piste audio (aucun ré-encodage vidéo, 2-3 s)
       if(mode==='full') console.warn('[export] AAC client KO ('+((aencErr&&aencErr.message)||'0 chunk')+') → son assemblé par le serveur');
       aiBar.set('Ajout du son (serveur)…',96);
       const fd=new FormData();
       fd.append('video', blob, 'v.mp4');
       fd.append('audio', extractWavStereoBlob(ext.start, ext.dur), 'a.wav');
       const r=await fetch('/api/export/finalize',{method:'POST',credentials:'include',body:fd});
-      if(!r.ok) throw new Error('assemblage du son impossible');
+      if(!r.ok) throw new Error('assemblage du son impossible (HTTP '+r.status+')');
       blob=await r.blob();
     }
     if(blob.size<20000) throw new Error('fichier vide');
+    // télémétrie : permet de suivre la santé des exports (mode audio réellement utilisé)
+    try{
+      fetch('/api/telemetry/export',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({mode, server_audio:usedServerAudio, audio_chunks:audioChunks, aenc_err:(aencErr&&String(aencErr.message||aencErr))||null,
+          src_peak:Math.round(srcPeak*1000)/1000, size:blob.size, ua:navigator.userAgent})}).catch(()=>{});
+    }catch(e){}
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
     a.download=(M.title||'beatcut')+(nameSuffix||'')+'.mp4'; a.click();
     // NE DÉCOMPTER qu'après un export réellement réussi (serveur = vérité)
@@ -2990,7 +3009,7 @@ async function exportOffline(nameSuffix, mode='full'){
     if(API.plan!=='pro' && API.quota.left>0) API.quota.left--;
     DB.exports++; M.videos=(M.videos||0)+1; dirty(); updateQuotaUI();
     cleanup();
-    toast('Vidéo exportée en '+W+'×'+H+' — qualité studio, image par image ✓');
+    toast('Vidéo exportée en '+W+'×'+H+' ✓ · son : '+(usedServerAudio?'assemblé par le serveur':'direct'));
     return true;
   }catch(e){
     cleanup();

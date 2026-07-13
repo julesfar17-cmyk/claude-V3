@@ -654,6 +654,34 @@ async def admin_unsupported_browsers(user: dict = Depends(get_current_user)):
     return {"total": total, "last_30d": last_30d, "samples": samples}
 
 
+@api_router.post("/telemetry/export")
+async def log_export_telemetry(request: Request, user: dict = Depends(get_current_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    await db.export_logs.insert_one({
+        "user_id": user.get("user_id"),
+        "mode": str(body.get("mode"))[:20],
+        "server_audio": bool(body.get("server_audio")),
+        "audio_chunks": int(body.get("audio_chunks") or 0),
+        "aenc_err": (str(body.get("aenc_err"))[:200] if body.get("aenc_err") else None),
+        "src_peak": body.get("src_peak"),
+        "size": int(body.get("size") or 0),
+        "ua": str(body.get("ua") or "")[:300],
+        "created_at": iso(now_utc()),
+    })
+    return {"ok": True}
+
+
+@api_router.get("/admin/telemetry/exports")
+async def admin_export_telemetry(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    total = await db.export_logs.count_documents({})
+    samples = await db.export_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    return {"total": total, "samples": samples}
+
+
 # ---------------------------------------------------------------------------
 # Stripe — abonnement PRO récurrent (renouvellement automatique réel)
 # ---------------------------------------------------------------------------

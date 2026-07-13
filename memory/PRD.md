@@ -376,3 +376,14 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Vérifié : /api/export/finalize testé en preview (HTTP 200, sortie avec Stream audio aac stéréo 192k) ; _aacReallyWorks/offlineSupported s'exécutent proprement (pod sans AAC → hybrid/false honnête) ; syntaxe OK
 - ⚠️ Le fix est en PREVIEW : le user doit REDÉPLOYER pour corriger la production (beat-cut.com)
 - ⚠️ Point de vigilance prod : le chemin hybrid POST ~50 Mo (vidéo+wav) vers /api/export/finalize — si l'ingress prod limite la taille du body, l'utilisateur verrait « assemblage du son impossible » → contacter le support Emergent dans ce cas
+
+## Corrigé (13 juillet 2026) — Export muet iPhone : SOLUTION DÉFINITIVE (son serveur forcé sur mobile)
+- Le fix précédent (test AAC réel) ne suffisait pas : WebKit iOS peut réussir le test ET produire une piste AAC muette à l'usage
+- FIX DÉFINITIF : `MOBILE_UA` (iPhone/iPad/Android + iPad desktop-UA via maxTouchPoints) → mode 'hybrid' FORCÉ : sur mobile le son est TOUJOURS assemblé par le serveur (ffmpeg, AAC parfait), plus jamais l'encodeur AAC du navigateur
+- Diagnostics ajoutés :
+  - Toast final indique le mode : « son : assemblé par le serveur » / « son : direct » → l'utilisateur peut nous rapporter le chemin réellement pris
+  - Détection de source silencieuse : peak de l'extrait mesuré avant export → toast d'alerte si ~0 (morceau mal rechargé)
+  - Erreur d'assemblage serveur avec code HTTP (ex. « HTTP 413 » = limite d'upload ingress prod → support Emergent)
+  - Télémétrie : POST /api/telemetry/export {mode, server_audio, audio_chunks, aenc_err, src_peak, size, ua} → collection export_logs + GET /api/admin/telemetry/exports (admin)
+- ✅ Testé preview : endpoints télémétrie 200 (insert + lecture admin), studio charge sans erreur, MOBILE_UA=false sur desktop, /api/export/finalize déjà validé (piste AAC présente)
+- ⚠️ NÉCESSITE REDÉPLOIEMENT pour effet sur beat-cut.com. Si encore muet après ça : lire le toast final + /api/admin/telemetry/exports pour trancher (source silencieuse vs upload bloqué)
