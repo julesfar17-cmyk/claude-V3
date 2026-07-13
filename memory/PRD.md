@@ -357,3 +357,12 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Testé (pod, clips VP9) : import ×6 simultané → 6 clips avec 4/4 vignettes ; Mélanger → 20 plans, 0 seek invalide ; simulation swap Mux sans seeks → 4 seeks + 4 vignettes régénérés
 - 📢 VALIDATION USER REQUISE avec ses vrais fichiers (iPhone/HEVC) sur son navigateur
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (13 juillet 2026) — Vignettes noires sur clips LONGS (photo utilisateur : 55ASKY ~2 min)
+- Symptôme : sur un clip long, les vignettes des sous-plans tardifs (54s, 71s, 106s, 123s…) restaient noires
+- Cause racine : budget FIXE de 1,5 s par vignette. Sur un GOP long (keyframe toutes les 5-10 s, typique des clips musicaux), décoder depuis la keyframe précédente jusqu'à la cible prend plusieurs secondes (surtout mobile) → abandon → vignette noire
+- FIX : `wcAwaitFrame(p, t, slack)` — attente basée sur la PROGRESSION du décodeur (on continue tant que p.si avance ou que des frames arrivent ; abandon seulement après 2,5 s sans progrès, garde-fou absolu 12 s). Appliqué aux vignettes ET à `wcExportSeek` (l'export sur GOP long aurait eu le même trou)
+- ✅ Testé (pod) : clip VP9 140 s, keyframe toutes les 10 s → 8/8 vignettes générées (jusqu'à 125 s) ; export frame-accurate sur un plan à 119,7 s (timestamps exacts au pas de 24 fps)
+- Fichier de test long supprimé de public/ (les petits wc_test_a/b.mp4 restent pour les retests)
+- 📢 VALIDATION USER REQUISE avec ses vrais clips longs
+- ⚠️ REDÉPLOIEMENT nécessaire

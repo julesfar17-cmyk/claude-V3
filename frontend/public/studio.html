@@ -1731,6 +1731,21 @@ function makeThumbs(clip, done){
     makeThumbsTag(clip, done);
   });
 }
+/* Attend qu'une frame proche de t soit décodée — PATIENT sur GOP longs : décoder
+   depuis la keyframe précédente peut prendre plusieurs secondes sur mobile.
+   On continue tant que le décodeur PROGRESSE, on n'abandonne que s'il cale. */
+async function wcAwaitFrame(p, t, slackS){
+  let f=null; const t0=performance.now(); let lastSi=-1, lastProg=performance.now();
+  while(true){
+    p.fill(); f=p.frameAt(t);
+    if(f&&f.timestamp>=(t-slackS)*1e6) return f;
+    if(p.err) return f;
+    if(p.si!==lastSi||p.buffered()){ lastSi=p.si; lastProg=performance.now(); }
+    if(performance.now()-lastProg>2500) return f;   // plus aucune progression → on rend ce qu'on a
+    if(performance.now()-t0>12000) return f;        // garde-fou absolu
+    await new Promise(r=>setTimeout(r,16));
+  }
+}
 /* Vignettes via WebCodecs — FILE D'ATTENTE globale : une génération à la fois.
    (importer 6 vidéos d'un coup = 6 décodeurs simultanés → saturation matérielle → vignettes vides) */
 let _thumbQ=Promise.resolve();
@@ -1752,15 +1767,10 @@ async function _wcMakeThumbsNow(clip, indices, gen){
     if(clip.seeks[i]==null) continue;
     const t=Math.min(clip.seeks[i], Math.max(0,(clip.wc.durationS||1)-0.1));
     p.seek(t);
-    let f=null; const t0=performance.now();
-    while(performance.now()-t0<1500){
-      p.fill(); f=p.frameAt(t);
-      if(f&&f.timestamp>=(t-0.3)*1e6) break;
-      if(p.err){
-        if(retried) break;
-        retried=true; p.destroy(); p=new SegPlayer(); p.setClip(clip.wc); p.seek(t);   // décodeur saturé → seconde chance
-      }
-      await new Promise(r=>setTimeout(r,16));
+    let f=await wcAwaitFrame(p, t, 0.3);
+    if(p.err&&!retried){   // décodeur saturé/planté → seconde chance avec un décodeur neuf
+      retried=true; p.destroy(); p=new SegPlayer(); p.setClip(clip.wc); p.seek(t);
+      f=await wcAwaitFrame(p, t, 0.3);
     }
     if(f&&clip._thumbGen===gen){
       const fw=f.displayWidth||f.codedWidth, fh=f.displayHeight||f.codedHeight;
@@ -2397,13 +2407,16 @@ async function wcExportSeek(pl, t){
     pl.setClip(wc); pl.seek(target); _wcExpPi=pi;
   }
   pl._lastT=target;
-  const t0=performance.now(); let f=null;
-  while(performance.now()-t0<1500){
+  const t0=performance.now(); let f=null; let lastSi=-1, lastProg=performance.now();
+  while(true){
     pl.fill(); f=pl.frameAt(target);
     // exactitude : on sort quand la frame SUIVANTE dépasserait la cible → f est LA bonne frame
     if(f && pl.frames.length && pl.frames[0].timestamp>target*1e6) break;
     if(f && pl.si>=pl.clip.samples.length && !pl.frames.length) break;   // fin du flux
     if(pl.err) break;
+    if(pl.si!==lastSi||pl.buffered()){ lastSi=pl.si; lastProg=performance.now(); }
+    if(performance.now()-lastProg>2500) break;   // décodeur calé → on garde la meilleure frame connue
+    if(performance.now()-t0>12000) break;
     await new Promise(r=>setTimeout(r,5));
   }
   wcExpFrame=f;
