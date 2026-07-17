@@ -15,6 +15,12 @@ import Projects from "@/pages/Projects";
 import Admin from "@/pages/Admin";
 
 function AppRouter() {
+  // Lien affilié : beat-cut.com/?promo=CODE → mémorisé, la remise s'appliquera au paiement
+  const promo = new URLSearchParams(window.location.search).get("promo");
+  if (promo) {
+    localStorage.setItem("bc_affiliate", promo.toUpperCase());
+    window.history.replaceState({}, "", window.location.pathname);
+  }
   // Le session_id du callback Google arrive en fragment d'URL : traité AVANT le routing normal
   if (window.location.hash?.includes("session_id=")) {
     return <AuthCallback />;

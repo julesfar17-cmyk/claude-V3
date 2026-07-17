@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import api, { formatApiErrorDetail } from "@/lib/api";
+import { AffiliateAdmin } from "@/components/AffiliateAdmin";
 
 const fmt = (n, suffix = "") => `${n}${suffix}`;
 
@@ -202,6 +203,7 @@ export default function Admin() {
                       <th className="text-left py-2">JOURS</th>
                       <th className="text-left py-2">UTILISÉ</th>
                       <th className="text-left py-2">MAX</th>
+                      <th className="text-left py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -211,12 +213,32 @@ export default function Admin() {
                         <td className="py-2">+{p.bonus_days} j</td>
                         <td className="py-2">{p.used_count || 0}</td>
                         <td className="py-2">{p.max_uses || "∞"}</td>
+                        <td className="py-2 text-right">
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm(`Supprimer le code ${p.code} ?`)) return;
+                              try {
+                                await api.delete(`/admin/promo/${p.code}`);
+                                toast.success(`Code ${p.code} supprimé`);
+                                load();
+                              } catch (e2) {
+                                toast.error(formatApiErrorDetail(e2.response?.data?.detail) || "Suppression impossible");
+                              }
+                            }}
+                            data-testid={`admin-promo-delete-${p.code}`}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            supprimer
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </section>
+
+            <AffiliateAdmin />
 
             <section className="bg-card border border-border p-6 sm:p-8">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">

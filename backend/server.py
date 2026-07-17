@@ -450,6 +450,7 @@ class GoogleSessionIn(BaseModel):
 class CheckoutIn(BaseModel):
     origin_url: str
     plan: str = "monthly"   # "monthly" ou "yearly"
+    promo_code: str | None = None   # code affilié (remise Stripe à vie)
 
 
 class ForgotPasswordIn(BaseModel):
@@ -697,6 +698,12 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
         if tx and tx.get("user_id"):
             plan = tx.get("plan", "monthly")
             await activate_subscription(tx["user_id"], customer_id, subscription_id, plan=plan)
+            if tx.get("affiliate_code"):
+                await db.affiliate_codes.update_one(
+                    {"code": tx["affiliate_code"]},
+                    {"$inc": {"use_count": 1},
+                     "$push": {"uses": {"user_id": tx["user_id"], "email": tx.get("email"),
+                                        "plan": plan, "date": iso(now_utc())}}})
             user = await db.users.find_one({"user_id": tx["user_id"]}, {"_id": 0})
             if user:
                 end = (user.get("subscription") or {}).get("current_period_end")
@@ -749,6 +756,15 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         params["customer"] = sub["stripe_customer_id"]
     else:
         params["customer_email"] = user["email"]
+    # Code affilié : remise Stripe appliquée automatiquement, à VIE (coupon duration=forever)
+    aff_code = _normalize_promo(data.promo_code or "")
+    if aff_code:
+        aff = await db.affiliate_codes.find_one({"code": aff_code, "active": True})
+        if aff and plan in (aff.get("plans") or []):
+            params["discounts"] = [{"coupon": aff["stripe_coupon_id"]}]
+            params["metadata"]["affiliate_code"] = aff_code
+        else:
+            aff_code = ""
     try:
         session = await asyncio.to_thread(lambda: stripe.checkout.Session.create(**params))
     except Exception as e:
@@ -765,6 +781,8 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         "status": "open",
         "payment_status": "initiated",
         "processed": False,
+        "affiliate_code": aff_code or None,
+        "email": user["email"],
         "created_at": iso(now_utc()),
     })
     return {"url": session.url, "session_id": session.id}
@@ -2149,6 +2167,122 @@ async def admin_create_promo(payload: dict, user: dict = Depends(get_current_use
     }
     await db.promo_codes.insert_one({**doc})
     return doc
+
+
+@api_router.delete("/admin/promo/{code}")
+async def admin_delete_promo(code: str, user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    res = await db.promo_codes.delete_one({"code": _normalize_promo(code)})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Code introuvable")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Codes AFFILIÉS : remise Stripe automatique À VIE + suivi pour les affiliés
+# ---------------------------------------------------------------------------
+PLAN_PRICES = {"monthly": PRO_PRICE_CENTS, "yearly": PRO_PRICE_YEAR_CENTS, "basic": BASIC_PRICE_CENTS}
+PLAN_LABELS = {"monthly": "PRO mensuel", "yearly": "PRO annuel", "basic": "BASIC"}
+
+
+def _aff_price_after(aff: dict, plan: str) -> int:
+    base = PLAN_PRICES[plan]
+    if aff["kind"] == "percent":
+        return max(0, round(base * (1 - aff["percent_off"] / 100)))
+    return max(0, base - aff["amount_off_cents"])
+
+
+@api_router.get("/affiliate/check/{code}")
+async def affiliate_check(code: str):
+    aff = await db.affiliate_codes.find_one({"code": _normalize_promo(code), "active": True}, {"_id": 0})
+    if not aff:
+        raise HTTPException(status_code=404, detail="Code invalide")
+    return {
+        "code": aff["code"],
+        "kind": aff["kind"],
+        "percent_off": aff.get("percent_off"),
+        "amount_off_cents": aff.get("amount_off_cents"),
+        "plans": aff["plans"],
+        "prices": {p: {"base_cents": PLAN_PRICES[p], "after_cents": _aff_price_after(aff, p), "label": PLAN_LABELS[p]}
+                   for p in aff["plans"]},
+    }
+
+
+@api_router.post("/admin/affiliate")
+async def admin_create_affiliate(payload: dict, user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    code = _normalize_promo(str(payload.get("code") or ""))
+    if len(code) < 3:
+        raise HTTPException(status_code=400, detail="Code trop court (3 min)")
+    if await db.affiliate_codes.find_one({"code": code}):
+        raise HTTPException(status_code=400, detail="Code affilié déjà existant")
+    if await db.promo_codes.find_one({"code": code}):
+        raise HTTPException(status_code=400, detail="Ce code existe déjà en code « jours offerts »")
+    kind = payload.get("kind")
+    plans = [p for p in (payload.get("plans") or []) if p in PLAN_PRICES]
+    if not plans:
+        raise HTTPException(status_code=400, detail="Choisis au moins un plan")
+    commission_pct = float(payload.get("commission_pct") or 0)
+    if kind == "percent":
+        percent_off = float(payload.get("percent_off") or 0)
+        if not (0 < percent_off < 100):
+            raise HTTPException(status_code=400, detail="Pourcentage entre 1 et 99")
+        coupon = stripe.Coupon.create(percent_off=percent_off, duration="forever", name=f"Affilié {code}")
+        doc = {"kind": "percent", "percent_off": percent_off, "amount_off_cents": None}
+    elif kind == "amount":
+        amount_off = int(payload.get("amount_off_cents") or 0)
+        if amount_off <= 0 or amount_off >= min(PLAN_PRICES[p] for p in plans):
+            raise HTTPException(status_code=400, detail="Remise en € invalide pour les plans choisis")
+        coupon = stripe.Coupon.create(amount_off=amount_off, currency="eur", duration="forever", name=f"Affilié {code}")
+        doc = {"kind": "amount", "percent_off": None, "amount_off_cents": amount_off}
+    else:
+        raise HTTPException(status_code=400, detail="Type de remise invalide")
+    doc.update({
+        "code": code, "plans": plans, "commission_pct": commission_pct,
+        "stripe_coupon_id": coupon["id"], "active": True,
+        "use_count": 0, "uses": [], "created_at": iso(now_utc()),
+    })
+    await db.affiliate_codes.insert_one({**doc})
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/admin/affiliate")
+async def admin_list_affiliates(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    out = []
+    async for aff in db.affiliate_codes.find({}, {"_id": 0}).sort("created_at", -1):
+        uses = aff.get("uses") or []
+        active_count = 0
+        monthly_rev = 0.0
+        for u in uses:
+            udoc = await db.users.find_one({"user_id": u.get("user_id")}, {"subscription": 1})
+            sub = (udoc or {}).get("subscription") or {}
+            if sub.get("status") in ("active", "trialing", "cancelling"):
+                active_count += 1
+                after = _aff_price_after(aff, u.get("plan", "monthly"))
+                monthly_rev += (after / 12 if u.get("plan") == "yearly" else after) / 100
+        aff["active_subscribers"] = active_count
+        aff["monthly_revenue"] = round(monthly_rev, 2)
+        aff["monthly_commission"] = round(monthly_rev * (aff.get("commission_pct") or 0) / 100, 2)
+        aff["prices"] = {p: {"base_cents": PLAN_PRICES[p], "after_cents": _aff_price_after(aff, p), "label": PLAN_LABELS[p]}
+                         for p in aff.get("plans", [])}
+        out.append(aff)
+    return {"codes": out}
+
+
+@api_router.delete("/admin/affiliate/{code}")
+async def admin_delete_affiliate(code: str, user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    aff = await db.affiliate_codes.find_one({"code": _normalize_promo(code)})
+    if not aff:
+        raise HTTPException(status_code=404, detail="Code introuvable")
+    try:
+        stripe.Coupon.delete(aff["stripe_coupon_id"])   # les abonnés existants GARDENT leur remise
+    except Exception as e:
+        logger.warning("Suppression coupon Stripe %s : %s", aff.get("stripe_coupon_id"), e)
+    await db.affiliate_codes.delete_one({"_id": aff["_id"]})
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

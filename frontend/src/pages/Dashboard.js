@@ -82,7 +82,9 @@ export default function Dashboard() {
   const startCheckout = async (plan = "monthly") => {
     setBusy(true);
     try {
-      const { data } = await api.post("/payments/checkout", { origin_url: window.location.origin, plan });
+      const payload = { origin_url: window.location.origin, plan };
+      if (affiliate?.code && affiliate.plans?.includes(plan)) payload.promo_code = affiliate.code;
+      const { data } = await api.post("/payments/checkout", payload);
       window.location.href = data.url;
     } catch (e) {
       toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Erreur lors de la création du paiement");
@@ -93,6 +95,16 @@ export default function Dashboard() {
   const [promoCode, setPromoCode] = useState("");
   const [promoBusy, setPromoBusy] = useState(false);
   const [refInfo, setRefInfo] = useState(null);
+  const [affiliate, setAffiliate] = useState(null);
+
+  useEffect(() => {
+    // code affilié mémorisé (lien ?promo=CODE) : re-validé au chargement
+    const saved = localStorage.getItem("bc_affiliate");
+    if (!saved) return;
+    api.get(`/affiliate/check/${encodeURIComponent(saved)}`)
+      .then(({ data }) => setAffiliate(data))
+      .catch(() => localStorage.removeItem("bc_affiliate"));
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -108,8 +120,17 @@ export default function Dashboard() {
       await refreshUser();
       toast.success(data.message);
       setPromoCode("");
-    } catch (e) {
-      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Code invalide");
+    } catch (err) {
+      // pas un code « jours offerts » ? → peut-être un code AFFILIÉ (remise à vie sur l'abonnement)
+      try {
+        const { data } = await api.get(`/affiliate/check/${encodeURIComponent(promoCode.trim())}`);
+        localStorage.setItem("bc_affiliate", data.code);
+        setAffiliate(data);
+        toast.success(`Code ${data.code} activé — la réduction s'appliquera automatiquement au paiement, à vie ✓`);
+        setPromoCode("");
+      } catch {
+        toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Code invalide");
+      }
     } finally {
       setPromoBusy(false);
     }
@@ -211,6 +232,15 @@ export default function Dashboard() {
 
             {!isPro && (
               <>
+                {affiliate && (
+                  <div className="mb-4 border border-primary/50 bg-primary/10 px-4 py-3 text-sm" data-testid="affiliate-active-banner">
+                    🎁 Code <b className="font-osd">{affiliate.code}</b> actif —{" "}
+                    {Object.values(affiliate.prices || {}).map((p, i) => (
+                      <span key={p.label}>{i > 0 && " · "}{p.label} : <s className="text-muted-foreground">{(p.base_cents / 100).toFixed(2).replace(".", ",")} €</s> <b>{(p.after_cents / 100).toFixed(2).replace(".", ",")} €</b></span>
+                    ))}{" "}
+                    <span className="text-muted-foreground">à vie, appliqué automatiquement au paiement</span>
+                  </div>
+                )}
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Tu utilises la version gratuite : tout le studio est dispo, avec un watermark BEATCUT sur l'aperçu.
                   Choisis ton plan pour exporter tes vidéos sans watermark.
