@@ -413,3 +413,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - P1 : UpChunk pour uploads vidéo reprenables
 - P1 : Resend — email auto sur échec d'export
 - P2 : Nettoyage systématique des fichiers GridFS orphelins
+
+## Terminé (17 juillet 2026) — UX code promo affilié : remise SUR les prix (plus de bandeau)
+- Bandeau "🎁 Code XXX actif" au-dessus des prix SUPPRIMÉ (montrait le code à tout le monde via les liens ?promo=CODE)
+- Remise affichée directement SUR les boutons de prix : prix barré + prix remisé + petit badge 🎁 CODE en haut à gauche (data-testid price-basic/monthly/yearly, promo-badge-{plan}) — pour les gratuits (3 plans) ET le bouton upgrade PRO des BASIC
+- Texte carte code promo : « Tu as déniché un code promo ? Rentre-le ici. »
+- ✅ Testé screenshots : sans code = prix normaux sans badge ; avec code = 6,99→6,29 / 12,99→11,69 / 99→89,10 + badges sur les 3 boutons ; upgrade BASIC avec prix barré
+- Compte test créé : qa_free_ui@test.local / Testing1234! (user FREE, non nettoyé)
+- ⚠️ REDÉPLOIEMENT nécessaire

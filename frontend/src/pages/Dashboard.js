@@ -96,6 +96,17 @@ export default function Dashboard() {
   const [promoBusy, setPromoBusy] = useState(false);
   const [refInfo, setRefInfo] = useState(null);
   const [affiliate, setAffiliate] = useState(null);
+  const fmtEUR = (c) => (c / 100).toFixed(2).replace(".", ",");
+  const affPrice = (plan) => (affiliate && affiliate.prices?.[plan]) || null;
+  const promoBadge = (plan) =>
+    affPrice(plan) ? (
+      <span
+        className="absolute -top-2.5 left-2 bg-[#d9ffd0] text-background font-osd text-[9px] tracking-wider px-2 py-0.5"
+        data-testid={`promo-badge-${plan}`}
+      >
+        🎁 {affiliate.code}
+      </span>
+    ) : null;
 
   useEffect(() => {
     // code affilié mémorisé (lien ?promo=CODE) : re-validé au chargement
@@ -230,16 +241,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {affiliate && !isVip && !(isPro && !isBasic) && (
-              <div className="mb-4 border border-primary/50 bg-primary/10 px-4 py-3 text-sm" data-testid="affiliate-active-banner">
-                🎁 Code <b className="font-osd">{affiliate.code}</b> actif —{" "}
-                {Object.values(affiliate.prices || {}).map((p, i) => (
-                  <span key={p.label}>{i > 0 && " · "}{p.label} : <s className="text-muted-foreground">{(p.base_cents / 100).toFixed(2).replace(".", ",")} €</s> <b>{(p.after_cents / 100).toFixed(2).replace(".", ",")} €</b></span>
-                ))}{" "}
-                <span className="text-muted-foreground">à vie, appliqué automatiquement au paiement</span>
-              </div>
-            )}
-
             {!isPro && (
               <>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -251,10 +252,15 @@ export default function Dashboard() {
                     onClick={() => startCheckout("basic")}
                     disabled={busy}
                     data-testid="subscribe-basic-button"
-                    className="inline-flex items-center justify-between gap-2 border border-[#8f9bff]/60 bg-[#8f9bff]/10 text-foreground font-bold px-5 py-3.5 hover:bg-[#8f9bff]/20 transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                    className="relative inline-flex items-center justify-between gap-2 border border-[#8f9bff]/60 bg-[#8f9bff]/10 text-foreground font-bold px-5 py-3.5 hover:bg-[#8f9bff]/20 transition-all hover:-translate-y-0.5 disabled:opacity-50"
                   >
+                    {promoBadge("basic")}
                     <span>BASIC — 10 vidéos/mois</span>
-                    <span className="font-display">6,99 €/mois</span>
+                    <span className="font-display" data-testid="price-basic">
+                      {affPrice("basic") ? (
+                        <><s className="opacity-50 mr-1.5">6,99 €</s>{fmtEUR(affPrice("basic").after_cents)} €/mois</>
+                      ) : "6,99 €/mois"}
+                    </span>
                   </button>
                   <button
                     onClick={() => startCheckout("monthly")}
@@ -265,8 +271,13 @@ export default function Dashboard() {
                     <span className="absolute -top-2.5 right-2 bg-white text-primary font-osd text-[9px] tracking-wider px-2 py-0.5">
                       RECOMMANDÉ
                     </span>
+                    {promoBadge("monthly")}
                     <span className="inline-flex items-center gap-2"><Crown size={16} /> PRO — illimité + acapella</span>
-                    <span className="font-display">12,99 €/mois</span>
+                    <span className="font-display" data-testid="price-monthly">
+                      {affPrice("monthly") ? (
+                        <><s className="opacity-60 mr-1.5">12,99 €</s>{fmtEUR(affPrice("monthly").after_cents)} €/mois</>
+                      ) : "12,99 €/mois"}
+                    </span>
                   </button>
                   <button
                     onClick={() => startCheckout("yearly")}
@@ -277,8 +288,13 @@ export default function Dashboard() {
                     <span className="absolute -top-2.5 right-2 bg-[#d9ffd0] text-background font-osd text-[9px] tracking-wider px-2 py-0.5">
                       2 MOIS OFFERTS
                     </span>
+                    {promoBadge("yearly")}
                     <span>PRO annuel</span>
-                    <span className="font-display">99 €/an</span>
+                    <span className="font-display" data-testid="price-yearly">
+                      {affPrice("yearly") ? (
+                        <><s className="opacity-50 mr-1.5">99 €</s>{fmtEUR(affPrice("yearly").after_cents)} €/an</>
+                      ) : "99 €/an"}
+                    </span>
                   </button>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground text-center">
@@ -325,9 +341,13 @@ export default function Dashboard() {
                       onClick={() => startCheckout("monthly")}
                       disabled={busy}
                       data-testid="upgrade-to-pro-button"
-                      className="mt-6 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
+                      className="relative mt-6 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
                     >
-                      <Crown size={16} /> Passer en PRO — 12,99 €/mois
+                      {promoBadge("monthly")}
+                      <Crown size={16} /> Passer en PRO —{" "}
+                      {affPrice("monthly") ? (
+                        <span data-testid="price-upgrade-monthly"><s className="opacity-60 mr-1">12,99 €</s>{fmtEUR(affPrice("monthly").after_cents)} €/mois</span>
+                      ) : "12,99 €/mois"}
                     </button>
                     <p className="mt-2 text-xs text-muted-foreground text-center">
                       Ton abonnement BASIC sera automatiquement remplacé.
@@ -470,7 +490,7 @@ export default function Dashboard() {
           <div className="bg-card border border-border p-8" data-testid="promo-card">
             <h2 className="font-display text-lg font-bold mb-3">Code promo</h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Tu as un code (lancement, créateur, événement) ? Active-le pour des jours offerts en PRO.
+              Tu as déniché un code promo ? Rentre-le ici.
             </p>
             <form onSubmit={applyPromo} className="mt-5 flex gap-3">
               <input
