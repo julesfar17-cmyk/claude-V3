@@ -421,3 +421,9 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Testé screenshots : sans code = prix normaux sans badge ; avec code = 6,99→6,29 / 12,99→11,69 / 99→89,10 + badges sur les 3 boutons ; upgrade BASIC avec prix barré
 - Compte test créé : qa_free_ui@test.local / Testing1234! (user FREE, non nettoyé)
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (17 juillet 2026) — Code promo affiché sans avoir été saisi (BYRON collé)
+- Cause : un lien ?promo=CODE stockait le code en localStorage POUR TOUJOURS → remise affichée indéfiniment même sans saisie
+- FIX : lien ?promo=CODE → sessionStorage bc_affiliate_link (session en cours seulement) ; saisie manuelle → localStorage bc_affiliate_manual (persistant, prioritaire) ; ancienne clé localStorage bc_affiliate purgée à chaque chargement (App.js) — corrige aussi les users déjà touchés en prod après redéploiement
+- ✅ Vérifié par bug_testing_agent (iteration_12) : 100% — sans code = pas de badge ; legacy purgé ; lien = session only ; manuel persiste au reload ; checkout régression OK
+- ⚠️ REDÉPLOIEMENT nécessaire pour beat-cut.com
