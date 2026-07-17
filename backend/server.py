@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+from pymongo.errors import DuplicateKeyError
 from pydantic import BaseModel, Field
 import asyncio
 import secrets
@@ -760,11 +761,12 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
     aff_code = _normalize_promo(data.promo_code or "")
     if aff_code:
         aff = await db.affiliate_codes.find_one({"code": aff_code, "active": True})
-        if aff and plan in (aff.get("plans") or []):
-            params["discounts"] = [{"coupon": aff["stripe_coupon_id"]}]
-            params["metadata"]["affiliate_code"] = aff_code
-        else:
-            aff_code = ""
+        if not aff:
+            raise HTTPException(status_code=400, detail="Code affilié invalide ou expiré")
+        if plan not in (aff.get("plans") or []):
+            raise HTTPException(status_code=400, detail="Ce code affilié ne couvre pas ce plan")
+        params["discounts"] = [{"coupon": aff["stripe_coupon_id"]}]
+        params["metadata"]["affiliate_code"] = aff_code
     try:
         session = await asyncio.to_thread(lambda: stripe.checkout.Session.create(**params))
     except Exception as e:
@@ -782,7 +784,6 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         "payment_status": "initiated",
         "processed": False,
         "affiliate_code": aff_code or None,
-        "email": user["email"],
         "created_at": iso(now_utc()),
     })
     return {"url": session.url, "session_id": session.id}
@@ -2242,7 +2243,15 @@ async def admin_create_affiliate(payload: dict, user: dict = Depends(get_current
         "stripe_coupon_id": coupon["id"], "active": True,
         "use_count": 0, "uses": [], "created_at": iso(now_utc()),
     })
-    await db.affiliate_codes.insert_one({**doc})
+    try:
+        await db.affiliate_codes.insert_one({**doc})
+    except DuplicateKeyError:
+        # compensation : évite un coupon Stripe orphelin en cas de double-clic / race
+        try:
+            stripe.Coupon.delete(coupon["id"])
+        except Exception:
+            pass
+        raise HTTPException(status_code=400, detail="Code affilié déjà existant")
     doc.pop("_id", None)
     return doc
 
@@ -2362,6 +2371,7 @@ async def startup():
     await db.payment_transactions.create_index("session_id")
     await db.project_backups.create_index([("project_id", 1), ("created_at", -1)])
     await db.password_reset_tokens.create_index("token")
+    await db.affiliate_codes.create_index("code", unique=True)
     await db.promo_codes.create_index("code", unique=True)
     await db.templates.create_index([("user_id", 1), ("created_at", -1)])
     await seed_user(os.environ['ADMIN_EMAIL'], os.environ['ADMIN_PASSWORD'], "Admin", "admin")

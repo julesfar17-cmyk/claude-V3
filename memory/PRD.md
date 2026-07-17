@@ -400,3 +400,16 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Hypothèse principale restante : la PROD n'exécute pas la dernière version (déploiement pas refait après le fix « son serveur forcé mobile », ou cache iOS)
 - Instrumentation ajoutée pour trancher : `BC_BUILD='v13.07-son-serveur'` loggé en console + AFFICHÉ dans le toast de fin d'export + envoyé dans la télémétrie export (champ build). GET /api/admin/telemetry/exports montre build/mode/server_audio/src_peak/aenc_err par export
 - PROTOCOLE UTILISATEUR : redéployer → exporter depuis l'iPhone → lire le toast final : il DOIT contenir « v13.07-son-serveur » et « son : assemblé par le serveur ». Sinon = ancienne version en prod. Puis consulter https://beat-cut.com/api/admin/telemetry/exports (connecté admin) et rapporter le JSON
+
+## Terminé (17 juillet 2026) — Système de codes promo AFFILIÉS (Stripe, remise à vie)
+- Backend : POST/GET/DELETE /api/admin/affiliate (coupon Stripe duration=forever, % ou € fixe, plans configurables, commission % pour suivi admin), GET /api/affiliate/check/{code} (public), checkout accepte promo_code → discount Stripe auto
+- Suivi admin : abonnés actifs par code, revenu mensuel généré, commission calculée (AffiliateAdmin.js dans le panneau admin)
+- Application côté user : saisie du code sur /dashboard OU lien /?promo=CODE (mémorisé en localStorage bc_affiliate) → bandeau prix barrés
+- Testé : iteration_11.json 100% backend (11/11 pytest) + 100% frontend ; self-test post-fixes (dup 400, plan non couvert 400 explicite, checkout couvert 200, delete 200)
+- Fixes finaux (17/07) : index unique affiliate_codes.code + compensation stripe.Coupon.delete si doublon (anti double-clic) ; 400 explicite « Ce code affilié ne couvre pas ce plan » / « Code affilié invalide ou expiré » au checkout ; bandeau visible aussi pour les abonnés BASIC (upgrade PRO avec remise visible, choix user), caché pour PRO/VIP ; doublon champ email dans payment_transactions supprimé
+- ⚠️ REDÉPLOIEMENT nécessaire pour effet sur beat-cut.com
+
+## Backlog
+- P1 : UpChunk pour uploads vidéo reprenables
+- P1 : Resend — email auto sur échec d'export
+- P2 : Nettoyage systématique des fichiers GridFS orphelins

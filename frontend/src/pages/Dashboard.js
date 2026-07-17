@@ -230,17 +230,18 @@ export default function Dashboard() {
               </div>
             )}
 
+            {affiliate && !isVip && !(isPro && !isBasic) && (
+              <div className="mb-4 border border-primary/50 bg-primary/10 px-4 py-3 text-sm" data-testid="affiliate-active-banner">
+                🎁 Code <b className="font-osd">{affiliate.code}</b> actif —{" "}
+                {Object.values(affiliate.prices || {}).map((p, i) => (
+                  <span key={p.label}>{i > 0 && " · "}{p.label} : <s className="text-muted-foreground">{(p.base_cents / 100).toFixed(2).replace(".", ",")} €</s> <b>{(p.after_cents / 100).toFixed(2).replace(".", ",")} €</b></span>
+                ))}{" "}
+                <span className="text-muted-foreground">à vie, appliqué automatiquement au paiement</span>
+              </div>
+            )}
+
             {!isPro && (
               <>
-                {affiliate && (
-                  <div className="mb-4 border border-primary/50 bg-primary/10 px-4 py-3 text-sm" data-testid="affiliate-active-banner">
-                    🎁 Code <b className="font-osd">{affiliate.code}</b> actif —{" "}
-                    {Object.values(affiliate.prices || {}).map((p, i) => (
-                      <span key={p.label}>{i > 0 && " · "}{p.label} : <s className="text-muted-foreground">{(p.base_cents / 100).toFixed(2).replace(".", ",")} €</s> <b>{(p.after_cents / 100).toFixed(2).replace(".", ",")} €</b></span>
-                    ))}{" "}
-                    <span className="text-muted-foreground">à vie, appliqué automatiquement au paiement</span>
-                  </div>
-                )}
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Tu utilises la version gratuite : tout le studio est dispo, avec un watermark BEATCUT sur l'aperçu.
                   Choisis ton plan pour exporter tes vidéos sans watermark.
