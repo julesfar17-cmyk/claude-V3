@@ -1,0 +1,44 @@
+{
+  "verdict": "fixed",
+  "user_reported_bug": "Toujours pareil, j'ai pas rentré le code mais il s'affiche quand même : (screenshot du dashboard BeatCut montrant le badge 🎁 BYRON et le prix remisé 12,99 € → 9,99 €/mois sur le bouton PRO alors que l'utilisateur n'a jamais tapé de code promo — le code était resté collé en localStorage après un passage par un lien d'affiliation ?promo=CODE)",
+  "summary": "No relevant testing skill found. Focused verification of the affiliate promo storage bug passed: dashboard without promo shows normal prices/no badges, legacy bc_affiliate is purged on app load, ?promo link discount is session-only, manual promo persists via bc_affiliate_manual after reload, and checkout with promo_code returned a Stripe LIVE cs_live checkout URL without opening it.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/promo_bug_test_plan.txt",
+    "/app/test_reports/test_promo_storage_bug.py",
+    "/app/test_reports/seed_promo_ui_test.py",
+    "/app/test_reports/checkout_and_cleanup_promo_ui_test.py",
+    "/app/test_reports/promo_ui_seed.json",
+    "/app/test_reports/checkout_cleanup_promo_ui_results.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/test_reports/promo_bug_test_plan.txt",
+    "/app/test_reports/test_promo_storage_bug.py",
+    "/app/test_reports/seed_promo_ui_test.py",
+    "/app/test_reports/checkout_and_cleanup_promo_ui_test.py",
+    "/app/test_reports/promo_ui_seed.json",
+    "/app/test_reports/promo_bug_runtime_results.json",
+    "/app/test_reports/checkout_cleanup_promo_ui_results.json",
+    "/app/test_reports/bug_verification_12.json",
+    "/app/test_reports/iteration_12.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100%"
+  },
+  "seed_data_creation": "Created temporary affiliate code QAPUI0A6E6F with 10% discount for basic/monthly/yearly and fresh free user qa_promo_ui_06c8521b@test.local. Temporary affiliate code was deleted at the end via DELETE /api/admin/affiliate/QAPUI0A6E6F; user account remains as test data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use newest report iteration_12. Tested preview URL https://pro-mailer-2.preview.emergentagent.com. Stripe checkout regression returned session_id cs_live_a1zJIjeAB8OMvpFgRBckZGHBqGCpCei439AQiios81WE1SacsuzrZe6t3p and was not opened. An initial local Playwright script could not launch browsers in the shell environment, so UI proof was gathered with mcp_browser_automation instead.",
+  "rca_of_the_issue": "The fix changes affiliate link storage from permanent localStorage bc_affiliate to sessionStorage bc_affiliate_link and purges legacy localStorage bc_affiliate on app load. Dashboard now reads bc_affiliate_manual first, then sessionStorage bc_affiliate_link. Verified reproduction path no longer shows a stuck discount when no code is manually entered. Manual code remains intentionally persistent in bc_affiliate_manual. No APIs were MOCKED."
+}

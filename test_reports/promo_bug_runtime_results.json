@@ -1,0 +1,89 @@
+{
+  "root": "https://pro-mailer-2.preview.emergentagent.com",
+  "api": "https://pro-mailer-2.preview.emergentagent.com/api",
+  "affiliate_code": "QAPB003BEA6",
+  "test_user": "qa_promo_a2d90ecf@test.local",
+  "steps": [
+    {
+      "name": "admin login for affiliate seed",
+      "ok": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "email": "julesfar17@gmail.com",
+          "role": "admin"
+        }
+      }
+    },
+    {
+      "name": "create temporary affiliate code",
+      "ok": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "code": "QAPB003BEA6",
+          "plans": [
+            "basic",
+            "monthly",
+            "yearly"
+          ]
+        }
+      }
+    },
+    {
+      "name": "public affiliate check returns 10 percent discounted prices",
+      "ok": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "code": "QAPB003BEA6",
+          "kind": "percent",
+          "percent_off": 10.0,
+          "amount_off_cents": null,
+          "plans": [
+            "basic",
+            "monthly",
+            "yearly"
+          ],
+          "prices": {
+            "basic": {
+              "base_cents": 699,
+              "after_cents": 629,
+              "label": "BASIC"
+            },
+            "monthly": {
+              "base_cents": 1299,
+              "after_cents": 1169,
+              "label": "PRO mensuel"
+            },
+            "yearly": {
+              "base_cents": 9900,
+              "after_cents": 8910,
+              "label": "PRO annuel"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "create fresh free user",
+      "ok": true,
+      "details": {
+        "status": 200,
+        "body": {
+          "email": "qa_promo_a2d90ecf@test.local",
+          "is_pro": false
+        }
+      }
+    }
+  ],
+  "console_errors": [],
+  "request_failures": [],
+  "cleanup": {
+    "status": 200,
+    "body": {
+      "ok": true
+    }
+  },
+  "all_passed": true
+}

@@ -15,12 +15,14 @@ import Projects from "@/pages/Projects";
 import Admin from "@/pages/Admin";
 
 function AppRouter() {
-  // Lien affilié : beat-cut.com/?promo=CODE → mémorisé, la remise s'appliquera au paiement
+  // Lien affilié : beat-cut.com/?promo=CODE → valable pour la session en cours uniquement
   const promo = new URLSearchParams(window.location.search).get("promo");
   if (promo) {
-    localStorage.setItem("bc_affiliate", promo.toUpperCase());
+    sessionStorage.setItem("bc_affiliate_link", promo.toUpperCase());
     window.history.replaceState({}, "", window.location.pathname);
   }
+  // purge de l'ancien stockage permanent (codes collés à vie sans saisie manuelle)
+  localStorage.removeItem("bc_affiliate");
   // Le session_id du callback Google arrive en fragment d'URL : traité AVANT le routing normal
   if (window.location.hash?.includes("session_id=")) {
     return <AuthCallback />;

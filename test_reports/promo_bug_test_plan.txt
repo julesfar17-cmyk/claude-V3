@@ -1,0 +1,7 @@
+Test plan - promo storage bug verification
+No relevant testing skill found.
+Exact bug: code from affiliate link/legacy localStorage must not remain stuck and show badge/discount when user did not type code.
+Affected flow: unaffiliated dashboard pricing, legacy bc_affiliate purge, affiliate link sessionStorage-only, manual promo persistence, checkout payload discount.
+Inspect: git status/history and App.js/Dashboard.js around promo storage/loading; backend affiliate/checkout endpoints.
+Proof needed: UI dashboard prices are normal and promo badges absent with no promo; bc_affiliate localStorage removed; ?promo stores bc_affiliate_link only in sessionStorage and is absent in new browser context; manual code creates bc_affiliate_manual and survives reload; API checkout with promo_code returns Stripe checkout URL without opening it.
+Edge cases: manual storage priority/persistence, stale legacy key, new session without link, cleanup affiliate test code.

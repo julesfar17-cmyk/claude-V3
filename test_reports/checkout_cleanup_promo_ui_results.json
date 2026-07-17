@@ -1,0 +1,36 @@
+{
+  "code": "QAPUI0A6E6F",
+  "email": "qa_promo_ui_06c8521b@test.local",
+  "steps": [
+    {
+      "name": "user login",
+      "status": 200,
+      "ok": true,
+      "body_summary": {}
+    },
+    {
+      "name": "checkout with promo_code returns Stripe LIVE checkout URL (not opened)",
+      "status": 200,
+      "ok": true,
+      "body_summary": {
+        "session_id": "cs_live_a1zJIjeAB8OMvpFgRBckZGHBqGCpCei439AQiios81WE1SacsuzrZe6t3p",
+        "url": "https://checkout.stripe.com/c/pay/cs_live_a1zJIjeAB8OMvpFgRBckZGHBqGCpCei439AQiios81WE1SacsuzrZe6t3p#fidnandhYHdWcXxpYCc"
+      }
+    },
+    {
+      "name": "admin login for cleanup",
+      "status": 200,
+      "ok": true,
+      "body_summary": {}
+    },
+    {
+      "name": "cleanup temporary affiliate code",
+      "status": 200,
+      "ok": true,
+      "body_summary": {
+        "ok": true
+      }
+    }
+  ],
+  "all_passed": true
+}

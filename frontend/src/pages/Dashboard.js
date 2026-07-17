@@ -109,12 +109,15 @@ export default function Dashboard() {
     ) : null;
 
   useEffect(() => {
-    // code affilié mémorisé (lien ?promo=CODE) : re-validé au chargement
-    const saved = localStorage.getItem("bc_affiliate");
+    // code saisi manuellement (persistant) prioritaire sur un code venu d'un lien (session en cours)
+    const saved = localStorage.getItem("bc_affiliate_manual") || sessionStorage.getItem("bc_affiliate_link");
     if (!saved) return;
     api.get(`/affiliate/check/${encodeURIComponent(saved)}`)
       .then(({ data }) => setAffiliate(data))
-      .catch(() => localStorage.removeItem("bc_affiliate"));
+      .catch(() => {
+        localStorage.removeItem("bc_affiliate_manual");
+        sessionStorage.removeItem("bc_affiliate_link");
+      });
   }, []);
 
   useEffect(() => {
@@ -135,7 +138,7 @@ export default function Dashboard() {
       // pas un code « jours offerts » ? → peut-être un code AFFILIÉ (remise à vie sur l'abonnement)
       try {
         const { data } = await api.get(`/affiliate/check/${encodeURIComponent(promoCode.trim())}`);
-        localStorage.setItem("bc_affiliate", data.code);
+        localStorage.setItem("bc_affiliate_manual", data.code);
         setAffiliate(data);
         toast.success(`Code ${data.code} activé — la réduction s'appliquera automatiquement au paiement, à vie ✓`);
         setPromoCode("");
