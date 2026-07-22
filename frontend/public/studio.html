@@ -458,7 +458,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
         <div id="lyricsTools" style="display:none;margin-top:8px">
           <button class="small" onclick="retime()">↻ Recaler les paroles</button>
           <button class="small" onclick="resetLyrics()">Repartir de zéro</button>
-          <p class="hint" style="margin-top:8px">Double-clique un mot pour le corriger · bouton « + » entre les mots pour en insérer un · double-clique la piste paroles de la timeline pour ajouter un mot à cet instant.</p>
+          <p class="hint" style="margin-top:8px">Double-clique un mot pour le corriger · bouton « + » entre les mots pour en insérer un · double-clique la piste paroles de la timeline pour ajouter un mot à cet instant.<br>Sur la timeline : Maj-clic / Ctrl-clic pour sélectionner plusieurs mots, puis glisse-les en groupe, ⧉ copie, 📋 colle au curseur ou 🗑 supprime (touche Suppr).</p>
         </div>
       </div>
 
@@ -565,6 +565,12 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
       <button class="small" onclick="addCutAtPlayhead()">✂ Couper ici <span class="mono" style="opacity:.6">M</span></button>
       <button class="small" id="snapBtn" onclick="toggleSnap()">🧲 Beat : ON</button>
       <button class="small" onclick="shufflePlans()">🎲 Mélanger</button>
+      <span id="wordSelBar" style="display:none;gap:6px;align-items:center">
+        <span class="hint" id="wordSelCount" data-testid="word-sel-count"></span>
+        <button class="small" onclick="copySelWords()" data-testid="word-copy-btn">⧉ Copier</button>
+        <button class="small" onclick="deleteSelWords()" data-testid="word-delete-btn">🗑 Supprimer</button>
+      </span>
+      <button class="small" id="wordPasteBtn" style="display:none" onclick="pasteWords()" data-testid="word-paste-btn">📋 Coller au curseur</button>
       <span style="width:10px"></span>
       <button class="small" onclick="zoomTl(1.4)" title="Zoomer">🔍＋</button>
       <button class="small" onclick="zoomTl(1/1.4)" title="Dézoomer">🔍−</button>
@@ -1013,6 +1019,7 @@ let style={preset:'impact',font:'Anton',size:1.5,color:'#FFFFFF',pos:0.5,textCas
   scan:false,box:false,hl:false,spacing:0,rot:0};
 let clips=[];
 let selWord=-1, snap=true;
+let selWords=new Set(), wordClip=null;
 const hist=[];
 function snapshot(){ return JSON.stringify({words:M.words,cuts:M.cuts,plans:M.plans,ext:ext,bpm:bpm,style:style}); }
 function pushHistory(){ if(!M)return; hist.push(snapshot()); if(hist.length>50)hist.shift(); updateUndoBtn(); }
@@ -1945,7 +1952,7 @@ function seedWords(list){
   renderLyrics(); drawTimeline(); dirty();
   if(!$('#extractZone').classList.contains('mini')) toggleExtract();   // place à l'aperçu
 }
-function resetLyrics(){ pushHistory(); M.words=[]; selWord=-1; $('#lyricsChoice').style.display='grid'; renderLyrics(); drawTimeline(); dirty(); }
+function resetLyrics(){ pushHistory(); M.words=[]; selWord=-1; selWords=new Set(); $('#lyricsChoice').style.display='grid'; renderLyrics(); drawTimeline(); dirty(); }
 async function retime(){
   /* Recalage : le texte ne change pas, seuls les timings s'affinent (re-transcription) */
   if(!buffer||!M.words||!M.words.length){ toast('Rien à recaler'); return; }
@@ -1999,8 +2006,57 @@ function refineTimings(list){
 }
 /* Sélection synchronisée éditeur ↔ timeline, sans re-render (préserve le double-clic) */
 function syncSel(){
-  $$('#lyricsList .word-chip').forEach(c=>c.classList.toggle('sel',+c.dataset.i===selWord));
-  $$('#trWords .wblock').forEach(b=>b.classList.toggle('sel',+b.dataset.i===selWord));
+  $$('#lyricsList .word-chip').forEach(c=>c.classList.toggle('sel',selWords.has(+c.dataset.i)));
+  $$('#trWords .wblock').forEach(b=>b.classList.toggle('sel',selWords.has(+b.dataset.i)));
+  const n=selWords.size, tb=$('#wordSelBar');
+  if(tb){ tb.style.display=n?'inline-flex':'none'; const cn=$('#wordSelCount'); if(cn) cn.textContent=n+(n>1?' mots':' mot'); }
+  const pb=$('#wordPasteBtn'); if(pb) pb.style.display=(wordClip&&wordClip.length)?'':'none';
+}
+function setSelWord(i){ selWord=i; selWords=new Set(i>=0?[i]:[]); syncSel(); }
+function toggleSelWord(i){
+  if(selWords.has(i)){ selWords.delete(i); if(selWord===i) selWord=[...selWords].pop()??-1; }
+  else { selWords.add(i); selWord=i; }
+  syncSel();
+}
+function selectWordRange(a,b){
+  const [s,e]=a<b?[a,b]:[b,a];
+  selWords=new Set(); for(let k=s;k<=e;k++) selWords.add(k);
+  selWord=b; syncSel();
+}
+function copySelWords(){
+  if(!selWords.size||!M||!M.words) return;
+  const idx=[...selWords].sort((a,b)=>a-b).filter(i=>M.words[i]);
+  if(!idx.length) return;
+  const base=M.words[idx[0]].start;
+  wordClip=idx.map(i=>({text:M.words[i].text, ds:M.words[i].start-base, de:M.words[i].end-base, hardEnd:!!M.words[i].hardEnd}));
+  syncSel();
+  toast(idx.length+' mot'+(idx.length>1?'s':'')+' copié'+(idx.length>1?'s':'')+' — place le curseur de lecture et colle 📋');
+}
+function pasteWords(){
+  if(!wordClip||!wordClip.length||!M) return;
+  pushHistory();
+  if(!M.words) M.words=[];
+  let base=Math.max(ext.start, Math.min(curTime(), ext.start+ext.dur-0.1));
+  const added=wordClip.map(w=>{
+    const s=Math.max(ext.start, Math.min(base+w.ds, ext.start+ext.dur-0.06));
+    const e=Math.max(s+0.06, Math.min(base+w.de, ext.start+ext.dur));
+    const nw={text:w.text, start:s, end:e}; if(w.hardEnd) nw.hardEnd=true;
+    return nw;
+  });
+  M.words.push(...added);
+  M.words.sort((a,b)=>a.start-b.start);
+  selWords=new Set(added.map(w=>M.words.indexOf(w))); selWord=[...selWords].pop()??-1;
+  renderLyrics(); drawTimeline(); dirty();
+  toast(added.length+' mot'+(added.length>1?'s':'')+' collé'+(added.length>1?'s':'')+' à '+fmt(Math.max(0,base-ext.start)));
+}
+function deleteSelWords(){
+  if(!selWords.size||!M||!M.words) return;
+  pushHistory();
+  const idx=[...selWords].sort((a,b)=>b-a);
+  idx.forEach(i=>M.words.splice(i,1));
+  selWord=-1; selWords=new Set();
+  renderLyrics(); drawTimeline(); dirty();
+  toast(idx.length+' mot'+(idx.length>1?'s':'')+' supprimé'+(idx.length>1?'s':''));
 }
 /* Insertion d'un mot à l'index donné — timing auto dans le trou entre voisins */
 function insertWordAt(at, tHint){
@@ -2037,8 +2093,8 @@ function renderLyrics(){
     line.append(mkAdd(i));
     M.words.slice(i,i+6).forEach((w,j)=>{
       const idx=i+j;
-      const chip=document.createElement('span'); chip.className='word-chip'+(idx===selWord?' sel':''); chip.textContent=w.text; chip.dataset.i=idx;
-      chip.onclick=()=>{ selWord=idx; syncSel(); };
+      const chip=document.createElement('span'); chip.className='word-chip'+(selWords.has(idx)?' sel':''); chip.textContent=w.text; chip.dataset.i=idx;
+      chip.onclick=e=>{ if(e.shiftKey&&selWord>=0) selectWordRange(selWord,idx); else if(e.ctrlKey||e.metaKey) toggleSelWord(idx); else setSelWord(idx); };
       chip.ondblclick=()=>editWord(idx,chip);
       line.append(chip, mkAdd(idx+1));
     });
@@ -2053,10 +2109,10 @@ function editWord(idx,chip){
   const inp=chip.querySelector('input'); inp.focus(); inp.select();
   const done=()=>{
     const v=inp.value.trim();
-    if(w._new && !v){ M.words.splice(idx,1); selWord=-1; renderLyrics(); drawTimeline(); return; }
+    if(w._new && !v){ M.words.splice(idx,1); selWord=-1; selWords=new Set(); renderLyrics(); drawTimeline(); return; }
     if(v && v!==w.text){ if(!w._new) pushHistory(); w.text=v; }
     delete w._new;
-    if(!w.text){ M.words.splice(idx,1); selWord=-1; }
+    if(!w.text){ M.words.splice(idx,1); selWord=-1; selWords=new Set(); }
     renderLyrics(); drawTimeline(); dirty();
   };
   inp.onblur=done;
@@ -2472,7 +2528,13 @@ function warmUpPlans(fromT){
     tick();
   });
 }
-function togglePlay(){ if(exporting){toast('Export en cours — attends la fin');return;} playing&&!looping? stopAll() : play(ext.start); }
+function togglePlay(){
+  if(exporting){toast('Export en cours — attends la fin');return;}
+  if(playing&&!looping){ startOff=curTime(); stopAll(); drawPlayhead(startOff); return; }
+  let from=startOff;
+  if(!(from>=ext.start&&from<ext.start+ext.dur-0.05)) from=ext.start;
+  play(from);
+}
 async function play(from){
   if(!buffer||exporting)return;
   if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
@@ -2713,7 +2775,7 @@ function drawTimeline(){
   });
   const trW=$('#trWords'); trW.querySelectorAll('.wblock').forEach(e=>e.remove());
   (M.words||[]).forEach((w,i)=>{
-    const b=document.createElement('div'); b.className='wblock'+(i===selWord?' sel':'');
+    const b=document.createElement('div'); b.className='wblock'+(selWords.has(i)?' sel':'');
     b.style.left=((w.start-ext.start)*PXS())+'px'; b.style.width=Math.max(14,(w.end-w.start)*PXS())+'px';
     b.textContent=w.text; b.tabIndex=0; b.dataset.i=i;
     b.addEventListener('pointermove',ev=>{
@@ -2722,18 +2784,28 @@ function drawTimeline(){
       b.style.cursor=(px<8||px>r.width-8)?'ew-resize':'grab';
     });
     b.addEventListener('pointerdown',e=>{
-      selWord=i; syncSel();
+      if(e.shiftKey&&selWord>=0){ selectWordRange(selWord,i); return; }
+      if(e.ctrlKey||e.metaKey){ toggleSelWord(i); return; }
+      if(!selWords.has(i)) setSelWord(i); else { selWord=i; syncSel(); }
       const r=b.getBoundingClientRect(), px=e.clientX-r.left;
       const mode= px<8?'l' : px>r.width-8?'r' : 'm';   // bord gauche / bord droit / déplacer
+      const group=(mode==='m'&&selWords.size>1)? [...selWords].sort((a,b2)=>a-b2) : [i];
+      const init=group.map(gi=>({gi, s:M.words[gi].start, e:M.words[gi].end, el:trW.querySelector('.wblock[data-i="'+gi+'"]')}));
+      const minS=Math.min(...init.map(o=>o.s)), maxE=Math.max(...init.map(o=>o.e));
       const x0=e.clientX, s0=w.start, e0=w.end;
       let moved=false;
       const mv=ev=>{
         if(!moved){ if(Math.abs(ev.clientX-x0)<3) return; moved=true; b._drag=true; pushHistory(); }
-        const dt=(ev.clientX-x0)/PXS();
-        if(mode==='m'){ const dur=e0-s0; w.start=Math.max(ext.start,Math.min(s0+dt, ext.start+ext.dur-dur)); w.end=w.start+dur; }
-        else if(mode==='l'){ w.start=Math.min(e0-0.06, Math.max(ext.start, s0+dt)); }
-        else { w.end=Math.max(s0+0.06, Math.min(ext.start+ext.dur, e0+dt)); w.hardEnd=true; }
-        positionBlock(b,w); b.style.width=Math.max(14,(w.end-w.start)*PXS())+'px';
+        let dt=(ev.clientX-x0)/PXS();
+        if(mode==='m'){
+          dt=Math.max(ext.start-minS, Math.min(dt, ext.start+ext.dur-maxE));
+          init.forEach(o=>{
+            const ww=M.words[o.gi]; ww.start=o.s+dt; ww.end=o.e+dt;
+            if(o.el){ positionBlock(o.el,ww); o.el.style.width=Math.max(14,(ww.end-ww.start)*PXS())+'px'; }
+          });
+        }
+        else if(mode==='l'){ w.start=Math.min(e0-0.06, Math.max(ext.start, s0+dt)); positionBlock(b,w); b.style.width=Math.max(14,(w.end-w.start)*PXS())+'px'; }
+        else { w.end=Math.max(s0+0.06, Math.min(ext.start+ext.dur, e0+dt)); w.hardEnd=true; positionBlock(b,w); b.style.width=Math.max(14,(w.end-w.start)*PXS())+'px'; }
       };
       const up=()=>{
         document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up);
@@ -2741,8 +2813,8 @@ function drawTimeline(){
       };
       document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
     });
-    b.addEventListener('dblclick',ev=>{ ev.stopPropagation(); selWord=i; tab('paroles'); renderLyrics(); const chip=$$('#lyricsList .word-chip')[i]; if(chip) editWord(i,chip); });
-    b.addEventListener('keydown',e=>{ if(e.key==='Delete'||e.key==='Backspace'){ pushHistory(); M.words.splice(i,1); selWord=-1; renderLyrics(); drawTimeline(); dirty(); } });
+    b.addEventListener('dblclick',ev=>{ ev.stopPropagation(); setSelWord(i); tab('paroles'); renderLyrics(); const chip=$$('#lyricsList .word-chip')[i]; if(chip) editWord(i,chip); });
+    b.addEventListener('keydown',e=>{ if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); if(!selWords.has(i)) setSelWord(i); deleteSelWords(); } });
     trW.append(b);
   });
   const trP=$('#trPlans'); trP.querySelectorAll('.plan').forEach(e=>e.remove());
@@ -2822,6 +2894,9 @@ document.addEventListener('keydown',e=>{
   if(e.target.matches('input,textarea,select'))return;
   if(!$('#pageEdit').classList.contains('show'))return;
   if(e.code==='Space'){e.preventDefault();togglePlay();}
+  if((e.key==='Delete'||e.key==='Backspace')&&selWords.size){e.preventDefault();deleteSelWords();}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c'&&selWords.size&&!window.getSelection().toString()){e.preventDefault();copySelWords();}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v'&&wordClip&&wordClip.length){e.preventDefault();pasteWords();}
   if(e.key==='m'||e.key==='M') addCutAtPlayhead();
   if(e.key==='f'||e.key==='F') toggleFullscreen();
   if(e.key==='Escape'&&$('#stageWrap').classList.contains('pseudo-fs')) toggleFullscreen();
@@ -3102,29 +3177,36 @@ async function genSerie(){
   const gbtn=$('#serieGenBtn'); gbtn.disabled=true;
   aiBar.start('Chargement du morceau…');
   try{ await serieLoadMorceau(m); }
-  catch(e){ aiBar.done(); gbtn.disabled=false; toast('⚠ Ouverture impossible : '+e.message); return; }
+  catch(e){ hideLoad(); aiBar.done(); gbtn.disabled=false; toast('⚠ Ouverture impossible : '+e.message); return; }
+  hideLoad();   // fetchRemoteMorceau affiche l'overlay plein écran : sans ça, « ça charge dans le vide »
   if(!buffer){ aiBar.done(); gbtn.disabled=false; toast('Ce morceau n\u2019a pas d\u2019audio enregistré — ouvre-le et dépose ton son d\u2019abord'); return; }
-  aiBar.set('Préparation des clips…',45);
-  await serieWaitClips();
-  const chosen=serieStyleList().filter(o=>serieSel.has(o.key));
-  serieVariants=[];
-  for(let i=0;i<n;i++){
-    const pick=chosen[i%chosen.length];
-    const st=Object.assign({}, style, pick.st, {preset:pick.key});
-    const plans=(M.plans||[]).map(p=>{
-      if(p.locked||!clips.length||i===0) return {...p};
-      const ci=Math.floor(Math.random()*clips.length);
-      const c=clips[ci];
-      return {...p, clip:ci, seek:c.seeks&&c.seeks.length? c.seeks[Math.floor(Math.random()*c.seeks.length)]:0};
-    });
-    serieVariants.push({style:st, plans, styleName:pick.name});
+  try{
+    aiBar.set('Préparation des clips…',45);
+    await serieWaitClips();
+    const chosen=serieStyleList().filter(o=>serieSel.has(o.key));
+    serieVariants=[];
+    for(let i=0;i<n;i++){
+      const pick=chosen[i%chosen.length];
+      const st=Object.assign({}, style, pick.st, {preset:pick.key});
+      const plans=(M.plans||[]).map(p=>{
+        if(p.locked||!clips.length||i===0) return {...p};
+        const ci=Math.floor(Math.random()*clips.length);
+        const c=clips[ci];
+        return {...p, clip:ci, seek:c.seeks&&c.seeks.length? c.seeks[Math.floor(Math.random()*c.seeks.length)]:0};
+      });
+      serieVariants.push({style:st, plans, styleName:pick.name});
+    }
+    kept=new Set(); $('#keptCount').textContent=0;
+    await renderSerieGrid();
+    $('#serieConfig').style.display='none'; $('#serieReview').style.display='block';
+    $('#step1').classList.remove('on'); $('#step2').classList.add('on');
+    toast(n+' versions prêtes — écoute-les (▶) et garde les meilleures');
+  }catch(e){
+    console.warn('[serie]', e);
+    toast('⚠ Préparation impossible : '+((e&&e.message)||e));
+  }finally{
+    hideLoad(); aiBar.done(); gbtn.disabled=false;
   }
-  kept=new Set(); $('#keptCount').textContent=0;
-  await renderSerieGrid();
-  aiBar.done(); gbtn.disabled=false;
-  $('#serieConfig').style.display='none'; $('#serieReview').style.display='block';
-  $('#step1').classList.remove('on'); $('#step2').classList.add('on');
-  toast(n+' versions prêtes — écoute-les (▶) et garde les meilleures');
 }
 async function renderSerieGrid(){
   const g=$('#serieGrid'); g.innerHTML='';

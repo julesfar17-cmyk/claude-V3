@@ -1,0 +1,77 @@
+{
+  "summary": "Frontend end-to-end testing of Studio /studio.html (iframe): main bug 'Préparer les vidéos' + timeline multi-selection features. All 7 requested features validated on the preview URL with demo@beatcut.fr. The critical bug is FIXED.",
+  "scope": "frontend only (studio.html iframe served under /studio)",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "features_validated": [
+    {
+      "feature": "BUG PRINCIPAL — genSerie() ne bloque plus l'overlay",
+      "steps": "Login demo → /studio → go('serie') → sélectionner 'Morceau Série Test' + 1 style Impact → click serie-generate-btn",
+      "result": "PASS — après ~12s: hideLoad() appelé, serieGenBtn ré-activé, #serieReview visible avec 3 cartes data-testid='serie-variant-{0..2}', toast '3 versions prêtes'. loadOverlay JAMAIS resté affiché indéfiniment (bug d'origine reproduit puis vérifié corrigé)."
+    },
+    {
+      "feature": "Multi-sélection wblocks",
+      "result": "PASS — click block 0 → selWords={0} + wordSelBar inline-flex ; Shift+click block 3 → selWords={0,1,2,3} ; Ctrl+click block 3 → selWords={0,1,2}. Barre #wordSelBar apparaît dès qu'une sélection existe."
+    },
+    {
+      "feature": "Copier / Coller (bouton)",
+      "result": "PASS — 3 mots sélectionnés → click word-copy-btn → wordClip.length=3, toast '3 mots copiés', bouton word-paste-btn visible. Click zone empty timeline (startOff placé) → click Coller → 3 mots ajoutés, M.words trié par start, sélection=nouveaux mots, toast '3 mots collés à 0:00.0'."
+    },
+    {
+      "feature": "Raccourcis Ctrl+C / Ctrl+V",
+      "result": "PASS — sélection 2 mots + Ctrl+C ; startOff=ext.start+ext.dur*0.7 ; Ctrl+V → 2 mots ajoutés, toast '2 mots collés à 0:02.1'."
+    },
+    {
+      "feature": "Déplacement groupé (drag)",
+      "result": "PASS — 3 mots sélectionnés, pointer drag +200px sur bloc du milieu → deltas mesurés [0.324, 0.324, 0.324, 0, 0.0] : les 3 mots sélectionnés ont bougé du même décalage, les 2 non-sélectionnés inchangés."
+    },
+    {
+      "feature": "Suppression IA (bouton + touche)",
+      "result": "PASS — word-delete-btn: 10→8 mots, toast '2 mots supprimés'. Ctrl+Z restaure à 10. Touche Delete: 10→9 mots."
+    },
+    {
+      "feature": "Lecture depuis le curseur (startOff)",
+      "result": "PASS — click timeline empty area t≈2s → startOff=2.00 (delta=2.00). Space → curTime()=2.00 puis progresse (delta 2.51 après ~800ms) → pause avec Space conserve position (startOff=2.51). togglePlay part bien de startOff et non de ext.start."
+    },
+    {
+      "feature": "Régression — dblclick mot",
+      "result": "PASS — double-clic sur .wblock ouvre input d'édition dans #lyricsList."
+    },
+    {
+      "feature": "Régression — dblclick zone paroles vide",
+      "result": "PASS — dblclick sur trWords empty area → +1 mot (2→3)."
+    },
+    {
+      "feature": "Régression — touche 'M' ajoute une coupe",
+      "result": "PASS — handler keydown déclenché : toast 'Il y a déjà une coupure exactement ici — avance un peu' à startOff=1.5 (cut existant), confirmant que addCutAtPlayhead est bien appelée. Note: fixture morceau a déjà 20 cuts sur beat, donc ajouter à t=beat est correctement refusé (comportement attendu)."
+    },
+    {
+      "feature": "Régression — drag mot seul",
+      "result": "PASS — 1 mot sélectionné/glissé de +150px → start 1.0 → 1.243."
+    }
+  ],
+  "console_notes": [
+    "'[BeatCut studio] v13.07-son-serveur' — bundle attendu.",
+    "'[wc] clip_test.webm codec avc1.640028 non décodable sur cette machine' — attendu en pod headless sans encodeurs matériels (video preview reste noire, l'audio joue bien via WebAudio). N'a pas empêché genSerie/serieReview ni le test de startOff via audio."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "genSerie() (studio.html ~L3169) — le try/catch/finally couvre bien maintenant tous les chemins : hideLoad(), aiBar.done() et gbtn.disabled=false garantis. Bon fix.",
+    "Bonne pratique observée: audioMediaId absent → toast explicite au lieu de hang (L3182). Ce comportement fallback est bien testé.",
+    "Multi-sélection (selWords Set + wordClip global) proprement implémentée. Le handler pointerdown sur .wblock distingue correctement mode 'm' (drag groupé) vs 'l'/'r' (resize individuel).",
+    "Fichier studio.html = 3451 lignes — utile de scinder en modules ES à terme (timeline.js, serie.js, keyboard.js), mais hors-scope pour ce test."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "test_credentials": "demo@beatcut.fr / Demo1234!",
+  "seed_data_creation": "Aucune. Utilisation de la fixture 'Morceau Série Test' (id d51b835aa74548) déjà présente sur le compte démo. Mots de test injectés uniquement en mémoire via M.words=... (non persistés).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Le studio est dans une iframe (data-testid='studio-iframe'). Utiliser page.frames pour cibler celle dont l'URL contient studio.html. Coordonnées pointer : offset iframe box (0, 48) car un header React de 48px surmonte l'iframe. Pour tester l'éditeur sans passer par la nav complexe : /studio?project=d51b835aa74548 ouvre directement l'éditeur (route hash #/edit/…). Pour créer des paroles de test sans IA : injecter M.words puis renderLyrics();drawTimeline() dans l'iframe. En pod headless, la playback WebCodecs n'affiche pas de frames (codec avc1 non décodable) mais l'audio via WebAudio fonctionne, donc curTime()/startOff sont vérifiables.",
+  "rca_of_the_issue": "Bug initial 'chargement dans le vide' — Cause: fetchRemoteMorceau (L1093) appelle showLoad() pour afficher #loadOverlay pendant le téléchargement audio/clips ; dans le flow 'série', serieLoadMorceau→fetchRemoteMorceau n'appelait pas hideLoad() en sortie (contrairement à loadRemoteMorceau qui l'appelle dans son finally). Résultat: overlay 9999 z-index restait affiché indéfiniment. Fix appliqué par main agent (L3179-3208): try/catch/finally autour de serieLoadMorceau + hideLoad() explicite + fallback toast si buffer manquant + gbtn.disabled=false garanti dans finally. Testé et confirmé fonctionnel."
+}
