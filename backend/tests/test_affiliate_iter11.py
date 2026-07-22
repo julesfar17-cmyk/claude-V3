@@ -143,12 +143,11 @@ def test_checkout_with_affiliate_discount(demo_session):
 
 
 def test_checkout_basic_plan_not_covered_still_ok(demo_session):
-    # Plan basic is not in affiliate.plans → checkout MUST succeed without discount (no error)
+    # Plan basic is not in affiliate.plans → checkout MUST fail with an explicit 400
     payload = {"origin_url": "https://pro-mailer-2.preview.emergentagent.com", "plan": "basic", "promo_code": AFF_CODE}
     r = demo_session.post(f"{BASE_URL}/api/payments/checkout", json=payload, timeout=45)
-    assert r.status_code == 200, f"basic checkout failed: {r.status_code} {r.text[:400]}"
-    data = r.json()
-    assert data.get("url", "").startswith("https://")
+    assert r.status_code == 400, f"expected 400 for uncovered plan: {r.status_code} {r.text[:400]}"
+    assert "couvre pas" in (r.json().get("detail") or "")
 
 
 # ----- Days-offered promo (regression) create + delete -----

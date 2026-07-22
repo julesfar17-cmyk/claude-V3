@@ -435,3 +435,12 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Lecture au curseur : togglePlay (bouton ▶ / Espace) démarre depuis startOff (position cliquée sur la timeline) ; pause mémorise la position ; clamp → redémarre au début si curseur hors extrait
 - ✅ Testé iteration_13 : 100% frontend (bug série reproduit puis confirmé corrigé, 7 features + 4 régressions PASS)
 - ⚠️ REDÉPLOIEMENT nécessaire pour beat-cut.com
+
+## Terminé (22 juillet 2026) — Corrections de la revue de code
+- Credentials de test sortis du code : backend/.env (TEST_DEMO_*, TEST_ADMIN_*, TEST_VIP_*) + /app/backend/tests/creds.py (chargement dotenv, fail fast) — 7 fichiers de test migrés, 0 credential en dur restant
+- 52 comparaisons `is True/False` → `== True/False` dans les tests ; import `time` inutilisé supprimé ; pyflakes clean sur server.py + tests
+- exec() du rapport = FAUX POSITIF : asyncio.create_subprocess_exec (ffmpeg, args fixes, sans shell) — aucune modification
+- Refactoring PUR de server.py : create_checkout → _plan_pricing + _apply_affiliate_discount ; _stripe_revenue_stats → _sub_monthly_cents/_stripe_mrr_cents/_stripe_charge_totals ; _mux_transcode → _mux_create_upload/_mux_wait_asset_id/_mux_wait_mp4
+- Test obsolète corrigé : test_affiliate_iter11 attend maintenant 400 pour un plan non couvert (11/11 pass)
+- ✅ Testé iteration_14 : 43/44 puis 44/44 après correction du test obsolète — checkout 3 plans + affilié, stats admin Stripe, endpoints Mux, greps sécurité clean
+- Refactors différés (P2, non bloquants) : promo_apply, sub_info, stripe_webhook, save_project, media_import_url — code fonctionnel, à découper si retouché
