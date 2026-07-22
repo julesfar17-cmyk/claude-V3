@@ -29,10 +29,7 @@ BASE_URL = _read_base_url()
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 FFPROBE = shutil.which("ffprobe")  # peut être None → on utilisera ffmpeg -i à défaut
 
-DEMO_EMAIL = "demo@beatcut.fr"
-DEMO_PASSWORD = "Demo1234!"
-ADMIN_EMAIL = "admin@beatcut.fr"
-ADMIN_PASSWORD = "Admin123!"
+from creds import DEMO_EMAIL, DEMO_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD
 
 
 # ----------------------- Helpers -----------------------
@@ -187,8 +184,8 @@ class TestVideoTranscode:
         assert r.status_code == 200, r.text
         data = r.json()
         assert "media_id" in data and isinstance(data["media_id"], str)
-        assert data.get("processing") is True, f"video should be processing: {data}"
-        assert data.get("deduped") is False
+        assert data.get("processing") == True, f"video should be processing: {data}"
+        assert data.get("deduped") == False
         # stash pour tests suivants
         pytest.video_media_id = data["media_id"]
 
@@ -196,9 +193,9 @@ class TestVideoTranscode:
         media_id = getattr(pytest, "video_media_id", None)
         assert media_id, "précédent test doit avoir défini video_media_id"
         s = _poll_status(demo_session, media_id, timeout=180)
-        assert s.get("processing") is False
-        assert s.get("transcoded") is True, f"transcodage doit avoir réussi: {s}"
-        assert s.get("failed") is False
+        assert s.get("processing") == False
+        assert s.get("transcoded") == True, f"transcodage doit avoir réussi: {s}"
+        assert s.get("failed") == False
         assert isinstance(s.get("size"), int) and s["size"] > 0
 
     def test_download_and_verify_h264_aac_1080p_max(self, demo_session, tmp_path):
@@ -232,7 +229,7 @@ class TestAudioUpload:
                                   timeout=30)
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data.get("processing") is False, f"audio ne doit PAS être en processing: {data}"
+        assert data.get("processing") == False, f"audio ne doit PAS être en processing: {data}"
         media_id = data["media_id"]
         pytest.audio_media_id = media_id
         # Download → identique octet-pour-octet
@@ -251,11 +248,11 @@ class TestDedup:
                                   timeout=30)
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data.get("deduped") is True, f"re-upload doit être dedup: {data}"
+        assert data.get("deduped") == True, f"re-upload doit être dedup: {data}"
         # media_id existant renvoyé
         assert data.get("media_id") == getattr(pytest, "video_media_id", None)
         # processing reflète l'état actuel (transcodage terminé donc False)
-        assert data.get("processing") is False
+        assert data.get("processing") == False
 
 
 class TestStatusScoping:

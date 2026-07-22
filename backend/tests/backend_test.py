@@ -4,7 +4,6 @@ Run: pytest /app/backend/tests/backend_test.py -v --tb=short \
      --junitxml=/app/test_reports/pytest/pytest_results.xml
 """
 import os
-import time
 import uuid
 import pytest
 import requests
@@ -14,10 +13,7 @@ BASE_URL = os.environ['REACT_APP_BACKEND_URL'].rstrip('/') if os.environ.get('RE
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "test_database")
 
-DEMO_EMAIL = "demo@beatcut.fr"
-DEMO_PASSWORD = "Demo1234!"
-ADMIN_EMAIL = "admin@beatcut.fr"
-ADMIN_PASSWORD = "Admin123!"
+from creds import DEMO_EMAIL, DEMO_PASSWORD, ADMIN_EMAIL
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +58,7 @@ class TestAuth:
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["email"] == email.lower()
-        assert data["is_pro"] is False
+        assert data["is_pro"] == False
         assert "access_token" in s.cookies.get_dict()
         # Verify /me works
         me = s.get(f"{BASE_URL}/api/auth/me")
@@ -199,15 +195,15 @@ class TestSubscription:
         me = demo_session.get(f"{BASE_URL}/api/auth/me")
         assert me.status_code == 200
         body = me.json()
-        assert body["is_pro"] is True
+        assert body["is_pro"] == True
         assert body["subscription"]["status"] == "active"
-        assert body["subscription"]["cancel_at_period_end"] is False
+        assert body["subscription"]["cancel_at_period_end"] == False
 
     def test_get_subscription(self, demo_session):
         r = demo_session.get(f"{BASE_URL}/api/subscription")
         assert r.status_code == 200
         body = r.json()
-        assert body["is_pro"] is True
+        assert body["is_pro"] == True
 
     def test_cancel_subscription_keeps_access(self, demo_session):
         r = demo_session.post(f"{BASE_URL}/api/subscription/cancel")
@@ -215,8 +211,8 @@ class TestSubscription:
         assert "current_period_end" in r.json()
         # /me should now show canceled but still pro
         me = demo_session.get(f"{BASE_URL}/api/auth/me").json()
-        assert me["is_pro"] is True
-        assert me["subscription"]["cancel_at_period_end"] is True
+        assert me["is_pro"] == True
+        assert me["subscription"]["cancel_at_period_end"] == True
         assert me["subscription"]["status"] == "canceled"
 
     def test_cancel_again_rejected(self, demo_session):

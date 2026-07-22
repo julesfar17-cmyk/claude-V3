@@ -6,8 +6,7 @@ import requests
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
 
-DEMO_EMAIL = "demo@beatcut.fr"
-DEMO_PWD = "Demo1234!"
+from creds import DEMO_EMAIL, DEMO_PASSWORD as DEMO_PWD
 
 
 def _session_with_login():

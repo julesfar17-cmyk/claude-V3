@@ -23,10 +23,7 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://pro-mailer-2.preview
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "test_database")
 
-DEMO_EMAIL = "demo@beatcut.fr"
-DEMO_PASSWORD = "Demo1234!"
-VIP_EMAIL = "julesfar17@gmail.com"
-VIP_PASSWORD = "Carnageproduction1704*"
+from creds import DEMO_EMAIL, DEMO_PASSWORD, VIP_EMAIL, VIP_PASSWORD
 
 
 # -------------------------- fixtures --------------------------
@@ -118,7 +115,7 @@ class TestAuthMeTier:
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["email"] == DEMO_EMAIL
-        assert body["is_pro"] is True
+        assert body["is_pro"] == True
         assert body["subscription"]["tier"] == "basic"
         assert body["subscription"]["plan"] == "basic"
 
@@ -127,7 +124,7 @@ class TestAuthMeTier:
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["email"] == VIP_EMAIL
-        assert body["is_pro"] is True
+        assert body["is_pro"] == True
         assert body["subscription"]["tier"] == "pro"
 
 
@@ -212,7 +209,7 @@ class TestExportRegister:
             r1 = s.post(f"{BASE_URL}/api/export/register")
             assert r1.status_code == 200, r1.text
             data = r1.json()
-            assert data["allowed"] is True and data["used"] == 1 and data["quota"] == 1
+            assert data["allowed"] == True and data["used"] == 1 and data["quota"] == 1
             # Quota now shows 1/1
             q1 = s.get(f"{BASE_URL}/api/export/quota").json()
             assert q1["used"] == 1 and q1["quota"] == 1
@@ -231,7 +228,7 @@ class TestExportRegister:
         r = vip_session.post(f"{BASE_URL}/api/export/register")
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["allowed"] is True
+        assert data["allowed"] == True
         assert data["used"] is None
         assert data["quota"] is None
 
@@ -244,7 +241,7 @@ class TestExportRegister:
             r = demo_session.post(f"{BASE_URL}/api/export/register")
             assert r.status_code == 200, f"iter {i}: {r.status_code} {r.text}"
             data = r.json()
-            assert data["allowed"] is True
+            assert data["allowed"] == True
             assert data["used"] == i
             assert data["quota"] == 10
 
@@ -320,7 +317,7 @@ class TestRegression:
         assert r.status_code == 200, r.text
         body = r.json()
         # /api/subscription returns sub_info flat (no nested 'subscription')
-        assert body["is_pro"] is True
+        assert body["is_pro"] == True
         assert body["tier"] == "basic"
         assert body["plan"] == "basic"
 

@@ -30,8 +30,10 @@ def _read_env():
 BASE_URL = _read_env()
 assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
 
-ADMIN = {"email": "julesfar17@gmail.com", "password": "Carnageproduction1704*"}
-DEMO = {"email": "demo@beatcut.fr", "password": "Demo1234!"}
+from creds import DEMO_EMAIL, DEMO_PASSWORD, VIP_EMAIL, VIP_PASSWORD
+
+ADMIN = {"email": VIP_EMAIL, "password": VIP_PASSWORD}
+DEMO = {"email": DEMO_EMAIL, "password": DEMO_PASSWORD}
 
 AFF_CODE = "QATEST5"
 PROMO_TEST_CODE = "DELMEQA"
@@ -105,7 +107,7 @@ def test_create_affiliate_qatest5(admin_session):
     assert set(data["plans"]) == {"monthly", "yearly"}
     assert data["commission_pct"] == 15
     assert data.get("stripe_coupon_id"), "no stripe_coupon_id returned"
-    assert data.get("active") is True
+    assert data.get("active") == True
 
 
 def test_affiliate_check_public_ok():

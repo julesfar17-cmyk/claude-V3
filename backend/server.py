@@ -712,44 +712,57 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
                 await send_email(user["email"], f"Bienvenue en {label} ✦ BEATCUT", sub_confirmed_email_html(end))
 
 
+def _plan_pricing(plan: str) -> dict:
+    if plan == "yearly":
+        return {"amount_cents": PRO_PRICE_YEAR_CENTS, "interval": "year",
+                "name": "BEATCUT PRO — annuel",
+                "desc": "Export sans watermark + .srt + extraction acapella — 99 €/an (2 mois offerts)"}
+    if plan == "basic":
+        return {"amount_cents": BASIC_PRICE_CENTS, "interval": "month",
+                "name": "BEATCUT BASIC",
+                "desc": f"Export sans watermark — {BASIC_MONTHLY_EXPORTS} vidéos/mois, sous-titres .srt — sans acapella, sans engagement"}
+    return {"amount_cents": PRO_PRICE_CENTS, "interval": "month",
+            "name": "BEATCUT PRO",
+            "desc": "Export vidéo sans watermark + sous-titres .srt + acapella — sans engagement"}
+
+
+async def _apply_affiliate_discount(params: dict, plan: str, promo_code: str) -> str:
+    """Applique la remise Stripe d'un code affilié (coupon duration=forever). Retourne le code normalisé ou ''."""
+    aff_code = _normalize_promo(promo_code or "")
+    if not aff_code:
+        return ""
+    aff = await db.affiliate_codes.find_one({"code": aff_code, "active": True})
+    if not aff:
+        raise HTTPException(status_code=400, detail="Code affilié invalide ou expiré")
+    if plan not in (aff.get("plans") or []):
+        raise HTTPException(status_code=400, detail="Ce code affilié ne couvre pas ce plan")
+    params["discounts"] = [{"coupon": aff["stripe_coupon_id"]}]
+    params["metadata"]["affiliate_code"] = aff_code
+    return aff_code
+
+
 @api_router.post("/payments/checkout")
 async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depends(get_current_user)):
     if (user.get("email") or "").lower() in PRO_WHITELIST:
         raise HTTPException(status_code=400, detail="Compte VIP — déjà PRO")
     origin = data.origin_url.rstrip("/")
-    success_url = f"{origin}/dashboard?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{origin}/dashboard"
     sub = user.get("subscription") or {}
     plan = data.plan if data.plan in ("yearly", "basic") else "monthly"
-    if plan == "yearly":
-        amount_cents = PRO_PRICE_YEAR_CENTS
-        interval = "year"
-        product_name = "BEATCUT PRO — annuel"
-        product_desc = "Export sans watermark + .srt + extraction acapella — 99 €/an (2 mois offerts)"
-    elif plan == "basic":
-        amount_cents = BASIC_PRICE_CENTS
-        interval = "month"
-        product_name = "BEATCUT BASIC"
-        product_desc = f"Export sans watermark — {BASIC_MONTHLY_EXPORTS} vidéos/mois, sous-titres .srt — sans acapella, sans engagement"
-    else:
-        amount_cents = PRO_PRICE_CENTS
-        interval = "month"
-        product_name = "BEATCUT PRO"
-        product_desc = "Export vidéo sans watermark + sous-titres .srt + acapella — sans engagement"
+    pricing = _plan_pricing(plan)
     params = dict(
         mode="subscription",
         payment_method_types=["card"],
         line_items=[{
             "price_data": {
                 "currency": PRO_CURRENCY,
-                "unit_amount": amount_cents,
-                "recurring": {"interval": interval},
-                "product_data": {"name": product_name, "description": product_desc},
+                "unit_amount": pricing["amount_cents"],
+                "recurring": {"interval": pricing["interval"]},
+                "product_data": {"name": pricing["name"], "description": pricing["desc"]},
             },
             "quantity": 1,
         }],
-        success_url=success_url,
-        cancel_url=cancel_url,
+        success_url=f"{origin}/dashboard?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{origin}/dashboard",
         metadata={"user_id": user["user_id"], "email": user["email"], "product": f"beatcut_{plan}"},
         subscription_data={"metadata": {"user_id": user["user_id"], "plan": plan}},
     )
@@ -757,16 +770,7 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         params["customer"] = sub["stripe_customer_id"]
     else:
         params["customer_email"] = user["email"]
-    # Code affilié : remise Stripe appliquée automatiquement, à VIE (coupon duration=forever)
-    aff_code = _normalize_promo(data.promo_code or "")
-    if aff_code:
-        aff = await db.affiliate_codes.find_one({"code": aff_code, "active": True})
-        if not aff:
-            raise HTTPException(status_code=400, detail="Code affilié invalide ou expiré")
-        if plan not in (aff.get("plans") or []):
-            raise HTTPException(status_code=400, detail="Ce code affilié ne couvre pas ce plan")
-        params["discounts"] = [{"coupon": aff["stripe_coupon_id"]}]
-        params["metadata"]["affiliate_code"] = aff_code
+    aff_code = await _apply_affiliate_discount(params, plan, data.promo_code)
     try:
         session = await asyncio.to_thread(lambda: stripe.checkout.Session.create(**params))
     except Exception as e:
@@ -776,7 +780,7 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         "session_id": session.id,
         "user_id": user["user_id"],
         "email": user["email"],
-        "amount": amount_cents / 100.0,
+        "amount": pricing["amount_cents"] / 100.0,
         "currency": PRO_CURRENCY,
         "product": f"beatcut_{plan}",
         "plan": plan,
@@ -1455,6 +1459,59 @@ MUX_TOKEN_SECRET = os.environ.get('MUX_TOKEN_SECRET', '')
 MUX_API = "https://api.mux.com/video/v1"
 
 
+async def _mux_create_upload(cx) -> dict | None:
+    """Crée une URL d'upload Mux signée (repli encoding_tier=baseline si video_quality refusé)."""
+    settings = {
+        "playback_policies": ["public"],
+        "video_quality": "basic",
+        "max_resolution_tier": "1080p",
+        "static_renditions": [{"resolution": "highest"}],
+    }
+    r = await cx.post(f"{MUX_API}/uploads", json={"cors_origin": "*", "new_asset_settings": settings})
+    if r.status_code == 400 and "video_quality" in r.text:
+        settings.pop("video_quality")
+        settings["encoding_tier"] = "baseline"
+        r = await cx.post(f"{MUX_API}/uploads", json={"cors_origin": "*", "new_asset_settings": settings})
+    if r.status_code >= 300:
+        logger.warning("Mux upload create %s : %s", r.status_code, r.text[:300])
+        return None
+    return r.json()["data"]
+
+
+async def _mux_wait_asset_id(cx, upload_id: str) -> str | None:
+    for _ in range(60):
+        r = await cx.get(f"{MUX_API}/uploads/{upload_id}")
+        d = r.json().get("data") or {}
+        if d.get("asset_id"):
+            return d["asset_id"]
+        if d.get("status") in ("errored", "cancelled", "timed_out"):
+            logger.warning("Mux upload status : %s", d.get("status"))
+            return None
+        await asyncio.sleep(2)
+    return None
+
+
+async def _mux_wait_mp4(cx, asset_id: str) -> tuple:
+    """Attend asset ready + rendition MP4 prête. Retourne (playback_id, mp4_name) ou (None, None)."""
+    for _ in range(200):
+        r = await cx.get(f"{MUX_API}/assets/{asset_id}")
+        a = r.json().get("data") or {}
+        if a.get("status") == "errored":
+            logger.warning("Mux asset errored : %s", a.get("errors"))
+            return None, None
+        if a.get("status") == "ready":
+            pids = a.get("playback_ids") or []
+            playback_id = pids[0]["id"] if pids else None
+            files = ((a.get("static_renditions") or {}).get("files")) or []
+            ready = [f for f in files if str(f.get("name", "")).endswith(".mp4")
+                     and f.get("status", "ready") in ("ready", "skipped")]
+            ready = [f for f in ready if f.get("status", "ready") == "ready"]
+            if ready and playback_id:
+                return playback_id, ready[0]["name"]
+        await asyncio.sleep(3)
+    return None, None
+
+
 async def _mux_transcode(src_bytes: bytes):
     """Upload vers Mux → asset H.264 1080p max → télécharge le MP4 → supprime l'asset.
     Retourne les octets MP4, ou None si échec (repli FFmpeg local)."""
@@ -1464,21 +1521,9 @@ async def _mux_transcode(src_bytes: bytes):
     auth = (MUX_TOKEN_ID, MUX_TOKEN_SECRET)
     try:
         async with httpx.AsyncClient(auth=auth, timeout=120) as cx:
-            settings = {
-                "playback_policies": ["public"],
-                "video_quality": "basic",
-                "max_resolution_tier": "1080p",
-                "static_renditions": [{"resolution": "highest"}],
-            }
-            r = await cx.post(f"{MUX_API}/uploads", json={"cors_origin": "*", "new_asset_settings": settings})
-            if r.status_code == 400 and "video_quality" in r.text:
-                settings.pop("video_quality")
-                settings["encoding_tier"] = "baseline"
-                r = await cx.post(f"{MUX_API}/uploads", json={"cors_origin": "*", "new_asset_settings": settings})
-            if r.status_code >= 300:
-                logger.warning("Mux upload create %s : %s", r.status_code, r.text[:300])
+            up = await _mux_create_upload(cx)
+            if not up:
                 return None
-            up = r.json()["data"]
             # Envoi du fichier (client sans auth : l'URL d'upload est déjà signée)
             async with httpx.AsyncClient(timeout=300) as plain:
                 pr = await plain.put(up["url"], content=src_bytes,
@@ -1486,38 +1531,10 @@ async def _mux_transcode(src_bytes: bytes):
                 if pr.status_code >= 300:
                     logger.warning("Mux upload PUT %s", pr.status_code)
                     return None
-            # Upload → asset_id
-            for _ in range(60):
-                r = await cx.get(f"{MUX_API}/uploads/{up['id']}")
-                d = r.json().get("data") or {}
-                asset_id = d.get("asset_id")
-                if asset_id:
-                    break
-                if d.get("status") in ("errored", "cancelled", "timed_out"):
-                    logger.warning("Mux upload status : %s", d.get("status"))
-                    return None
-                await asyncio.sleep(2)
+            asset_id = await _mux_wait_asset_id(cx, up["id"])
             if not asset_id:
                 return None
-            # Asset prêt + rendition MP4 prête
-            mp4_name = playback_id = None
-            for _ in range(200):
-                r = await cx.get(f"{MUX_API}/assets/{asset_id}")
-                a = r.json().get("data") or {}
-                if a.get("status") == "errored":
-                    logger.warning("Mux asset errored : %s", a.get("errors"))
-                    return None
-                if a.get("status") == "ready":
-                    pids = a.get("playback_ids") or []
-                    playback_id = pids[0]["id"] if pids else None
-                    files = ((a.get("static_renditions") or {}).get("files")) or []
-                    ready = [f for f in files if str(f.get("name", "")).endswith(".mp4")
-                             and f.get("status", "ready") in ("ready", "skipped")]
-                    ready = [f for f in ready if f.get("status", "ready") == "ready"]
-                    if ready and playback_id:
-                        mp4_name = ready[0]["name"]
-                        break
-                await asyncio.sleep(3)
+            playback_id, mp4_name = await _mux_wait_mp4(cx, asset_id)
             if not (mp4_name and playback_id):
                 logger.warning("Mux : rendition MP4 non prête (asset %s)", asset_id)
                 return None
@@ -2007,6 +2024,56 @@ async def delete_project(project_id: str, user: dict = Depends(get_current_user)
 _STRIPE_STATS_CACHE = {"at": None, "data": None}
 
 
+def _sub_monthly_cents(s) -> float:
+    """Montant mensuel (centimes) d'une souscription Stripe, remise coupon incluse."""
+    monthly = 0.0
+    for it in ((s.get("items") or {}).get("data") or []):
+        price = it.get("price") or {}
+        amount = float((price.get("unit_amount") or 0) * (it.get("quantity") or 1))
+        rec = price.get("recurring") or {}
+        interval, cnt = rec.get("interval"), rec.get("interval_count") or 1
+        if interval == "year":
+            amount /= 12 * cnt
+        elif interval == "month":
+            amount /= cnt
+        elif interval == "week":
+            amount = amount * 4.345 / cnt
+        elif interval == "day":
+            amount = amount * 30.44 / cnt
+        monthly += amount
+    coupon = ((s.get("discount") or {}).get("coupon") or {})
+    if coupon.get("percent_off"):
+        monthly *= 1 - coupon["percent_off"] / 100.0
+    elif coupon.get("amount_off"):
+        monthly = max(0.0, monthly - coupon["amount_off"])
+    return monthly
+
+
+def _stripe_mrr_cents() -> tuple:
+    mrr_cents = 0.0
+    active_count = 0
+    for s in stripe.Subscription.list(status="active", limit=100).auto_paging_iter():
+        active_count += 1
+        mrr_cents += _sub_monthly_cents(s)
+    return mrr_cents, active_count
+
+
+def _stripe_charge_totals(month_start: int) -> tuple:
+    total_cents = month_cents = 0
+    n = 0
+    for ch in stripe.Charge.list(limit=100).auto_paging_iter():
+        n += 1
+        if n > 5000:
+            break
+        if ch.get("status") != "succeeded":
+            continue
+        net = (ch.get("amount") or 0) - (ch.get("amount_refunded") or 0)
+        total_cents += net
+        if (ch.get("created") or 0) >= month_start:
+            month_cents += net
+    return total_cents, month_cents
+
+
 async def _stripe_revenue_stats() -> dict:
     """MRR réel + encaissements calculés directement depuis Stripe (source de vérité)."""
     now = now_utc()
@@ -2014,44 +2081,9 @@ async def _stripe_revenue_stats() -> dict:
         return _STRIPE_STATS_CACHE["data"]
 
     def compute():
-        mrr_cents = 0.0
-        active_count = 0
-        for s in stripe.Subscription.list(status="active", limit=100).auto_paging_iter():
-            active_count += 1
-            sub_monthly = 0.0
-            for it in ((s.get("items") or {}).get("data") or []):
-                price = it.get("price") or {}
-                amount = float((price.get("unit_amount") or 0) * (it.get("quantity") or 1))
-                rec = price.get("recurring") or {}
-                interval, cnt = rec.get("interval"), rec.get("interval_count") or 1
-                if interval == "year":
-                    amount /= 12 * cnt
-                elif interval == "month":
-                    amount /= cnt
-                elif interval == "week":
-                    amount = amount * 4.345 / cnt
-                elif interval == "day":
-                    amount = amount * 30.44 / cnt
-                sub_monthly += amount
-            coupon = ((s.get("discount") or {}).get("coupon") or {})
-            if coupon.get("percent_off"):
-                sub_monthly *= 1 - coupon["percent_off"] / 100.0
-            elif coupon.get("amount_off"):
-                sub_monthly = max(0.0, sub_monthly - coupon["amount_off"])
-            mrr_cents += sub_monthly
+        mrr_cents, active_count = _stripe_mrr_cents()
         month_start = int(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp())
-        total_cents = month_cents = 0
-        n = 0
-        for ch in stripe.Charge.list(limit=100).auto_paging_iter():
-            n += 1
-            if n > 5000:
-                break
-            if ch.get("status") != "succeeded":
-                continue
-            net = (ch.get("amount") or 0) - (ch.get("amount_refunded") or 0)
-            total_cents += net
-            if (ch.get("created") or 0) >= month_start:
-                month_cents += net
+        total_cents, month_cents = _stripe_charge_totals(month_start)
         return {
             "stripe_mrr": round(mrr_cents / 100.0, 2),
             "stripe_active_subs": active_count,

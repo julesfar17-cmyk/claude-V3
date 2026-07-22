@@ -25,10 +25,7 @@ BASE_URL = os.environ.get(
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "test_database")
 
-DEMO_EMAIL = "demo@beatcut.fr"
-DEMO_PASSWORD = "Demo1234!"
-VIP_EMAIL = "julesfar17@gmail.com"
-VIP_PASSWORD = "Carnageproduction1704*"
+from creds import DEMO_EMAIL, DEMO_PASSWORD, VIP_EMAIL, VIP_PASSWORD
 
 
 # -------------------------- fixtures --------------------------
@@ -136,7 +133,7 @@ class TestMediaUpload:
         j = r.json()
         assert "media_id" in j
         assert j["size"] == len(payload)
-        assert j["deduped"] is False
+        assert j["deduped"] == False
         demo_session._m1 = j["media_id"]  # remember for other tests
         demo_session._m1_size = len(payload)
         demo_session._m1_bytes = payload
@@ -149,7 +146,7 @@ class TestMediaUpload:
         )
         assert r.status_code == 200, r.text
         j = r.json()
-        assert j["deduped"] is True
+        assert j["deduped"] == True
         assert j["media_id"] == demo_session._m1
 
     def test_download_streams_same_bytes(self, demo_session):

@@ -19,10 +19,8 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 assert BASE_URL, "REACT_APP_BACKEND_URL missing"
 
-DEMO_EMAIL = "demo@beatcut.fr"
-DEMO_PASSWORD = "Demo1234!"
-OTHER_EMAIL = "admin@beatcut.fr"
-OTHER_PASSWORD = "Admin123!"
+from creds import (DEMO_EMAIL, DEMO_PASSWORD,
+                   ADMIN_EMAIL as OTHER_EMAIL, ADMIN_PASSWORD as OTHER_PASSWORD)
 PROJECT_TITLE_MATCH = "Morceau Série Test"
 
 
@@ -126,7 +124,7 @@ def test_restore_backup_brings_back_clips(demo_session, demo_project):
         timeout=20,
     )
     assert rr.status_code == 200
-    assert rr.json().get("restored") is True
+    assert rr.json().get("restored") == True
 
     # Verify clipRefs restored
     rg = demo_session.get(f"{BASE_URL}/api/projects/{pid}", timeout=15)
