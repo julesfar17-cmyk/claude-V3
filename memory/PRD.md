@@ -427,3 +427,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - FIX : lien ?promo=CODE → sessionStorage bc_affiliate_link (session en cours seulement) ; saisie manuelle → localStorage bc_affiliate_manual (persistant, prioritaire) ; ancienne clé localStorage bc_affiliate purgée à chaque chargement (App.js) — corrige aussi les users déjà touchés en prod après redéploiement
 - ✅ Vérifié par bug_testing_agent (iteration_12) : 100% — sans code = pas de badge ; legacy purgé ; lien = session only ; manuel persiste au reload ; checkout régression OK
 - ⚠️ REDÉPLOIEMENT nécessaire pour beat-cut.com
+
+## Terminé (22 juillet 2026) — Studio : édition avancée des sous-titres + lecture au curseur + fix Série
+- FIX BUG « Série de vidéos » : « Préparer les vidéos » chargeait dans le vide — fetchRemoteMorceau affichait #loadOverlay mais le flow série n'appelait jamais hideLoad() → overlay à vie. genSerie appelle maintenant hideLoad() + try/catch/finally (aiBar.done() + bouton réactivé garantis)
+- Sous-titres timeline : multi-sélection (clic / Maj-clic plage / Ctrl-clic toggle), déplacement GROUPÉ par drag, copier (⧉ ou Ctrl+C), coller au curseur de lecture (📋 ou Ctrl+V, écarts relatifs conservés), supprimer (🗑 ou touche Suppr) — barre #wordSelBar dans la tl-bar, état selWords (Set) + wordClip
+- Suppression des mots IA : bouton 🗑 + touche Suppr sur sélection (avant : seulement Delete sur bloc focus, obscur)
+- Lecture au curseur : togglePlay (bouton ▶ / Espace) démarre depuis startOff (position cliquée sur la timeline) ; pause mémorise la position ; clamp → redémarre au début si curseur hors extrait
+- ✅ Testé iteration_13 : 100% frontend (bug série reproduit puis confirmé corrigé, 7 features + 4 régressions PASS)
+- ⚠️ REDÉPLOIEMENT nécessaire pour beat-cut.com
