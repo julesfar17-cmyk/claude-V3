@@ -397,7 +397,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
 ====================================================================== -->
 
 <header>
-  <div class="logo" onclick="go('accueil')">BEAT<b>CUT</b></div>
+  <div class="logo" onclick="go('accueil')"><span>BEAT<b>CUT</b></span></div>
   <nav>
     <a href="#/accueil" data-nav="accueil">Accueil</a>
     <a href="#/morceaux" data-nav="morceaux">Mes morceaux</a>
@@ -681,7 +681,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
         <div id="subAnim" style="display:none">
           <div class="field"><label>Apparition des mots</label>
             <div class="seg" id="fAnim">
-              <button data-v="none">Aucune</button><button data-v="pop" class="on">Pop</button><button data-v="fade">Fondu</button><button data-v="slide">Glissé</button>
+              <button data-v="none">Aucune</button><button data-v="pop" class="on">Pop</button><button data-v="fade">Fondu</button><button data-v="slide">Glissé</button><button data-v="zoom">Zoom</button><button data-v="shake">Secousse</button>
             </div>
           </div>
           <div class="field"><label><input type="checkbox" id="fHold" checked style="width:auto;margin-right:6px">Le mot reste affiché jusqu'au suivant</label></div>
@@ -1116,7 +1116,7 @@ const EN={
 "Sur la timeline : Maj-clic / Ctrl-clic pour sélectionner plusieurs mots, puis glisse-les en groupe, ⧉ copie, 📋 colle au curseur ou 🗑 supprime (touche Suppr).":"On the timeline: Shift-click / Ctrl-click to select several words, then drag them as a group, ⧉ copy, 📋 paste at cursor or 🗑 delete (Del key).",
 "Styles":"Styles","Texte":"Text","Effets":"Effects","Animation":"Animation","Police":"Font","Bricolage — moderne":"Bricolage — modern","Anton — impact condensé":"Anton — condensed impact","Archivo Black — massif":"Archivo Black — massive","Impact — classique":"Impact — classic","Inter — sobre":"Inter — clean","Special Elite — machine à écrire":"Special Elite — typewriter","Marker — feutre":"Marker — felt pen","Caveat — manuscrit":"Caveat — handwritten","VT323 — écran rétro":"VT323 — retro screen","Monoton — néon":"Monoton — neon","Fraktur — gothique":"Fraktur — gothic","Rubik Glitch — glitché":"Rubik Glitch — glitched",
 "Affichage":"Display","Mot seul":"Single word","Phrase":"Sentence","Étalé":"Spread","Taille":"Size","Épaisseur":"Weight","Fin":"Thin","Normal":"Normal","Gras":"Bold","Casse":"Case","MAJ":"UPPER","min":"lower","Couleur du texte":"Text color","Position":"Position","Haut":"Top","Centre":"Center","Bas":"Bottom","Mot en cours coloré (karaoké)":"Current word colored (karaoke)","Contour":"Outline","Lueur (néon)":"Glow (neon)","Ombre portée":"Drop shadow","Espacement des lettres":"Letter spacing","Inclinaison":"Slant","Lignes d'écran rétro (CRT)":"Retro screen lines (CRT)","Fond derrière le texte":"Background behind text",
-"Effets vidéo — au rythme des coupures":"Video effects — on every cut","⚡ Flash blanc sur les coupures":"⚡ White flash on cuts","🔍 Zoom punch":"🔍 Punch zoom","💥 Secousse légère":"💥 Light shake","📼 VHS (lignes d'écran)":"📼 VHS (screen lines)","🎞 Grain de pellicule":"🎞 Film grain","Apparition des mots":"Word entrance","Aucune":"None","Pop":"Pop","Fondu":"Fade","Glissé":"Slide","Le mot reste affiché jusqu'au suivant":"Each word stays until the next one","💾 Enregistrer comme mon style":"💾 Save as my style",
+"Effets vidéo — au rythme des coupures":"Video effects — on every cut","⚡ Flash blanc sur les coupures":"⚡ White flash on cuts","🔍 Zoom punch":"🔍 Punch zoom","💥 Secousse légère":"💥 Light shake","📼 VHS (lignes d'écran)":"📼 VHS (screen lines)","🎞 Grain de pellicule":"🎞 Film grain","Apparition des mots":"Word entrance","Aucune":"None","Pop":"Pop","Fondu":"Fade","Glissé":"Slide","Zoom":"Zoom","Secousse":"Shake","Le mot reste affiché jusqu'au suivant":"Each word stays until the next one","💾 Enregistrer comme mon style":"💾 Save as my style",
 "Timeline":"Timeline","✂ Couper ici":"✂ Cut here","🧲 Beat : ON":"🧲 Beat: ON","🧲 Beat : OFF":"🧲 Beat: OFF","🎲 Mélanger":"🎲 Shuffle","⧉ Copier":"⧉ Copy","🗑 Supprimer":"🗑 Delete","📋 Coller au curseur":"📋 Paste at cursor","Adapter":"Fit","Clic sur un plan = coupes & verrou · glisser un clip dessus = le changer":"Click a shot = cuts & lock · drag a clip onto it = swap it","Plans":"Shots",
 "Choisis un morceau, tes styles de sous-titres préférés et un nombre de vidéos : BeatCut prépare plusieurs versions réelles. Tu gardes les meilleures, tu exportes, c'est posté.":"Pick a track, your favorite subtitle styles and a number of videos: BeatCut builds several real versions. Keep the best, export, post.",
 "Préparer":"Set up","Choisir les meilleures":"Pick the best","Nombre de vidéos":"Number of videos","Styles de sous-titres — choisis-en un ou plusieurs (tes styles ★ inclus)":"Subtitle styles — pick one or more (your ★ styles included)","Préparer les vidéos →":"Prepare videos →",
@@ -2496,12 +2496,21 @@ const PRESETS={
   doux:    {name:'Doux',      font:'Inter', size:0.85,color:'#FFE066', pos:0.4, textCase:'low',anim:'fade', hold:true,  mode:'line',  weight:500, glow:0,  shadow:6,  outline:false, scan:false, box:false, hl:false, spacing:0, rot:0},
   etale:   {name:'Étalé',     font:'Inter', size:0.9, color:'#FFFFFF', pos:0.4, textCase:'low',anim:'none', hold:true,  mode:'spread',weight:400, glow:0,  shadow:6,  outline:false, scan:false, box:false, hl:false, spacing:0, rot:0},
   brut:    {name:'Brut',      font:'Inter', size:0.7, color:'#FFFFFF', pos:0.85,textCase:'low',anim:'none', hold:true,  mode:'line',  weight:600, glow:0,  shadow:6,  outline:false, scan:false, box:true,  hl:false, spacing:0, rot:0},
+  affiche: {name:'Affiche',   font:"'Archivo Black'",size:1.5,color:'#FFFFFF',pos:0.5,textCase:'up',anim:'pop',hold:true, mode:'word', weight:400, glow:0, shadow:10, outline:false, scan:false, box:false, hl:false, spacing:0, rot:0, grad:true, gradA:'#FF5C52', gradB:'#FF2D55'},
+  comics:  {name:'Comics',    font:"'Bangers'",size:1.7,color:'#FFE14D', pos:0.48,textCase:'up', anim:'zoom', hold:true,  mode:'word',  weight:400, glow:0,  shadow:0,  outline:true, outlineW:0.14, outlineColor:'#000000', scan:false, box:false, hl:false, spacing:1, rot:2},
+  marqueur:{name:'Marqueur',  font:"'Permanent Marker'",size:1.25,color:'#FFFFFF',pos:0.5,textCase:'none',anim:'shake',hold:true, mode:'word', weight:400, glow:0, shadow:9, outline:false, scan:false, box:false, hl:false, spacing:0, rot:-3},
+  manuscrit:{name:'Manuscrit',font:"'Caveat'",size:1.6, color:'#FFFFFF', pos:0.55,textCase:'low',anim:'fade', hold:true,  mode:'line',  weight:700, glow:0,  shadow:7,  outline:false, scan:false, box:false, hl:false, spacing:0, rot:0},
+  pixel:   {name:'Pixel',     font:"'Silkscreen'",size:1.0,color:'#8AFF80',pos:0.5,textCase:'up',anim:'none', hold:true,  mode:'word',  weight:700, glow:14, shadow:0,  outline:false, scan:true,  box:false, hl:false, spacing:1, rot:0},
+  use:     {name:'Usé',       font:"'Rubik Distressed'",size:1.5,color:'#EDEDED',pos:0.5,textCase:'up',anim:'none',hold:true, mode:'word', weight:400, glow:0, shadow:12, outline:false, scan:false, box:false, hl:false, spacing:0, rot:-2},
+  etroit:  {name:'Étroit',    font:"'Archivo Narrow'",size:1.9,color:'#FFFFFF',pos:0.5,textCase:'up',anim:'slide',hold:true, mode:'word', weight:700, glow:0, shadow:10, outline:false, scan:false, box:false, hl:false, spacing:0, rot:0},
+  terminal:{name:'Terminal',  font:"'JetBrains Mono'",size:0.85,color:'#D9FFD0',pos:0.8,textCase:'low',anim:'none',hold:true, mode:'line', weight:700, glow:0, shadow:0, outline:false, scan:false, box:true, hl:false, spacing:0, rot:0},
 };
 function presetDemoHTML(p, raw){
   const cased= p.textCase==='up'?raw.toUpperCase() : p.textCase==='low'?raw.toLowerCase() : raw;
   let s='font-family:'+p.font+';color:'+p.color+';font-size:'+(12*Math.min(p.size,1.8))+'px;font-weight:'+(p.weight||800)+';';
   if(p.glow) s+='text-shadow:0 0 10px '+p.color+';';
   if(p.outline) s+='-webkit-text-stroke:1.2px '+(p.outlineColor||'#000')+';';
+  if(p.grad) s+='background:linear-gradient(180deg,'+(p.gradA||'#FF5C52')+','+(p.gradB||'#FF2D55')+');-webkit-background-clip:text;background-clip:text;color:transparent;';
   if(p.rot) s+='transform:rotate('+p.rot+'deg);display:inline-block;';
   return '<div class="demo" style="'+s+'">'+cased+'</div>';
 }
@@ -2511,13 +2520,13 @@ function renderPresets(){
   Object.entries(PRESETS).forEach(([k,p])=>{
     const d=document.createElement('div'); d.className='preset'+(style.preset===k?' on':'');
     d.innerHTML=presetDemoHTML(p,raw)+'<div class="name">'+p.name+'</div>';
-    d.onclick=()=>{ pushHistory(); style=Object.assign({},style,p,{preset:k}); M.style=style; syncStyleUI(); renderPresets(); dirty(); };
+    d.onclick=()=>{ pushHistory(); style=Object.assign({},style,{grad:false},p,{preset:k}); M.style=style; syncStyleUI(); renderPresets(); dirty(); };
     root.append(d);
   });
   DB.styles.forEach((s,i)=>{
     const d=document.createElement('div'); d.className='preset'+(style.preset==='perso'+i?' on':'');
     d.innerHTML=presetDemoHTML(s,raw)+'<div class="name">★ '+s.name+'</div>';
-    d.onclick=()=>{ pushHistory(); style=Object.assign({},style,s,{preset:'perso'+i}); M.style=style; syncStyleUI(); renderPresets(); dirty(); };
+    d.onclick=()=>{ pushHistory(); style=Object.assign({},style,{grad:false},s,{preset:'perso'+i}); M.style=style; syncStyleUI(); renderPresets(); dirty(); };
     root.append(d);
   });
 }
@@ -2943,16 +2952,18 @@ function drawLyricBlock(c,t,W,H){
   const w=M.words[idx];
   const base=(H*0.056)*style.size;
   const age=Math.max(0,t-w.start);
-  let scale=1,alpha=1,dy=0;
+  let scale=1,alpha=1,dy=0,dx=0;
   if(style.anim==='pop')scale=1+Math.max(0,0.25-age*2.5);
   if(style.anim==='fade')alpha=Math.min(1,age*8);
   if(style.anim==='slide')dy=Math.max(0,30-age*300);
+  if(style.anim==='zoom')scale=Math.min(1,0.55+age*5);
+  if(style.anim==='shake'&&age<0.4)dx=Math.sin(age*80)*base*0.05*(1-age/0.4);
   c.save();
   c.globalAlpha=alpha;
   c.textAlign='center'; c.textBaseline='middle';
   const weight=style.weight||800;
   try{ c.letterSpacing=((style.spacing||0)*base/12)+'px'; }catch(e){}
-  const cx=W/2, cy=H*style.pos+dy;
+  const cx=W/2+dx, cy=H*style.pos+dy;
   if(style.rot){ c.translate(cx,cy); c.rotate(style.rot*Math.PI/180); c.translate(-cx,-cy); }
   const setFx=()=>{
     if(style.glow>0){ c.shadowColor=style.color; c.shadowBlur=style.glow; }
@@ -2968,7 +2979,9 @@ function drawLyricBlock(c,t,W,H){
     }
     setFx();
     if(style.outline){ c.lineWidth=Math.max(2,fs*(style.outlineW||0.12)); c.strokeStyle=style.outlineColor||'#000'; c.lineJoin='round'; c.strokeText(txt,x,y,maxW); }
-    c.fillStyle=hl?'#FF453A':style.color;
+    if(hl){ c.fillStyle='#FF453A'; }
+    else if(style.grad){ const g=c.createLinearGradient(0,y-fs*0.6,0,y+fs*0.6); g.addColorStop(0,style.gradA||'#FF5C52'); g.addColorStop(1,style.gradB||'#FF2D55'); c.fillStyle=g; }
+    else { c.fillStyle=style.color; }
     c.fillText(txt,x,y,maxW);
   };
   const mode=style.mode||'word';
@@ -3601,7 +3614,7 @@ async function genSerie(){
     serieVariants=[];
     for(let i=0;i<n;i++){
       const pick=chosen[i%chosen.length];
-      const st=Object.assign({}, style, pick.st, {preset:pick.key});
+      const st=Object.assign({}, style, {grad:false}, pick.st, {preset:pick.key});
       const plans=(M.plans||[]).map(p=>{
         if(p.locked||!clips.length||i===0) return {...p};
         const ci=Math.floor(Math.random()*clips.length);
