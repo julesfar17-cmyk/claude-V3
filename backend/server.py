@@ -2440,6 +2440,19 @@ async def startup():
     await db.templates.create_index([("user_id", 1), ("created_at", -1)])
     await seed_user(os.environ['ADMIN_EMAIL'], os.environ['ADMIN_PASSWORD'], "Admin", "admin")
     await seed_user("demo@beatcut.fr", "Demo1234!", "Démo", "user")
+    # Compte démo : abonnement BASIC toujours actif (période glissante +30 j)
+    await db.users.update_one(
+        {"email": "demo@beatcut.fr"},
+        {"$set": {"subscription": {
+            "status": "active",
+            "plan": "basic",
+            "started_at": iso(now_utc()),
+            "current_period_end": iso(now_utc() + timedelta(days=30)),
+            "stripe_customer_id": None,
+            "stripe_subscription_id": None,
+            "synced_at": iso(now_utc()),
+        }}},
+    )
     # Codes promo par défaut
     for code, days in (("BIENVENUE50", 15), ("LAUNCH30", 30), ("BEATCUTSTART", 30)):
         existing = await db.promo_codes.find_one({"code": code})

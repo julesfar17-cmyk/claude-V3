@@ -28,7 +28,7 @@ export default function Contact() {
         <a
           href={`mailto:${CONTACT_EMAIL}?subject=BeatCut%20—%20Contact`}
           data-testid="contact-cta-button"
-          className="inline-flex items-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:-translate-y-0.5 transition-transform"
+          className="inline-flex items-center gap-2 bg-primary !text-white !no-underline font-bold px-6 py-3.5 hover:-translate-y-0.5 transition-transform"
         >
           <Mail size={16} /> Envoyer un email
         </a>

@@ -444,3 +444,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Test obsolète corrigé : test_affiliate_iter11 attend maintenant 400 pour un plan non couvert (11/11 pass)
 - ✅ Testé iteration_14 : 43/44 puis 44/44 après correction du test obsolète — checkout 3 plans + affilié, stats admin Stripe, endpoints Mux, greps sécurité clean
 - Refactors différés (P2, non bloquants) : promo_apply, sub_info, stripe_webhook, save_project, media_import_url — code fonctionnel, à découper si retouché
+
+## Terminé (27 juillet 2026) — Lot V3 (cahier des charges) + DA globale + pages légales
+- studio.html remplacé par studio-v3-complet.html (fichier fondateur, déployé tel quel — contient FR/EN, plans/vidéo, sans coupes, telemetry webview) ; landing statique beatcut-landing.html servie en / (iframe Landing.js + patch target=_top des liens internes)
+- Backend : POST /api/telemetry/webview (public) + GET /api/admin/telemetry/webview (admin) → collection webview_logs
+- DA « Nuit de studio » appliquée à toutes les pages React via index.css : palette #0B0E13/#12161D/#232B36, Archivo Black uppercase (.font-display), dégradé rouge REC sur .bg-primary, boutons/inputs arrondis, radius 14px
+- Pages légales (React, DA appliquée, routes + liens footer) : /cgv, /confidentialite, /mentions-legales, /contact — éditeur « société FAUT » (pas de SIRET), contact jules.beatcut@gmail.com
+- Seed demo corrigé : abonnement BASIC re-signé +30 j à chaque démarrage (ne peut plus expirer) ; bouton Contact illisible corrigé (!text-white !no-underline)
+- ✅ Testé iteration_15 (backend 7/8→8/8 après fix seed, frontend 95%→100% après fix bouton) — studio v3 régression complète OK (série, multi-sélection mots, FR/EN persistant)
+- Reste du cahier des charges (prochaines étapes) : §2-A télémétrie aperçus (preview_logs), §2-B KPIs admin previews, §2-C décision serveur de prévisualisation ; §3 plan annuel = DÉJÀ EN PROD
+- ⚠️ REDÉPLOIEMENT nécessaire
