@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BeatCut — Ton son. Un mois de vidéos.</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@500&family=Anton&family=Archivo+Black&family=Special+Elite&family=Permanent+Marker&family=VT323&family=Monoton&family=UnifrakturCologne&family=Rubik+Glitch&family=Bangers&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@500&family=Anton&family=Archivo+Black&family=Special+Elite&family=Permanent+Marker&family=VT323&family=Monoton&family=UnifrakturCologne&family=Rubik+Glitch&family=Bangers&family=Caveat:wght@700&family=Archivo+Narrow:wght@500;700&family=Silkscreen:wght@400;700&family=Rubik+Distressed&display=swap" rel="stylesheet">
 <style>
 /* =====================================================================
    BEATCUT V2 — Design system
@@ -67,8 +67,8 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 .hero{background:linear-gradient(160deg,var(--panel) 0%,#12161D 100%);border:1px solid var(--line);border-radius:var(--r-l);padding:40px 36px;display:flex;align-items:center;gap:32px;flex-wrap:wrap}
 .hero h1{font-size:clamp(26px,4vw,38px);line-height:1.1;font-weight:800}
 .hero p{color:var(--muted);margin:10px 0 20px;max-width:46ch}
-.hero-wave{flex:1;min-width:220px;display:flex;align-items:flex-end;gap:3px;height:88px;justify-content:center}
-.hero-wave i{width:5px;border-radius:3px;background:var(--accent);opacity:.85;animation:eq 1.1s ease-in-out infinite}
+.hero-wave{flex:1;min-width:220px;display:flex;align-items:center;gap:3px;height:96px;justify-content:center}
+.hero-wave i{width:5px;border-radius:3px;background:linear-gradient(180deg,#FF8A80,var(--accent) 55%,#C81E3F);box-shadow:0 0 9px rgba(255,69,58,.4);opacity:.9;animation:eq 1.1s ease-in-out infinite;transform-origin:center}
 @keyframes eq{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
 @media (prefers-reduced-motion:reduce){.hero-wave i,.preset .demo{animation:none!important}}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0 26px}
@@ -270,6 +270,121 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 /* tactile : les gestes de l'éditeur ne font pas défiler la page */
 .wblock,.plan,#waveSel,.subclip{touch-action:none}
 .pseudo-fs{position:fixed!important;inset:0!important;z-index:100;background:#000;padding:0!important}
+
+/* =====================================================================
+   V3 — PASSE « PEPS » . Même palette (rouge REC sur encre), plus de vie :
+   lumière sur l'accent, profondeur réelle, états qui répondent.
+===================================================================== */
+:root{
+  --accent-2:#FF2D55;                              /* rouge chaud → framboise : le dégradé signature */
+  --grad:linear-gradient(135deg,#FF5C52 0%,var(--accent) 45%,var(--accent-2) 100%);
+  --glow:0 0 0 1px rgba(255,69,58,.25),0 4px 24px rgba(255,45,85,.28);
+  --glow-strong:0 0 0 1px rgba(255,69,58,.4),0 6px 34px rgba(255,45,85,.45);
+  --lift:0 10px 30px rgba(0,0,0,.45);
+}
+body{font-size:15px}
+button{padding:10px 16px;font-size:14.5px;font-weight:500;transition:border-color .15s,background .15s,transform .12s,box-shadow .2s}
+button:hover{background:#202834;border-color:#40506244;box-shadow:0 2px 12px rgba(0,0,0,.3)}
+button.primary{background:var(--grad);border:none;box-shadow:var(--glow);letter-spacing:.01em}
+button.primary:hover{box-shadow:var(--glow-strong);transform:translateY(-1px);background:var(--grad)}
+button.primary:active{transform:translateY(0) scale(.985)}
+button.small{padding:6px 11px}
+input[type=text]:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,69,58,.14);outline:none}
+/* Signature : la LED REC qui respire à côté du logo */
+.logo{display:flex;align-items:center;gap:8px}
+.logo::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:recPulse 2.2s ease-in-out infinite}
+@keyframes recPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
+header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
+.card{transition:border-color .18s,transform .18s,box-shadow .22s}
+.card:hover{transform:translateY(-2px);box-shadow:var(--lift);border-color:rgba(255,69,58,.35)}
+.card.new:hover{box-shadow:var(--glow)}
+#preview{box-shadow:0 0 0 1px rgba(255,255,255,.06),0 14px 60px rgba(0,0,0,.65)}
+.play-btn{background:var(--grad);box-shadow:var(--glow);transition:box-shadow .2s,transform .12s}
+.play-btn:hover{box-shadow:var(--glow-strong);transform:scale(1.05)}
+#toast{border-left:3px solid var(--accent);backdrop-filter:blur(10px);background:rgba(27,34,43,.92);box-shadow:0 10px 40px rgba(0,0,0,.55)}
+.ai-bar .track{height:4px}
+.ai-bar .fill{background:var(--grad);box-shadow:0 0 18px rgba(255,45,85,.7)}
+.stat{transition:border-color .18s}
+.stat:hover{border-color:rgba(255,69,58,.3)}
+.stat .k{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#28303B;border-radius:6px;border:2px solid var(--ink)}
+::-webkit-scrollbar-thumb:hover{background:#3A4450}
+/* --- Bandeau webview (TikTok/Instagram) : visible en permanence, au-dessus de tout --- */
+#wvBanner{position:fixed;left:0;right:0;bottom:0;z-index:120;background:linear-gradient(135deg,#2A1214,#1E0F16);border-top:1px solid rgba(255,69,58,.5);color:var(--text);padding:13px 18px;font-size:13.5px;line-height:1.55;text-align:center;box-shadow:0 -8px 30px rgba(0,0,0,.5)}
+#wvBanner b{color:#FF8A80}
+/* --- Modale « Vidéo prête » : le moment de victoire --- */
+#dlOv{position:fixed;inset:0;z-index:110;display:none;place-items:center;background:rgba(8,10,14,.72);backdrop-filter:blur(8px);padding:20px}
+#dlOv.show{display:grid;animation:dlIn .18s ease-out}
+@keyframes dlIn{from{opacity:0}to{opacity:1}}
+.dl-card{background:linear-gradient(170deg,var(--panel-2) 0%,var(--panel) 100%);border:1px solid var(--line);border-radius:20px;padding:32px 30px;width:min(440px,94vw);max-height:86vh;overflow-y:auto;text-align:center;box-shadow:0 30px 90px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.03) inset;animation:dlPop .28s cubic-bezier(.2,1.4,.4,1)}
+@keyframes dlPop{from{transform:translateY(14px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+.dl-check{width:58px;height:58px;margin:0 auto 14px;border-radius:50%;background:var(--grad);display:grid;place-items:center;font-size:26px;font-weight:800;color:#fff;box-shadow:var(--glow-strong);animation:dlRing 1.8s ease-out infinite}
+@keyframes dlRing{0%{box-shadow:var(--glow-strong),0 0 0 0 rgba(255,45,85,.45)}70%{box-shadow:var(--glow-strong),0 0 0 22px rgba(255,45,85,0)}100%{box-shadow:var(--glow-strong),0 0 0 0 rgba(255,45,85,0)}}
+.dl-card h2{font-size:21px;margin-bottom:16px}
+.dl-row{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;text-align:left}
+.dl-meta{min-width:0}
+.dl-meta b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl-meta span{color:var(--muted);font-size:12px}
+.dl-btn{white-space:nowrap;flex-shrink:0}
+.dl-note{margin:12px 0 14px}
+@media (prefers-reduced-motion:reduce){.logo::before,.dl-check,#dlOv.show,.dl-card{animation:none!important}.card:hover,button.primary:hover{transform:none}}
+
+/* =====================================================================
+   V3 — APPROFONDISSEMENT . Héro vivant, éditeur raffiné, mobile complet.
+===================================================================== */
+/* Héro : halo rouge ambiant + titre en dégradé */
+.hero{position:relative;overflow:hidden}
+@media (min-width:901px){
+.hero::before{content:'';position:absolute;top:-40%;right:-4%;width:58%;height:180%;background:radial-gradient(closest-side,rgba(255,45,85,.16),transparent 70%);pointer-events:none}
+}
+.hero h1{background:linear-gradient(180deg,#fff 30%,#E8B4B0 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+/* Colonnes éditeur : en-têtes qui restent visibles au scroll */
+.col h4{position:sticky;top:-14px;background:var(--ink);padding:14px 0 8px;margin:-14px 0 10px;z-index:2}
+.col{background:linear-gradient(180deg,rgba(255,255,255,.012),transparent 120px)}
+.preset{transition:transform .15s,border-color .15s}
+.preset:hover{transform:scale(1.02)}
+.mob-tgl{display:none}
+.counter b{color:var(--accent)}
+/* =====================  MOBILE  ===================== */
+@media (max-width:900px){
+  body{font-size:14.5px}
+  header{padding:0 12px;gap:10px}
+  nav a{padding:7px 9px;font-size:13px}
+  .counter{padding:4px 9px}
+  .page{padding:20px 14px 90px}
+  .hero{padding:26px 20px;gap:18px}
+  .hero-wave{display:none}
+  .stats{grid-template-columns:1fr 1fr;gap:10px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  /* Éditeur : aperçu au centre, clips & style en tiroirs */
+  .mob-tgl{display:inline-block;font-size:16px;padding:6px 10px}
+  #pageEdit.show{grid-template-rows:48px 1fr 150px}
+  .edit-top{gap:8px;padding:0 10px;overflow-x:auto}
+  .edit-top .crumb span{display:none}
+  .edit-top input.title{width:110px;font-size:13px}
+  .edit-top .savestate{display:none}
+  .edit-main{display:block;position:relative}
+  .edit-main>.col{position:fixed;top:104px;bottom:0;width:min(85vw,330px);z-index:75;background:var(--panel);box-shadow:0 0 60px rgba(0,0,0,.6);transform:translateX(-110%);transition:transform .26s cubic-bezier(.3,.9,.3,1);border-right:1px solid var(--line);overscroll-behavior:contain}
+  .edit-main>.col:last-child{left:auto;right:0;transform:translateX(110%);border-right:none;border-left:1px solid var(--line)}
+  .edit-main>.col.open{transform:none}
+  .stage{height:100%}
+  .canvas-wrap{padding:6px}
+  .transport{padding:8px 10px;gap:8px;flex-wrap:wrap}
+  .play-btn{width:44px;height:44px}
+  .bpm-chip{margin-left:0}
+  /* Tactile : cibles plus grandes */
+  button{min-height:40px}
+  button.small{min-height:34px}
+  .dl-card{padding:24px 18px}
+  #wvBanner{font-size:12.5px;padding:11px 12px}
+}
+@media (max-width:520px){
+  .stats{grid-template-columns:1fr 1fr}
+  .hero h1{font-size:24px}
+  nav{overflow-x:auto;scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+}
 </style>
 </head>
 <body>
@@ -289,6 +404,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
     <a href="#/serie" data-nav="serie">Série de vidéos</a>
   </nav>
   <div class="head-right">
+    <button class="small ghost" id="langBtn" onclick="toggleLang()" title="Switch language">EN</button>
     <div class="counter" title="Exports restants ce mois">⏺ <b id="quotaLeft">10</b>/<span id="quotaMax">10</span></div>
     <div class="avatar" id="avatar">?</div>
   </div>
@@ -336,10 +452,12 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 <!-- ================= ÉDITEUR ================= -->
 <div class="page" id="pageEdit">
   <div class="edit-top">
+    <button class="small mob-tgl" onclick="mobCol('left')" title="Clips vidéo">🎬</button>
     <div class="crumb"><span>Morceau</span><input class="title" id="editTitle" value="Sans titre"></div>
     <button class="small ghost" id="undoBtn" onclick="undo()" disabled title="Annuler (Ctrl+Z)">↶ Annuler</button>
     <div class="savestate ok" id="saveState">Enregistré</div>
     <button class="small" id="backupsBtn" onclick="openBackups()" data-testid="backups-button" title="Historique des versions du morceau">🕘 Versions</button>
+    <button class="small mob-tgl" onclick="mobCol('right')" title="Paroles & style">🎨</button>
     <button class="primary" id="exportBtn" onclick="exportVideo()">⏺ Exporter la vidéo</button>
   </div>
 
@@ -349,6 +467,14 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
       <h4>Clips vidéo</h4>
       <div class="drop" id="clipDrop" style="padding:14px 10px"><div><div class="big" style="font-size:13.5px">＋ Ajouter des vidéos</div><span style="font-size:11.5px">Découpées en plans, placées sur le beat</span></div></div>
       <input type="file" id="clipInput" multiple hidden>
+      <div class="field" style="margin-top:10px">
+        <label>Plans par vidéo : <b id="clipCountVal" style="color:var(--accent)">Auto</b></label>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+          <button class="small on" id="clipCountAuto">Auto</button>
+          <input type="range" id="clipCountRange" min="1" max="24" step="1" value="6" style="flex:1;padding:0">
+        </div>
+        <div class="hint" style="margin-top:4px">Jusqu'à 24 plans par vidéo — limité par la durée du clip.</div>
+      </div>
       <div class="clip-grid" id="clipGrid" style="margin-top:10px"></div>
       <div class="field" style="margin-top:14px">
         <label>Banque de clips gratuits</label>
@@ -488,6 +614,9 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
               <option value="'Bangers'">Bangers — cartoon</option>
               <option value="'JetBrains Mono'">Mono — code</option>
               <option value="Georgia">Georgia — serif</option>
+              <option value="'Archivo Narrow'">Archivo Narrow — condensé viral</option>
+              <option value="'Silkscreen'">Silkscreen — pixel rétro</option>
+              <option value="'Rubik Distressed'">Rubik Distressed — abrasé</option>
             </select>
           </div>
           <div class="field"><label>Affichage</label>
@@ -521,6 +650,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
           <div class="field"><label><input type="checkbox" id="fHl" style="width:auto;margin-right:6px">Mot en cours coloré (karaoké)</label></div>
         </div>
         <div id="subFx" style="display:none">
+          <div class="field"><label><input type="checkbox" id="xInvert" style="width:auto;margin-right:6px">🔳 Texte en négatif (couleur inversée du fond)</label></div>
           <div class="field"><label><input type="checkbox" id="xOutline" style="width:auto;margin-right:6px">Contour</label>
             <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
               <input type="range" id="xOutlineW" min="0.04" max="0.24" step="0.02" value="0.12" style="flex:1">
@@ -543,6 +673,10 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
           <div class="field"><label><input type="checkbox" id="xvGlitch" style="width:auto;margin-right:6px">🌀 Glitch</label></div>
           <div class="field"><label><input type="checkbox" id="xvVHS" style="width:auto;margin-right:6px">📼 VHS (lignes d'écran)</label></div>
           <div class="field"><label><input type="checkbox" id="xvGrain" style="width:auto;margin-right:6px">🎞 Grain de pellicule</label></div>
+          <div class="field"><label><input type="checkbox" id="xvSat" style="width:auto;margin-right:6px">🌈 Saturé 4K</label></div>
+          <div class="field"><label><input type="checkbox" id="xvGlow" style="width:auto;margin-right:6px">✨ Glow (halo lumineux)</label></div>
+          <div class="field"><label><input type="checkbox" id="xvDrift" style="width:auto;margin-right:6px">🎥 Caméra instable</label></div>
+          <div class="field"><label><input type="checkbox" id="xvFish" style="width:auto;margin-right:6px">🐟 Fisheye léger</label></div>
         </div>
         <div id="subAnim" style="display:none">
           <div class="field"><label>Apparition des mots</label>
@@ -565,6 +699,7 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
       <button class="small" onclick="addCutAtPlayhead()">✂ Couper ici <span class="mono" style="opacity:.6">M</span></button>
       <button class="small" id="snapBtn" onclick="toggleSnap()">🧲 Beat : ON</button>
       <button class="small" onclick="shufflePlans()">🎲 Mélanger</button>
+      <button class="small" id="noCutsBtn" onclick="toggleNoCuts()">🎬 Sans coupes : OFF</button>
       <span id="wordSelBar" style="display:none;gap:6px;align-items:center">
         <span class="hint" id="wordSelCount" data-testid="word-sel-count"></span>
         <button class="small" onclick="copySelWords()" data-testid="word-copy-btn">⧉ Copier</button>
@@ -862,7 +997,7 @@ function updateQuotaUI(){
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const BC_BUILD='v13.07-son-serveur';   // affiché au toast d'export : permet de vérifier la version réellement exécutée
 console.log('[BeatCut studio]', BC_BUILD);
-const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2800);};
+const toast=m=>{const t=$('#toast');t.textContent=(typeof T==='function'?T(m):m);t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2800);};
 /* Verrou de chargement : overlay plein écran avec barre de progression */
 const loadOv=(()=>{const d=document.createElement('div');d.id='loadOverlay';d.setAttribute('data-testid','load-overlay');d.innerHTML='<div class="box"><div class="txt" id="loadOvTxt">Chargement…</div><div class="bar"><i id="loadOvBar"></i></div><div class="sub" id="loadOvSub"></div></div>';document.body.appendChild(d);return d;})();
 function showLoad(txt,frac,sub){loadOv.classList.add('show');$('#loadOvTxt').textContent=txt;$('#loadOvBar').style.width=Math.round(Math.max(0,Math.min(1,frac||0))*100)+'%';$('#loadOvSub').textContent=sub||'';}
@@ -880,7 +1015,7 @@ const aiBar={
   _t:null,_pct:0,
   start(label){ this._pct=0; this.set(label,4); clearInterval(this._t);
     this._t=setInterval(()=>{ this._pct=Math.min(92,this._pct+(92-this._pct)*0.05); $('#aiBarFill').style.width=this._pct+'%'; },700); },
-  set(label,pct){ $('#aiBar').style.display='block'; if(label) $('#aiBarLbl').textContent=label;
+  set(label,pct){ $('#aiBar').style.display='block'; if(label) $('#aiBarLbl').textContent=(typeof T==='function'?T(label):label);
     if(pct!=null){ this._pct=Math.max(this._pct,Math.min(99,pct)); $('#aiBarFill').style.width=this._pct+'%'; } },
   done(){ clearInterval(this._t); this._t=null;
     if($('#aiBar').style.display==='none') return;
@@ -888,6 +1023,173 @@ const aiBar={
     setTimeout(()=>{ $('#aiBar').style.display='none'; $('#aiBarFill').style.width='0%'; this._pct=0; },600); },
 };
 const fmt=t=>`${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`;
+
+/* ================= EXPORTS FIABLES =================
+   1) Webview TikTok/Instagram : le téléchargement de blobs y est bloqué
+      → on prévient AVANT de gaspiller un export.
+   2) La vidéo prête n'est PLUS téléchargée par un clic programmatique
+      (bloqué par iOS après un long export) : une fenêtre « Vidéo prête »
+      attend le clic de l'utilisateur — et le quota n'est décompté QU'À CE CLIC. */
+const IN_WEBVIEW=(()=>{ const ua=navigator.userAgent||'';
+  return /musical_ly|Bytedance|TikTok|Instagram|FBAN|FBAV|FB_IAB|Snapchat|MicroMessenger|Line\//i.test(ua)
+      || (/Android/i.test(ua)&&/; wv\)/.test(ua)); })();
+function webviewBanner(){
+  if(!IN_WEBVIEW) return;
+  try{ fetch('/api/telemetry/webview',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({ua:navigator.userAgent,build:typeof BC_BUILD!=='undefined'?BC_BUILD:''})}).catch(()=>{}); }catch(e){}
+  const b=document.createElement('div'); b.id='wvBanner';
+  b.innerHTML=(LANG==='en')
+    ? '⚠️ You are inside the TikTok/Instagram browser: video downloads do not work here. <b>Open beat-cut.com in Chrome or Safari</b> — <b>⋯</b> menu → "Open in browser".'
+    : '⚠️ Tu es dans le navigateur TikTok/Instagram : le téléchargement des vidéos ne marche pas ici. <b>Ouvre beat-cut.com dans Chrome ou Safari</b> — menu <b>⋯</b> → « Ouvrir dans le navigateur ».';
+  document.body.prepend(b);
+}
+/* Upload de l'assemblage son avec timeout + vraie progression (fini le 96 % figé) */
+function uploadFinalize(fd){
+  return new Promise((res,rej)=>{
+    const x=new XMLHttpRequest();
+    x.open('POST','/api/export/finalize'); x.withCredentials=true; x.responseType='blob';
+    x.timeout=180000;
+    x.upload.onprogress=e=>{ if(e.lengthComputable) aiBar.set('Envoi du son au serveur… '+Math.round(e.loaded/e.total*100)+' %',96); };
+    x.onload=()=>{ (x.status>=200&&x.status<300)? res(x.response) : rej(new Error('assemblage du son impossible (HTTP '+x.status+')')); };
+    x.onerror=()=>rej(new Error('connexion perdue pendant l\u2019assemblage du son — réessaie (Wi-Fi conseillé)'));
+    x.ontimeout=()=>rej(new Error('connexion trop lente pour assembler le son — réessaie en Wi-Fi'));
+    x.send(fd);
+  });
+}
+/* File des vidéos prêtes : chaque export fini s'ajoute ici ; le décompte a lieu au clic Télécharger */
+let _dlQueue=[];
+const dlPendingCount=()=>_dlQueue.filter(e=>!e.registered).length;
+function _dlRegister(entry){
+  if(entry.registered) return; entry.registered=true;
+  fetch('/api/export/register',{method:'POST',credentials:'include'}).then(()=>API.refreshQuota()).catch(()=>{});
+  if(API.plan!=='pro' && API.quota.left>0) API.quota.left--;
+  DB.exports++; if(M){ M.videos=(M.videos||0)+1; dirty(); }
+  updateQuotaUI();
+}
+function showDownloadModal(blob,fname,info){
+  const url=URL.createObjectURL(blob);
+  _dlQueue.push({url,fname,size:blob.size,info,registered:false});
+  renderDownloadModal(true);
+}
+function renderDownloadModal(open){
+  let ov=document.getElementById('dlOv');
+  if(!ov){ ov=document.createElement('div'); ov.id='dlOv'; document.body.append(ov);
+    ov.addEventListener('click',e=>{ if(e.target===ov) ov.classList.remove('show'); }); }
+  const rows=_dlQueue.map((e,i)=>{
+    const mb=(e.size/1048576).toFixed(1);
+    return '<div class="dl-row" data-testid="dl-row-'+i+'">'
+      +'<div class="dl-meta"><b>'+e.fname.replace(/</g,'&lt;')+'</b><span>'+e.info.W+'×'+e.info.H+' · '+mb+' Mo'+(e.registered?' · '+T('téléchargée ✓'):'')+'</span></div>'
+      +'<button class="primary dl-btn" onclick="dlGo('+i+')">'+T(e.registered?'⬇ Re-télécharger':'⬇ Télécharger')+'</button></div>';
+  }).join('');
+  ov.innerHTML='<div class="dl-card"><div class="dl-check">✓</div>'
+    +'<h2>'+(_dlQueue.length>1?_dlQueue.length+' '+T('vidéos prêtes'):T('Ta vidéo est prête'))+'</h2>'
+    +rows
+    +'<p class="hint dl-note">'+T('Le décompte se fait au téléchargement — fermer sans télécharger ne consomme rien.')+'</p>'
+    +'<button class="ghost" onclick="document.getElementById(\'dlOv\').classList.remove(\'show\')">'+T('Fermer')+'</button></div>';
+  if(open) ov.classList.add('show');
+}
+function dlGo(i){
+  const e=_dlQueue[i]; if(!e) return;
+  const a=document.createElement('a'); a.href=e.url; a.download=e.fname;
+  document.body.append(a); a.click(); a.remove();
+  _dlRegister(e); renderDownloadModal(false);
+  toast('Téléchargement lancé ✓');
+}
+
+/* ================= LANGUE FR / EN =================
+   Dictionnaire exact FR→EN appliqué au DOM (textes, placeholders, titles),
+   réversible, ré-appliqué automatiquement quand l'interface se redessine. */
+let LANG=localStorage.getItem('bc_lang')||(((navigator.language||'').toLowerCase().startsWith('fr'))?'fr':'en');
+const EN={
+"Accueil":"Home","Mes morceaux":"My tracks","Série de vidéos":"Video batch","Ton son.":"Your sound.","Un mois de vidéos.":"A month of videos.",
+"Dépose ton morceau une fois : BeatCut trouve le tempo, cale les plans sur le beat et écrit tes paroles à l'écran. Ensuite, tu crées des vidéos à volonté.":"Drop your track once: BeatCut finds the tempo, snaps shots to the beat and writes your lyrics on screen. Then create as many videos as you want.",
+"＋ Créer une vidéo":"＋ Create a video","Série de vidéos →":"Video batch →","vidéos créées":"videos created","de montage économisées":"of editing saved","exports restants ce mois":"exports left this month","Tout voir":"See all","Bien démarrer":"Getting started","Dépose ton premier morceau":"Drop your first track","Ajoute tes paroles":"Add your lyrics","Choisis un style":"Pick a style","Exporte et poste ta vidéo":"Export and post your video","＋ Nouveau morceau":"＋ New track",
+"Un morceau se règle une fois (extrait, tempo, paroles). Ensuite tu en tires autant de vidéos que tu veux.":"A track is set up once (extract, tempo, lyrics). Then make as many videos from it as you like.",
+"Morceau":"Track","↶ Annuler":"↶ Undo","Enregistré":"Saved","🕘 Versions":"🕘 History","⏺ Exporter la vidéo":"⏺ Export video","Clips vidéo":"Video clips","＋ Ajouter des vidéos":"＋ Add videos","Découpées en plans, placées sur le beat":"Cut into shots, placed on the beat","Banque de clips gratuits":"Free clip library",
+"Entrée pour chercher — clique une vignette pour l'ajouter.":"Press Enter to search — click a thumbnail to add it.",
+"☁ Récupérer mes vidéos déjà envoyées":"☁ Get my uploaded videos","⛶ Plein écran":"⛶ Fullscreen","Dépose ton morceau":"Drop your track","MP3 · WAV · M4A — le tempo et les plans se règlent tout seuls":"MP3 · WAV · M4A — tempo and shots set themselves","Ton extrait":"Your extract","▶ Écouter l'extrait":"▶ Play the extract","▲ Réduire":"▲ Collapse","Libre":"Free","🔁 4 mes.":"🔁 4 bars","🔁 8 mes.":"🔁 8 bars","🔁 16 mes.":"🔁 16 bars","🎯 Trouver le drop":"🎯 Find the drop","Début :":"Start:",
+"Glisse la zone rouge pour déplacer l'extrait · tire ses bords pour l'allonger ou le raccourcir · il joue en boucle pendant que tu ajustes.":"Drag the red zone to move the extract · pull its edges to stretch or shorten it · it loops while you adjust.",
+"Tempo du morceau":"Track tempo","Tape TAP en rythme sur le beat, ou entre la valeur si tu la connais.":"Hit TAP on the beat, or type the value if you know it.",
+"Paroles":"Lyrics","Style":"Style","✨ Détecter les paroles":"✨ Detect lyrics","L'IA isole d'abord la voix, puis écrit chaque mot au bon moment.":"AI isolates the vocals first, then writes each word at the right time.","✍️ J'ai mes paroles":"✍️ I have my lyrics","Colle ton texte : il sera calé sur ta voix, orthographe intacte.":"Paste your text: it gets synced to your vocals, spelling untouched.","Caler mes paroles":"Sync my lyrics",
+"Ton texte est calé mot par mot sur ta voix (transcription IA + alignement) — orthographe intacte.":"Your text is synced word by word to your vocals (AI transcription + alignment) — spelling untouched.",
+"1. Isolation de la voix…":"1. Isolating vocals…","2. Détection des paroles…":"2. Detecting lyrics…","↻ Recaler les paroles":"↻ Re-sync lyrics","Repartir de zéro":"Start over",
+"Double-clique un mot pour le corriger · bouton « + » entre les mots pour en insérer un · double-clique la piste paroles de la timeline pour ajouter un mot à cet instant.":"Double-click a word to fix it · \"+\" button between words to insert one · double-click the lyrics track on the timeline to add a word at that moment.",
+"Sur la timeline : Maj-clic / Ctrl-clic pour sélectionner plusieurs mots, puis glisse-les en groupe, ⧉ copie, 📋 colle au curseur ou 🗑 supprime (touche Suppr).":"On the timeline: Shift-click / Ctrl-click to select several words, then drag them as a group, ⧉ copy, 📋 paste at cursor or 🗑 delete (Del key).",
+"Styles":"Styles","Texte":"Text","Effets":"Effects","Animation":"Animation","Police":"Font","Bricolage — moderne":"Bricolage — modern","Anton — impact condensé":"Anton — condensed impact","Archivo Black — massif":"Archivo Black — massive","Impact — classique":"Impact — classic","Inter — sobre":"Inter — clean","Special Elite — machine à écrire":"Special Elite — typewriter","Marker — feutre":"Marker — felt pen","Caveat — manuscrit":"Caveat — handwritten","VT323 — écran rétro":"VT323 — retro screen","Monoton — néon":"Monoton — neon","Fraktur — gothique":"Fraktur — gothic","Rubik Glitch — glitché":"Rubik Glitch — glitched",
+"Affichage":"Display","Mot seul":"Single word","Phrase":"Sentence","Étalé":"Spread","Taille":"Size","Épaisseur":"Weight","Fin":"Thin","Normal":"Normal","Gras":"Bold","Casse":"Case","MAJ":"UPPER","min":"lower","Couleur du texte":"Text color","Position":"Position","Haut":"Top","Centre":"Center","Bas":"Bottom","Mot en cours coloré (karaoké)":"Current word colored (karaoke)","Contour":"Outline","Lueur (néon)":"Glow (neon)","Ombre portée":"Drop shadow","Espacement des lettres":"Letter spacing","Inclinaison":"Slant","Lignes d'écran rétro (CRT)":"Retro screen lines (CRT)","Fond derrière le texte":"Background behind text",
+"Effets vidéo — au rythme des coupures":"Video effects — on every cut","⚡ Flash blanc sur les coupures":"⚡ White flash on cuts","🔍 Zoom punch":"🔍 Punch zoom","💥 Secousse légère":"💥 Light shake","📼 VHS (lignes d'écran)":"📼 VHS (screen lines)","🎞 Grain de pellicule":"🎞 Film grain","Apparition des mots":"Word entrance","Aucune":"None","Pop":"Pop","Fondu":"Fade","Glissé":"Slide","Le mot reste affiché jusqu'au suivant":"Each word stays until the next one","💾 Enregistrer comme mon style":"💾 Save as my style",
+"Timeline":"Timeline","✂ Couper ici":"✂ Cut here","🧲 Beat : ON":"🧲 Beat: ON","🧲 Beat : OFF":"🧲 Beat: OFF","🎲 Mélanger":"🎲 Shuffle","⧉ Copier":"⧉ Copy","🗑 Supprimer":"🗑 Delete","📋 Coller au curseur":"📋 Paste at cursor","Adapter":"Fit","Clic sur un plan = coupes & verrou · glisser un clip dessus = le changer":"Click a shot = cuts & lock · drag a clip onto it = swap it","Plans":"Shots",
+"Choisis un morceau, tes styles de sous-titres préférés et un nombre de vidéos : BeatCut prépare plusieurs versions réelles. Tu gardes les meilleures, tu exportes, c'est posté.":"Pick a track, your favorite subtitle styles and a number of videos: BeatCut builds several real versions. Keep the best, export, post.",
+"Préparer":"Set up","Choisir les meilleures":"Pick the best","Nombre de vidéos":"Number of videos","Styles de sous-titres — choisis-en un ou plusieurs (tes styles ★ inclus)":"Subtitle styles — pick one or more (your ★ styles included)","Préparer les vidéos →":"Prepare videos →",
+"Chaque vidéo garde tes paroles calées : seuls les plans et le style changent. Seules celles que tu gardes comptent dans tes exports.":"Every video keeps your synced lyrics: only the shots and style change. Only the ones you keep count toward your exports.",
+"← Régler autrement":"← Adjust settings","⏺ Exporter la sélection (":"⏺ Export selection (",
+"L'export se fait en temps réel, vidéo par vidéo — reste sur cet onglet. Chaque vidéo exportée compte dans ton quota.":"Export runs one video at a time — stay on this tab. Each exported video counts toward your quota.",
+"Connecte-toi pour créer tes vidéos.":"Sign in to create your videos.","Continuer avec Google":"Continue with Google","Connexion sécurisée avec ton compte Google.":"Secure sign-in with your Google account.","Choisis le moment exact":"Pick the exact moment","＋ Ajouter ce plan":"＋ Add this shot","Coupes sur ce temps":"Cuts on this beat","🔒 Verrouiller ce plan":"🔒 Lock this shot","4 coupes = 4 images sur ce temps (parfait pour un roll de batterie).":"4 cuts = 4 frames on this beat (perfect for a drum roll).","IA en cours…":"AI working…",
+"ex : néon, fumée, ville la nuit…":"e.g. neon, smoke, city at night…","Colle tes paroles ici…":"Paste your lyrics here…",
+"Annuler (Ctrl+Z)":"Undo (Ctrl+Z)","Contour blanc":"White outline","Contour noir":"Black outline","Dézoomer":"Zoom out","Exports restants ce mois":"Exports left this month","Format de la vidéo":"Video format","Historique des versions du morceau":"Track version history","La durée exacte pour que la vidéo boucle parfaitement":"The exact length for a perfect loop","Plein écran (F)":"Fullscreen (F)","Régler le tempo":"Set the tempo","Zoomer":"Zoom in","Paroles & style":"Lyrics & style",
+"Un export est déjà en cours — attends la fin":"An export is already running — wait for it to finish","Dépose d'abord ton morceau":"Drop your track first","Téléchargement lancé ✓":"Download started ✓","Morceau supprimé":"Track deleted","Ta vidéo est prête":"Your video is ready","vidéos prêtes":"videos ready","⬇ Télécharger":"⬇ Download","⬇ Re-télécharger":"⬇ Download again","téléchargée ✓":"downloaded ✓","Fermer":"Close",
+"Le décompte se fait au téléchargement — fermer sans télécharger ne consomme rien.":"Your quota is only used when you download — closing without downloading costs nothing.",
+"Télécharge d'abord ta vidéo prête (fenêtre ✓) — elle utilise ton quota restant":"Download your ready video first (✓ window) — it uses your remaining quota",
+"⚠ Le navigateur TikTok/Instagram bloque le téléchargement — ouvre beat-cut.com dans Chrome ou Safari (menu ⋯ → Ouvrir dans le navigateur). Rien n'a été décompté.":"⚠ The TikTok/Instagram browser blocks downloads — open beat-cut.com in Chrome or Safari (⋯ menu → Open in browser). Nothing was deducted.",
+"Plans par vidéo :":"Shots per video:","Plans par vidéo":"Shots per video","Jusqu'à 24 plans par vidéo — limité par la durée du clip.":"Up to 24 shots per video — limited by clip length.","Auto":"Auto","🎬 Sans coupes : OFF":"🎬 No cuts: OFF","🎬 Sans coupes : ON":"🎬 No cuts: ON","Vidéo entière, sans coupes 🎬":"Full video, no cuts 🎬","Coupes sur le beat réactivées ✂":"Beat cuts back on ✂","🔳 Texte en négatif (couleur inversée du fond)":"🔳 Negative text (inverts what's behind)","🌈 Saturé 4K":"🌈 4K saturated","✨ Glow (halo lumineux)":"✨ Glow (bloom)","🎥 Caméra instable":"🎥 Handheld camera","🐟 Fisheye léger":"🐟 Light fisheye","Archivo Narrow — condensé viral":"Archivo Narrow — viral condensed","Silkscreen — pixel rétro":"Silkscreen — retro pixel","Rubik Distressed — abrasé":"Rubik Distressed — distressed","Plans mélangés 🎲 — chaque clip est servi équitablement (les 🔒 n'ont pas bougé)":"Shots shuffled 🎲 — every clip dealt fairly (🔒 untouched)","Ajoute d'abord des vidéos à gauche":"Add videos on the left first","Préparation de l'export studio…":"Preparing studio export…","Finalisation du MP4…":"Finalizing MP4…","Ajout du son (serveur)…":"Adding audio (server)…","Vérification des vidéos…":"Checking videos…"
+};
+const _ENRULES=[
+ [/^Export studio (.+)$/, "Studio export $1"],
+ [/^Envoi du son au serveur… (\d+) %$/, "Sending audio to the server… $1 %"],
+ [/^Export vidéo (\d+)\/(\d+) — reste sur cet onglet$/, "Exporting video $1/$2 — stay on this tab"],
+ [/^🎉 (\d+) vidéo\(s\) prête\(s\) — télécharge-les dans la fenêtre ✓$/, "🎉 $1 video(s) ready — download them in the ✓ window"],
+];
+function T(s){
+  if(LANG!=='en'||!s) return s;
+  const k=(''+s).trim(), kk=k.replace(/[’]/g,"'");
+  if(EN[kk]) return (''+s).replace(k,EN[kk]);
+  for(const [re,out] of _ENRULES){ if(re.test(kk)) return kk.replace(re,out); }
+  return s;
+}
+let _i18nBusy=false,_i18nTimer=null;
+function applyLang(){
+  _i18nBusy=true;
+  try{
+    document.documentElement.lang=LANG;
+    document.title=LANG==='en'?'BeatCut — Your sound. A month of videos.':'BeatCut — Ton son. Un mois de vidéos.';
+    const b=document.getElementById('langBtn'); if(b) b.textContent=LANG==='fr'?'EN':'FR';
+    const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode(n){
+      const p=n.parentNode&&n.parentNode.nodeName; return (p==='SCRIPT'||p==='STYLE')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT; }});
+    let n;
+    while(n=w.nextNode()){
+      const raw=n.nodeValue, k=raw.trim(); if(!k) continue;
+      const kk=k.replace(/[’]/g,"'");
+      if(LANG==='en'){ if(EN[kk]!==undefined){ if(n.__fr===undefined) n.__fr=raw; n.nodeValue=raw.replace(k,EN[kk]); } }
+      else if(n.__fr!==undefined){ n.nodeValue=n.__fr; }
+    }
+    document.querySelectorAll('[placeholder],[title]').forEach(el=>{
+      for(const attr of ['placeholder','title']){
+        const v=el.getAttribute(attr); if(!v) continue;
+        const vv=v.replace(/[’]/g,"'");
+        if(LANG==='en'){ if(EN[vv]!==undefined){ if(!el.__frA) el.__frA={}; if(el.__frA[attr]===undefined) el.__frA[attr]=v; el.setAttribute(attr,EN[vv]); } }
+        else if(el.__frA&&el.__frA[attr]!==undefined){ el.setAttribute(attr,el.__frA[attr]); }
+      }
+    });
+  } finally { setTimeout(()=>{_i18nBusy=false;},0); }
+}
+function toggleLang(){ LANG=(LANG==='fr')?'en':'fr'; try{localStorage.setItem('bc_lang',LANG);}catch(e){} applyLang(); }
+new MutationObserver(()=>{ if(_i18nBusy||LANG!=='en') return;
+  clearTimeout(_i18nTimer); _i18nTimer=setTimeout(applyLang,150);
+}).observe(document.body,{childList:true,subtree:true});
+
+/* ================= TIROIRS MOBILE (éditeur) ================= */
+function mobCol(side){
+  const cols=document.querySelectorAll('.edit-main>.col');
+  if(cols.length<2) return;
+  const el=side==='left'?cols[0]:cols[cols.length-1];
+  const other=side==='left'?cols[cols.length-1]:cols[0];
+  other.classList.remove('open');
+  el.classList.toggle('open');
+}
+document.addEventListener('click',e=>{
+  if(window.innerWidth>900) return;
+  if(e.target.closest('.edit-main>.col')||e.target.closest('.mob-tgl')) return;
+  document.querySelectorAll('.edit-main>.col.open').forEach(c=>c.classList.remove('open'));
+});
 
 /* ---------------- Store : projets serveur (MongoDB + GridFS) — cross-device ---------------- */
 const store={
@@ -973,7 +1275,20 @@ window.addEventListener('hashchange',route);
 
 /* ---------------- Accueil ---------------- */
 function renderHome(){
-  const w=$('#heroWave'); if(!w.children.length) for(let i=0;i<26;i++){const b=document.createElement('i');b.style.height=(20+Math.random()*68)+'%';b.style.animationDelay=(i*0.06)+'s';w.append(b);}
+  const w=$('#heroWave'); if(!w.children.length){
+    // silhouette de waveform (enveloppe drop) : monte, explose au centre, redescend — comme un vrai extrait
+    const N=34;
+    for(let i=0;i<N;i++){
+      const u=i/(N-1);
+      const env=0.28+0.72*Math.pow(Math.sin(Math.PI*u),1.6);                    // enveloppe du morceau
+      const beat=0.75+0.25*Math.sin(u*22);                                       // détail des transitoires
+      const b=document.createElement('i');
+      b.style.height=Math.round(env*beat*100)+'%';
+      b.style.animationDelay=(-(i*0.09)%1.4)+'s';
+      b.style.animationDuration=(1.15+((i*7)%5)*0.09)+'s';
+      w.append(b);
+    }
+  }
   const vids=DB.exports;
   $('#statVideos').textContent=vids;
   $('#statTime').textContent=Math.round(vids*45/60)+' h';
@@ -1397,7 +1712,9 @@ async function startLoop(){
 
 /* ---------- Plans ---------- */
 function buildPlans(){
-  if(!beats.length||!M){if(M){M.cuts=[];M.plans=[];}return;}
+  if(!M) return;
+  if(M.noCuts){ M.cuts=[{time:ext.start,source:'auto'}]; rebuildPlans(); return; }
+  if(!beats.length){M.cuts=[];M.plans=[];return;}
   const inB=beats.filter(b=>b>=ext.start&&b<ext.start+ext.dur);
   const step= bpm>=140?2:1;
   M.cuts=inB.filter((_,i)=>i%step===0).map(t=>({time:t,source:'auto'}));
@@ -1436,15 +1753,55 @@ function addCutAtPlayhead(){
   M.cuts.push({time:t,source:'manual'}); rebuildPlans(); drawTimeline(); dirty(); toast('Coupure ajoutée ✂');
 }
 function toggleSnap(){ snap=!snap; $('#snapBtn').textContent='🧲 Aimanté au beat : '+(snap?'ON':'OFF'); }
+function toggleNoCuts(){
+  if(!M) return;
+  pushHistory();
+  M.noCuts=!M.noCuts;
+  buildPlans(); drawTimeline(); dirty();
+  const nb=$('#noCutsBtn'); if(nb) nb.textContent=T(M.noCuts?'🎬 Sans coupes : ON':'🎬 Sans coupes : OFF');
+  toast(M.noCuts?'Vidéo entière, sans coupes 🎬':'Coupes sur le beat réactivées ✂');
+}
 function shufflePlans(){
   if(!clips.length){toast('Ajoute d\u2019abord des vidéos à gauche');return;}
   pushHistory();
-  M.plans.forEach(p=>{ if(!p.locked){
-    p.clip=Math.floor(Math.random()*clips.length);
-    const c=clips[p.clip]; p.seek=(c.seeks&&c.seeks.length)? c.seeks[Math.floor(Math.random()*c.seeks.length)]:0;
-  }});
-  drawTimeline(); dirty(); toast('Plans mélangés 🎲 (les 🔒 n\u2019ont pas bougé)');
+  // Distribution équitable : chaque clip est servi le même nombre de fois (±1),
+  // jamais deux plans consécutifs sur le même clip quand c'est évitable,
+  // et les moments (seeks) d'un même clip tournent sans se répéter.
+  const free=M.plans.filter(p=>!p.locked);
+  const pool=[];
+  for(let r=0;r<Math.ceil(free.length/clips.length);r++){
+    const round=clips.map((_,i)=>i);
+    for(let i=round.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[round[i],round[j]]=[round[j],round[i]];}
+    pool.push(...round);
+  }
+  const seekPtr=clips.map(()=>0);
+  const seekBag=clips.map(c=>{
+    const s=(c.seeks&&c.seeks.length)? [...c.seeks]:[0];
+    for(let i=s.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[s[i],s[j]]=[s[j],s[i]];}
+    return s;
+  });
+  let prev=-1;
+  free.forEach((p,idx)=>{
+    if(pool[0]===prev&&pool.length>1){ const k=pool.findIndex(c=>c!==prev); if(k>0)[pool[0],pool[k]]=[pool[k],pool[0]]; }
+    const ci=pool.shift();
+    p.clip=ci;
+    const bag=seekBag[ci]; p.seek=bag[seekPtr[ci]%bag.length]; seekPtr[ci]++;
+    prev=ci;
+  });
+  drawTimeline(); dirty(); toast('Plans mélangés 🎲 — chaque clip est servi équitablement (les 🔒 n\u2019ont pas bougé)');
 }
+
+/* ---------- Réglage : plans par vidéo ---------- */
+let clipPlanCount=localStorage.getItem('bc_clipcount')||'auto';
+function syncClipCountUI(){
+  const v=$('#clipCountVal'), a=$('#clipCountAuto'), r=$('#clipCountRange');
+  if(!v||!a||!r) return;
+  if(clipPlanCount==='auto'){ v.textContent=T('Auto'); a.classList.add('on'); }
+  else { v.textContent=clipPlanCount; a.classList.remove('on'); r.value=clipPlanCount; }
+}
+$('#clipCountRange').oninput=e=>{ clipPlanCount=String(e.target.value); try{localStorage.setItem('bc_clipcount',clipPlanCount);}catch(x){} syncClipCountUI(); };
+$('#clipCountAuto').onclick=()=>{ clipPlanCount='auto'; try{localStorage.setItem('bc_clipcount','auto');}catch(x){} syncClipCountUI(); };
+syncClipCountUI();
 
 /* ---------- Clips ---------- */
 const cDrop=$('#clipDrop'), cInput=$('#clipInput');
@@ -1463,7 +1820,9 @@ function addClip(file, meta={}){
   const clip={url,el:null,els:[],thumbs:[],seeks:[],name:file.name,mediaId:meta.mediaId||null,pexelsUrl:meta.pexelsUrl||null};
   clips.push(clip);
   const onMeta=D=>{
-    const n=Math.min(8, Math.max(2, Math.floor(D/2)));      // jusqu'à 8 plans proposés (~2 s chacun)
+    const auto=Math.min(8, Math.max(2, Math.floor(D/2)));   // auto : jusqu'à 8 plans (~2 s chacun)
+    const want=(clipPlanCount!=='auto')? Math.min(24,+clipPlanCount) : auto;
+    const n=Math.max(1, Math.min(want, Math.max(1, Math.floor(D/0.6))));  // jamais plus que la durée ne permet (~0,6 s mini par plan)
     clip.seeks=Array.from({length:n},(_,i)=> (i+0.15)*(D/n));
     makeThumbs(clip, ()=>{ autoAssign(); renderClips(); drawTimeline(); });
     if(!meta.skipUpload) toast(file.name.slice(0,24)+' → '+n+' plans proposés, placés sur le beat 🎲');
@@ -2027,8 +2386,10 @@ function copySelWords(){
   if(!selWords.size||!M||!M.words) return;
   const idx=[...selWords].sort((a,b)=>a-b).filter(i=>M.words[i]);
   if(!idx.length) return;
-  const base=M.words[idx[0]].start;
-  wordClip=idx.map(i=>({text:M.words[i].text, ds:M.words[i].start-base, de:M.words[i].end-base, hardEnd:!!M.words[i].hardEnd}));
+  // référence = le mot le PLUS TÔT dans le temps (pas le plus petit index) → écarts toujours ≥ 0
+  const base=Math.min(...idx.map(i=>M.words[i].start));
+  wordClip=idx.map(i=>({text:M.words[i].text, ds:M.words[i].start-base, de:M.words[i].end-base, hardEnd:!!M.words[i].hardEnd}))
+              .sort((a,b)=>a.ds-b.ds);
   syncSel();
   toast(idx.length+' mot'+(idx.length>1?'s':'')+' copié'+(idx.length>1?'s':'')+' — place le curseur de lecture et colle 📋');
 }
@@ -2036,7 +2397,9 @@ function pasteWords(){
   if(!wordClip||!wordClip.length||!M) return;
   pushHistory();
   if(!M.words) M.words=[];
-  let base=Math.max(ext.start, Math.min(curTime(), ext.start+ext.dur-0.1));
+  // le GROUPE entier doit tenir dans l'extrait : on recule le point de collage si besoin (pas d'empilement)
+  const span=Math.max(...wordClip.map(w=>w.de));
+  let base=Math.max(ext.start, Math.min(curTime(), ext.start+ext.dur-Math.min(span,ext.dur)));
   const added=wordClip.map(w=>{
     const s=Math.max(ext.start, Math.min(base+w.ds, ext.start+ext.dur-0.06));
     const e=Math.max(s+0.06, Math.min(base+w.de, ext.start+ext.dur));
@@ -2201,14 +2564,18 @@ $('#xShadow').oninput=e=>{style.shadow=+e.target.value;dirty();};
 $('#xSpacing').oninput=e=>{style.spacing=+e.target.value;dirty();};
 $('#xRot').oninput=e=>{style.rot=+e.target.value;dirty();};
 $('#xScan').onchange=e=>{style.scan=e.target.checked;dirty();};
-[['xvFlash','flash'],['xvZoom','zoom'],['xvShake','shake'],['xvGlitch','glitch'],['xvVHS','vhs'],['xvGrain','grain']].forEach(function(cfg){
+$('#xInvert').onchange=e=>{style.invert=e.target.checked;dirty();};
+[['xvFlash','flash'],['xvZoom','zoom'],['xvShake','shake'],['xvGlitch','glitch'],['xvVHS','vhs'],['xvGrain','grain'],['xvSat','sat'],['xvGlow','glow'],['xvDrift','drift'],['xvFish','fisheye']].forEach(function(cfg){
   $('#'+cfg[0]).onchange=e=>{ if(!M)return; M.fx=M.fx||{}; M.fx[cfg[1]]=e.target.checked; dirty(); };
 });
 function syncFx(){
   const fx=(M&&M.fx)||{};
-  [['xvFlash','flash'],['xvZoom','zoom'],['xvShake','shake'],['xvGlitch','glitch'],['xvVHS','vhs'],['xvGrain','grain']].forEach(function(cfg){
+  [['xvFlash','flash'],['xvZoom','zoom'],['xvShake','shake'],['xvGlitch','glitch'],['xvVHS','vhs'],['xvGrain','grain'],['xvSat','sat'],['xvGlow','glow'],['xvDrift','drift'],['xvFish','fisheye']].forEach(function(cfg){
     const el=$('#'+cfg[0]); if(el) el.checked=!!fx[cfg[1]];
   });
+  const inv=$('#xInvert'); if(inv) inv.checked=!!(style&&style.invert);
+  const nb=$('#noCutsBtn'); if(nb) nb.textContent=T((M&&M.noCuts)?'🎬 Sans coupes : ON':'🎬 Sans coupes : OFF');
+  syncClipCountUI();
 }
 $('#xBox').onchange=e=>{style.box=e.target.checked;dirty();};
 $$('.subtabs button').forEach(b=>b.onclick=()=>{
@@ -2652,6 +3019,35 @@ function drawLyricBlock(c,t,W,H){
     c.restore();
   }
 }
+let _fishA=null,_fishB=null;
+function applyFisheye(cv,c,W,H){
+  if(!_fishA||_fishA.width!==W||_fishA.height!==H){
+    _fishA=document.createElement('canvas'); _fishA.width=W; _fishA.height=H;
+    _fishB=document.createElement('canvas'); _fishB.width=W; _fishB.height=H;
+  }
+  const a=_fishA.getContext('2d'), b=_fishB.getContext('2d');
+  const N=48, k=0.14;
+  // passe 1 : colonnes → bombement vertical
+  a.clearRect(0,0,W,H); a.drawImage(cv,0,0);
+  for(let i=0;i<N;i++){
+    const u=(i+0.5)/N-0.5, s=1+k*(1-4*u*u);
+    const sx=Math.floor(i*W/N), sw=Math.ceil(W/N);
+    const dh=H*s;
+    c.drawImage(_fishA, sx,0,sw,H, sx,(H-dh)/2,sw,dh);
+  }
+  // passe 2 : lignes → bombement horizontal
+  b.clearRect(0,0,W,H); b.drawImage(cv,0,0);
+  for(let i=0;i<N;i++){
+    const u=(i+0.5)/N-0.5, s=1+k*(1-4*u*u);
+    const sy=Math.floor(i*H/N), sh=Math.ceil(H/N);
+    const dw=W*s;
+    c.drawImage(_fishB, 0,sy,W,sh, (W-dw)/2,sy,dw,sh);
+  }
+  // zoom léger pour masquer les bords compressés
+  a.clearRect(0,0,W,H); a.drawImage(cv,0,0);
+  const z=1+k*0.55;
+  c.drawImage(_fishA, (W-W*z)/2,(H-H*z)/2, W*z,H*z);
+}
 let noiseCv=null;
 function getNoise(){
   if(noiseCv)return noiseCv;
@@ -2670,12 +3066,20 @@ function drawPreview(t, cvOverride){
   const cutAge=plan? Math.max(0,t-plan.start) : 99;
   c.fillStyle='#0B0E12'; c.fillRect(0,0,W,H);
   // --- transformation punch/secousse sur le fond ---
-  let sc=1,dx=0,dy=0;
+  let sc=1,dx=0,dy=0,rot=0;
   if(fx.zoom) sc=1+0.10*Math.max(0,1-cutAge*5);
   if(fx.shake){ const m=H*0.012*Math.max(0,1-cutAge*7); dx=Math.sin(t*93.7)*m; dy=Math.cos(t*57.3)*m; }
+  if(fx.drift){ // caméra portée : dérive lente multi-fréquence + micro-rotation (façon CapCut « légèrement instable »)
+    dx+=(Math.sin(t*1.31)+0.5*Math.sin(t*2.7+1.3))*H*0.004;
+    dy+=(Math.cos(t*0.97)+0.5*Math.sin(t*2.1+0.4))*H*0.004;
+    rot=Math.sin(t*0.73)*0.006+Math.sin(t*1.9+2)*0.003;
+    sc*=1.015; // léger zoom pour que la dérive ne montre jamais les bords
+  }
   c.save();
-  if(sc!==1||dx||dy){ c.translate(W/2+dx,H/2+dy); c.scale(sc,sc); c.translate(-W/2,-H/2); }
+  if(sc!==1||dx||dy||rot){ c.translate(W/2+dx,H/2+dy); if(rot)c.rotate(rot); c.scale(sc,sc); c.translate(-W/2,-H/2); }
   let drewMedia=false;
+  const canFilter=(typeof c.filter==='string');
+  if(fx.sat&&canFilter) c.filter='saturate(1.42) contrast(1.06) brightness(1.02)';
   if(plan&&plan.clip!==null&&clips[plan.clip]){
     const cl=clips[plan.clip];
     const target=(plan.seek||0)+(t-plan.start);
@@ -2708,7 +3112,18 @@ function drawPreview(t, cvOverride){
     const g=c.createLinearGradient(0,0,0,H); g.addColorStop(0,'#141A22'); g.addColorStop(1,'#0B0E12');
     c.fillStyle=g; c.fillRect(0,0,W,H);
   }
+  if(fx.sat&&canFilter) c.filter='none';
   c.restore();
+  // --- glow : halo lumineux (bloom) sur l'image ---
+  if(fx.glow){
+    c.save();
+    if(canFilter) c.filter='blur('+Math.max(2,Math.round(H*0.011))+'px) brightness(1.15)';
+    c.globalCompositeOperation='lighter'; c.globalAlpha=0.24;
+    c.drawImage(cv,0,0,W,H);
+    c.restore();
+  }
+  // --- fisheye léger : bombement type objectif large (le texte reste droit, ajouté après) ---
+  if(fx.fisheye) applyFisheye(cv,c,W,H);
   // --- glitch : tranches décalées juste après la coupure ---
   if(fx.glitch&&plan&&cutAge<0.14){
     for(let i=0;i<4;i++){
@@ -2716,7 +3131,8 @@ function drawPreview(t, cvOverride){
       c.drawImage(cv, 0,y,W,hh, off,y,W,hh);
     }
   }
-  drawLyricBlock(c,t,W,H);
+  if(style&&style.invert){ c.save(); c.globalCompositeOperation='difference'; drawLyricBlock(c,t,W,H); c.restore(); }
+  else drawLyricBlock(c,t,W,H);
   // --- VHS : lignes d'écran + bande parasite occasionnelle ---
   if(fx.vhs){
     c.save(); c.globalAlpha=0.10; c.fillStyle='#000';
@@ -2907,6 +3323,7 @@ document.addEventListener('keydown',e=>{
 let exporting=false;
 /* ---------- EXPORT — dispatcher : offline (image par image, qualité garantie) sinon temps réel ---------- */
 async function exportVideo(nameSuffix){
+  if(IN_WEBVIEW){ toast('⚠ Le navigateur TikTok/Instagram bloque le téléchargement — ouvre beat-cut.com dans Chrome ou Safari (menu ⋯ → Ouvrir dans le navigateur). Rien n\u2019a été décompté.'); return false; }
   if(exporting){ toast('Un export est déjà en cours — attends la fin'); return false; }
   if(!buffer){toast('Dépose d\u2019abord ton morceau');return false;}
   if(clipsExportBlocking()){ toast('⏳ Une vidéo utilisée dans le montage n\u2019est pas encore lisible — quelques secondes…'); return false; }
@@ -2920,6 +3337,9 @@ async function exportVideo(nameSuffix){
   }
   // 1) Plan + quota côté serveur AVANT (source de vérité)
   await API.refreshQuota();
+  if(API.plan!=='pro' && (API.quota.left-dlPendingCount())<=0){
+    if(dlPendingCount()>0){ toast('Télécharge d\u2019abord ta vidéo prête (fenêtre ✓) — elle utilise ton quota restant'); renderDownloadModal(true); return false; }
+  }
   if(API.plan!=='pro' && API.quota.left<=0){
     toast(API.plan==='free'
       ? 'Ton export découverte est utilisé — Basic : 10 vidéos/mois pour 6,99 €'
@@ -3074,9 +3494,7 @@ async function exportOffline(nameSuffix, mode='full'){
       const fd=new FormData();
       fd.append('video', blob, 'v.mp4');
       fd.append('audio', extractWavStereoBlob(ext.start, ext.dur), 'a.wav');
-      const r=await fetch('/api/export/finalize',{method:'POST',credentials:'include',body:fd});
-      if(!r.ok) throw new Error('assemblage du son impossible (HTTP '+r.status+')');
-      blob=await r.blob();
+      blob=await uploadFinalize(fd);
     }
     if(blob.size<20000) throw new Error('fichier vide');
     // télémétrie : permet de suivre la santé des exports (mode audio réellement utilisé)
@@ -3085,14 +3503,10 @@ async function exportOffline(nameSuffix, mode='full'){
         body:JSON.stringify({mode, server_audio:usedServerAudio, audio_chunks:audioChunks, aenc_err:(aencErr&&String(aencErr.message||aencErr))||null,
           build:BC_BUILD, src_peak:Math.round(srcPeak*1000)/1000, size:blob.size, ua:navigator.userAgent})}).catch(()=>{});
     }catch(e){}
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=(M.title||'beatcut')+(nameSuffix||'')+'.mp4'; a.click();
-    // NE DÉCOMPTER qu'après un export réellement réussi (serveur = vérité)
-    fetch('/api/export/register',{method:'POST',credentials:'include'}).then(()=>API.refreshQuota()).catch(()=>{});
-    if(API.plan!=='pro' && API.quota.left>0) API.quota.left--;
-    DB.exports++; M.videos=(M.videos||0)+1; dirty(); updateQuotaUI();
     cleanup();
-    toast('Vidéo exportée en '+W+'×'+H+' ✓ · son : '+(usedServerAudio?'assemblé par le serveur':'direct')+' · '+BC_BUILD);
+    // Le téléchargement N'EST PLUS automatique (bloqué par iOS/webviews après un long export) :
+    // la fenêtre « Vidéo prête » attend le clic — et le quota n'est décompté qu'à ce moment-là.
+    showDownloadModal(blob,(M.title||'beatcut')+(nameSuffix||'')+'.mp4',{W,H,usedServerAudio});
     return true;
   }catch(e){
     cleanup();
@@ -3291,7 +3705,7 @@ async function exportKept(){
   M.style=origStyle; M.plans=origPlans;
   if(origStyle) style=Object.assign({},origStyle);
   dirty();
-  if(done===list.length) toast('🎉 '+done+' vidéo(s) exportée(s) — prêtes à poster !');
+  if(done===list.length) toast('🎉 '+done+' vidéo(s) prête(s) — télécharge-les dans la fenêtre ✓');
 }
 
 /* ---------- Popover de plan (coupes par temps + verrou) ---------- */
@@ -3430,6 +3844,8 @@ async function deleteMorceau(id, title){
 
 /* ---------- Boot ---------- */
 route();
+applyLang();
+webviewBanner();
 API.init().then(()=>{
   if(!API.user){
     // Pas de session : le studio est derrière /studio (route protégée) — on renvoie au login
@@ -3441,6 +3857,7 @@ API.init().then(()=>{
 // Protège l'upload audio en cours (fermeture d'onglet = morceau sans son)
 window.addEventListener('beforeunload', e=>{
   if(M && M._uploadingAudio){ e.preventDefault(); e.returnValue='Sauvegarde du son en cours…'; }
+  else if(exporting || dlPendingCount()>0){ e.preventDefault(); e.returnValue='Une vidéo est en cours ou pas encore téléchargée…'; }
 });
 // Exposé pour les tests E2E
 window.API=API; window.DBref=()=>DB;

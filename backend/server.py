@@ -656,6 +656,38 @@ async def admin_unsupported_browsers(user: dict = Depends(get_current_user)):
     return {"total": total, "last_30d": last_30d, "samples": samples}
 
 
+@api_router.post("/telemetry/webview")
+async def log_webview_detected(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    ua = str(body.get("ua") or request.headers.get("User-Agent") or "")[:500]
+    user_id = None
+    try:
+        user = await get_current_user(request)
+        user_id = user.get("user_id")
+    except HTTPException:
+        pass
+    await db.webview_logs.insert_one({
+        "user_id": user_id,
+        "ua": ua,
+        "build": str(body.get("build") or "")[:50],
+        "created_at": iso(now_utc()),
+    })
+    return {"ok": True}
+
+
+@api_router.get("/admin/telemetry/webview")
+async def admin_webview_logs(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    total = await db.webview_logs.count_documents({})
+    cutoff = iso(now_utc() - timedelta(days=30))
+    last_30d = await db.webview_logs.count_documents({"created_at": {"$gt": cutoff}})
+    samples = await db.webview_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    return {"total": total, "last_30d": last_30d, "samples": samples}
+
+
 @api_router.post("/telemetry/export")
 async def log_export_telemetry(request: Request, user: dict = Depends(get_current_user)):
     try:

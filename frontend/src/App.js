@@ -13,6 +13,10 @@ import Dashboard from "@/pages/Dashboard";
 import Studio from "@/pages/Studio";
 import Projects from "@/pages/Projects";
 import Admin from "@/pages/Admin";
+import CGV from "@/pages/legal/CGV";
+import Confidentialite from "@/pages/legal/Confidentialite";
+import MentionsLegales from "@/pages/legal/MentionsLegales";
+import Contact from "@/pages/legal/Contact";
 
 function AppRouter() {
   // Lien affilié : beat-cut.com/?promo=CODE → valable pour la session en cours uniquement
@@ -34,6 +38,10 @@ function AppRouter() {
       <Route path="/register" element={<AuthPage />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/cgv" element={<CGV />} />
+      <Route path="/confidentialite" element={<Confidentialite />} />
+      <Route path="/mentions-legales" element={<MentionsLegales />} />
+      <Route path="/contact" element={<Contact />} />
       <Route
         path="/dashboard"
         element={

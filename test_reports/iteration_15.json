@@ -1,0 +1,79 @@
+{
+  "summary": "Iter15 V3 deployment testing (backend + frontend). Backend: 7/8 tests PASS in test_telemetry_webview_iter15.py — new /api/telemetry/webview (no auth, 200 ok:true) + /api/admin/telemetry/webview (admin 200 with samples containing 'test-webview-ua', non-admin 403, no auth 401) all validated. Frontend: landing.html served at / with CTA target=_top → /login OK; 4 legal pages (/cgv /confidentialite /mentions-legales /contact) load with correct data-testids + Navbar/Footer + mailto:jules.beatcut@gmail.com; footer legal links present on all pages; login demo → dashboard OK; new DA (dark #0B0E13, red gradient buttons, Archivo Black uppercase titles) applied consistently. Studio v3 iframe loads at /studio and /studio?project=d51b835aa74548 — FR/EN toggle #langBtn works and persists after reload, multi-select helpers (copySelWords, pasteWords, deleteSelWords) defined, #wordSelBar present, 'Shots per video' (Plans par vidéo) slider visible, '🎬 No cuts: OFF' button present in timeline. One MAJOR discovered issue: demo@beatcut.fr subscription is EXPIRED (current_period_end=2026-07-24 < today 2026-07-27) so /api/subscription returns tier=free — dashboard displays 'GRATUIT' instead of 'BASIC' as claimed by review request and /app/memory/test_credentials.md.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "seed demo@beatcut.fr subscription",
+        "issue": "Demo user subscription is expired in DB (subscription.current_period_end='2026-07-24' vs today='2026-07-27'). Contract with test_credentials.md says demo must be BASIC active. /api/subscription now returns {tier:'free', plan:null, status:null} and Dashboard shows 'GRATUIT'. Fix: seed logic should refresh demo's current_period_end (e.g. set +30d on every startup) OR mark subscription.plan='basic' + status='active' + rolling period."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Contact page — 'Copier' button",
+        "issue": "The copy-email button on /contact appears visually cut/truncated: only the icon is visible inside the red pill; the 'Copier' label seems hidden or overflowing. Not blocking (email link works via mailto) but visually broken.",
+        "selector": "/contact page red pill button under jules.beatcut@gmail.com",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "regression_checks": {
+    "backend": {
+      "POST /api/telemetry/webview no-auth": "PASS 200 {ok:true}",
+      "POST /api/telemetry/webview empty body": "PASS 200",
+      "GET /api/admin/telemetry/webview admin": "PASS 200 (total>=1, samples contain test-webview-ua)",
+      "GET /api/admin/telemetry/webview demo": "PASS 403",
+      "GET /api/admin/telemetry/webview no-auth": "PASS 401",
+      "POST /api/auth/login demo + GET /api/auth/me": "PASS",
+      "GET /api/subscription demo": "FAIL (returns free instead of basic — seed data expired)",
+      "GET /api/projects demo (fixture d51b835aa74548 present)": "PASS"
+    },
+    "frontend": {
+      "GET / (landing.html iframe)": "PASS",
+      "landing CTAs target=_top → /login": "PASS (8 anchors, target=_top on all /login CTAs)",
+      "/cgv /confidentialite /mentions-legales /contact data-testids": "PASS (cgv-page, confidentialite-page, mentions-page, contact-page)",
+      "footer-cgv-link / footer-privacy-link / footer-mentions-link / footer-contact-link": "PASS (present on all tested pages including /contact)",
+      "contact-email-link mailto:jules.beatcut@gmail.com": "PASS",
+      "login demo → dashboard": "PASS",
+      "dashboard renders DA (dark bg, red gradient, uppercase Archivo Black titles)": "PASS",
+      "/studio iframe loads": "PASS (studio.html served, title 'BeatCut — Your sound. A month of videos.')",
+      "studio nav (Home/My tracks/Video batch — Accueil/Mes morceaux/Série de vidéos)": "PASS",
+      "studio FR/EN toggle (#langBtn) + persistence after reload": "PASS",
+      "studio /studio?project=d51b835aa74548 editor loads (timeline, wordSelBar, helpers)": "PASS",
+      "studio 'Shots per video' (Plans par vidéo) slider present": "PASS",
+      "studio '🎬 No cuts' button in timeline": "PASS (label 'No cuts: OFF')"
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_telemetry_webview_iter15.py",
+    "/app/test_reports/pytest/iter15_telemetry.xml"
+  ],
+  "action_items": [
+    "Fix demo@beatcut.fr subscription seed: current_period_end is in the past → user is now FREE, contradicts /app/memory/test_credentials.md and the review request ('/dashboard affiche l'abonnement BASIC du demo'). Either seed with rolling +30d period or set subscription.plan='basic' with never-expiring current_period_end for the demo account.",
+    "Fix visual truncation of the 'Copier' button on /contact page (label seems clipped inside the red pill — only icon visible)."
+  ],
+  "critical_code_review_comments": [
+    "landing.html iframe onLoad handler correctly patches a[href^='/'] target=_top so landing CTAs escape the iframe — verified working. All /login CTAs have target=_top.",
+    "POST /api/telemetry/webview is public (no auth) as required; anti-abuse relies on 500-char UA truncation + 50-char build truncation which is fine. Admin GET properly gated by require_admin(user).",
+    "studio.html (v3) is 3867 lines but is a delivered founder file — not to be modified per review request.",
+    "Landing.js uses BUST=Date.now() at module scope: guarantees cache-bust once per page-load, good. However every dashboard→landing navigation reloads the iframe with a fresh timestamp — acceptable but slightly wasteful; could use build-hash env var instead.",
+    "Demo user subscription is stored as raw object without plan field — /api/subscription line 217 computes tier from active flag: this design silently degrades expired subs to 'free' which is correct behavior, so the bug is in the SEED, not the endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_telemetry_webview_iter15.py"
+  ],
+  "success_rate": {
+    "backend": "87.5% (7/8 — the failing test reflects a real seed-data bug, not a code regression)",
+    "frontend": "95% (all critical flows pass; one minor visual bug on Contact copy button)"
+  },
+  "test_credentials": "demo@beatcut.fr / Demo1234! (loaded from creds.py via backend/.env). Admin: julesfar17@gmail.com / Carnageproduction1704*.",
+  "seed_data_creation": "None. Existing telemetry sample 'test-webview-ua' was already present from previous runs; my tests added 'test-webview-ua-iter15' entries which persist in webview_logs (harmless).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Studio v3 is a delivered file, DO NOT modify. Landing and Studio are inside iframes (data-testid landing-iframe / studio-iframe) — use page.frames and select by URL substring 'landing.html' / 'studio.html'. Studio lang button is #langBtn (text is target lang: shows 'EN' when current lang=FR and vice-versa). Multi-select word helpers live on the studio iframe's window as global functions. Demo user's subscription CURRENTLY EXPIRED in DB — dashboard shows GRATUIT until main agent re-seeds. Reusable test file: /app/backend/tests/test_telemetry_webview_iter15.py.",
+  "rca of the issue": "Demo BASIC-plan regression: seed_user() only creates the user record; subscription block was seeded once (started_at=2026-07-22, current_period_end=2026-07-24) and is now expired because pod clock advanced to 2026-07-27. get_subscription() at server.py:217 correctly returns tier='free' when subscription is not active. Fix: in startup seed, if demo user exists, refresh subscription.current_period_end to now_utc()+30d and set subscription.plan='basic'."
+}
