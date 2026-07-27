@@ -5,6 +5,9 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import shutil
+import sys
+import tempfile
 import uuid
 import logging
 import bcrypt
@@ -1551,7 +1554,6 @@ MAX_MEDIA_SIZE = 300_000_000  # 300 Mo par fichier (les vidéos iPhone 4K dépas
 
 # --- Transcodage vidéo (H.264 1080p, keyframes 0.5s, AAC, faststart) -------
 import re as _re
-import tempfile
 import imageio_ffmpeg
 
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
@@ -1837,6 +1839,97 @@ async def media_import_url(payload: dict, user: dict = Depends(get_current_user)
     if r.status_code != 200 or not r.content:
         raise HTTPException(status_code=502, detail="Clip indisponible — réessaie")
     return await _store_media(user, r.content, name, r.headers.get("content-type") or "video/mp4")
+
+
+IMPORT_LINK_JOBS: dict = {}
+
+
+def _link_host_ok(url: str) -> bool:
+    from urllib.parse import urlparse
+    import ipaddress
+    try:
+        p = urlparse(url)
+        if p.scheme not in ("http", "https") or not p.hostname:
+            return False
+        host = p.hostname.lower()
+        if host in ("localhost",) or host.endswith(".local") or host.endswith(".internal"):
+            return False
+        try:
+            if ipaddress.ip_address(host).is_private or ipaddress.ip_address(host).is_loopback:
+                return False
+        except ValueError:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+async def _run_import_link(job_id: str, url: str, user: dict):
+    job = IMPORT_LINK_JOBS[job_id]
+    tmpdir = tempfile.mkdtemp(prefix="bc_link_")
+    try:
+        job["status"] = "downloading"
+        import nodejs_wheel
+        import imageio_ffmpeg
+        node_bin = os.path.join(os.path.dirname(nodejs_wheel.__file__), "bin", "node")
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "yt_dlp",
+            "--js-runtimes", f"node:{node_bin}",
+            "--ffmpeg-location", imageio_ffmpeg.get_ffmpeg_exe(),
+            "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+            "--merge-output-format", "mp4", "--max-filesize", "78M",
+            "--no-playlist", "--restrict-filenames", "--no-progress",
+            "-o", os.path.join(tmpdir, "%(title).60s.%(ext)s"), url,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=240)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise RuntimeError("Téléchargement trop long — vidéo trop lourde ?")
+        files = [f for f in os.listdir(tmpdir) if not f.endswith((".part", ".ytdl"))]
+        if proc.returncode != 0 or not files:
+            msg = (err or b"").decode(errors="ignore")[-500:]
+            if "max-filesize" in msg or "File is larger" in msg:
+                raise RuntimeError("Vidéo trop lourde (max ~78 Mo) — choisis une vidéo plus courte")
+            logger.warning("yt-dlp échec %s : %s", url[:80], msg)
+            if "youtube" in url.lower() or "youtu.be" in url.lower():
+                raise RuntimeError("YouTube bloque parfois les téléchargements depuis nos serveurs — réessaie, ou utilise un lien TikTok/Vimeo/.mp4 direct, ou télécharge la vidéo puis dépose le fichier")
+            raise RuntimeError("Lien non téléchargeable — vérifie qu'il pointe vers une vidéo publique")
+        path = os.path.join(tmpdir, files[0])
+        with open(path, "rb") as fh:
+            content = fh.read()
+        job["status"] = "storing"
+        stored = await _store_media(user, content, files[0], "video/mp4")
+        job.update({"status": "done", "media_id": stored["media_id"], "filename": files[0]})
+    except HTTPException as e:
+        job.update({"status": "error", "error": e.detail})
+    except Exception as e:
+        job.update({"status": "error", "error": str(e)[:200]})
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@api_router.post("/media/import-link")
+async def media_import_link(payload: dict, user: dict = Depends(get_current_user)):
+    """Import d'une vidéo par lien (YouTube & co) via yt-dlp, en tâche de fond."""
+    url = (payload.get("url") or "").strip()
+    if not _link_host_ok(url):
+        raise HTTPException(status_code=400, detail="Lien invalide — colle une URL https vers une vidéo")
+    if len(IMPORT_LINK_JOBS) > 500:
+        IMPORT_LINK_JOBS.clear()
+    job_id = uuid.uuid4().hex[:16]
+    IMPORT_LINK_JOBS[job_id] = {"status": "queued", "user_id": user["user_id"]}
+    asyncio.create_task(_run_import_link(job_id, url, user))
+    return {"job_id": job_id}
+
+
+@api_router.get("/media/import-link/{job_id}")
+async def media_import_link_status(job_id: str, user: dict = Depends(get_current_user)):
+    job = IMPORT_LINK_JOBS.get(job_id)
+    if not job or job.get("user_id") != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Import introuvable")
+    return {k: v for k, v in job.items() if k != "user_id"}
 
 
 @api_router.get("/media/mine")
