@@ -462,3 +462,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - 2 nouvelles animations mots : Zoom + Secousse (boutons #fAnim, i18n EN OK) ; nouveau prop style.grad (createLinearGradient dans drawLyricBlock, reset {grad:false} à chaque changement de preset)
 - ✅ Testé iteration_16 : 15/15 assertions PASS (contact e2e, logos, 20 presets, anims, dégradé, série, i18n)
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Terminé (7 août 2026) — §2-A Télémétrie des aperçus (cahier des charges)
+- Studio : objet TEL (session_id, batching 25 events / flush 20s / sendBeacon à la fermeture) + 4 sondes : preview_stall (même frame >500ms en lecture, dédupliqué par épisode, avec plan/clip/codec/wcReady/queue/buffered), frame_miss (repli vignette en lecture, throttle 1/s), decoder_error (SegPlayer._telErr : callback error + catch decode + codec non supporté), clip_not_ready (play() pendant optimisation Mux, 2 emplacements)
+- Backend : POST /api/telemetry/preview (public, whitelist des champs, cap 100 events/batch) → collection preview_logs ; GET /api/admin/telemetry/preview?days=N (admin) : % sessions gelées, par cause/navigateur (_browser_family)/taille projet (buckets)/codec + samples
+- Admin : panneau « Télémétrie aperçus (§2) » dans /admin (PreviewTelemetryAdmin.js, sélecteur 3/7/30 jours)
+- ✅ Testé iteration_17 : backend 8/8, frontend 11/11
+- PROCHAINES ÉTAPES CdC : §2-B classifier après 3-5 jours de données réelles en prod (rapport % par cause) → §2-C corriger UNIQUEMENT la cause dominante. Validation : -80% de preview_stall sur la cause traitée
+- ⚠️ REDÉPLOIEMENT nécessaire (les données ne se collectent qu'en prod)
