@@ -479,3 +479,10 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ⚠ LIMITATION CONNUE : YouTube bloque souvent les IP datacenter (403) → message d'erreur explicite ; TikTok/Vimeo/.mp4 directs fonctionnent (Vimeo + mp4 validés E2E)
 - ✅ Testé iteration_18 : backend 8/8, frontend 100% (CSS, UI lien, série variantes/aperçu, buildZip, régressions)
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Corrigé (28 juillet 2026) — Export série bloqué après vidéo 1 + barre unique + retrait import lien
+- CAUSE : exportVideo(nameSuffix, sink) n'avait PAS transmis sink à exportOffline → ReferenceError 'sink is not defined' à la fin de la vidéo 1 → catch → boucle interrompue. FIX : exportOffline(nameSuffix, mode='full', sink, batch)
+- Barre de progression UNIQUE pour le lot série : 'Export vidéo 2/3 — 45 %' avec % global continu (bLbl/bPct), pas de fermeture entre vidéos (cleanup: aiBar.done() seulement si !batch), aiBar.done() une fois après la création du zip
+- Import par lien RETIRÉ à la demande de l'utilisateur (YouTube bloque les IP datacenter) : champ 🔗 + importClipLink + API.importLink supprimés du studio. Endpoints backend /api/media/import-link conservés (fonctionnels, inutilisés)
+- ✅ Testé iteration_19 : 100% — espion exportOffline : la vidéo 2 EST exportée après la 1 (chaîne complète), zip unique '2 vidéos (.zip)', barre continue, champ lien absent, régressions OK
+- ⚠️ REDÉPLOIEMENT nécessaire
