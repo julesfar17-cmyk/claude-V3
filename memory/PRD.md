@@ -454,3 +454,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Testé iteration_15 (backend 7/8→8/8 après fix seed, frontend 95%→100% après fix bouton) — studio v3 régression complète OK (série, multi-sélection mots, FR/EN persistant)
 - Reste du cahier des charges (prochaines étapes) : §2-A télémétrie aperçus (preview_logs), §2-B KPIs admin previews, §2-C décision serveur de prévisualisation ; §3 plan annuel = DÉJÀ EN PROD
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Terminé (2 août 2026) — Contact landing + logo BEATCUT + nouveaux presets sous-titres
+- FIX : lien 'Contact' du footer landing → /contact (avant : mailto:contact@beat-cut.com) — navigue la fenêtre principale (target=_top)
+- Logo : 'BEATCUT' collé et en majuscules partout (landing header+footer, studio) — cause de l'espace : gap flex entre nœuds texte, corrigé par <span>BEAT<b>CUT</b></span>
+- 8 nouveaux presets sous-titres (studio) : Affiche (Archivo Black + DÉGRADÉ rouge sur texte), Comics (Bangers), Marqueur (Permanent Marker), Manuscrit (Caveat), Pixel (Silkscreen+scanlines), Usé (Rubik Distressed), Étroit (Archivo Narrow), Terminal (JetBrains Mono) → 20 presets, aussi dans Série
+- 2 nouvelles animations mots : Zoom + Secousse (boutons #fAnim, i18n EN OK) ; nouveau prop style.grad (createLinearGradient dans drawLyricBlock, reset {grad:false} à chaque changement de preset)
+- ✅ Testé iteration_16 : 15/15 assertions PASS (contact e2e, logos, 20 presets, anims, dégradé, série, i18n)
+- ⚠️ REDÉPLOIEMENT nécessaire
