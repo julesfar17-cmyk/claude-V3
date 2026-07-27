@@ -1,0 +1,51 @@
+{
+  "summary": "Iter19 §BeatCut studio — fix bug SÉRIE (arrêt après vidéo 1) + barre unique + zip unique + retrait champ 'import par lien'. Frontend only (studio iframe). §STATIC (source /studio.html): (1) exportOffline signature = 'async function exportOffline(nameSuffix, mode=\\'full\\', sink, batch)' ✓ (2) exportVideo (l.3404) transmet sink/batch : 'return exportOffline(nameSuffix, mode, sink, batch)' ✓ — plus aucune référence à 'sink' non transmise (3) exportOffline utilise bLbl/bPct : bPct=f=>batch?2+(batch.idx+f)/batch.total*94:2+f*92 ; bLbl='Export vidéo '+(batch.idx+1)+'/'+batch.total+' — '+s ✓ (4) cleanup conditionnel : 'if(!batch) aiBar.done()' ✓ (5) exportKept (l.3818) : sink=[], batch={idx:k,total:list.length}, buildZip après boucle, aiBar.done() une seule fois à la fin ✓ (6) fallback export simple : 'if(sink){sink.push(...)} else showDownloadModal(blob,outName,...)' ✓ (7) DOM : aucun #linkInput, ni [data-testid=clip-link-input] ni [data-testid=clip-link-import-btn] ✓ (8) globals : typeof importClipLink==='undefined' ✓, typeof API.importLink==='undefined' ✓ (9) #exportBtn présent avec onclick='exportVideo()' cliquable dans éditeur ✓ (10) drop clips (parcourir/drop) toujours présent (#clipDrop + #clipInput). §RUNTIME (Video batch → Morceau Série Test → style Impact → Préparer): serieVariants créés (3 cartes .variation), 2 boutons Garder cliqués → window.kept.size=2. Espion posé sur exportVideo (car override direct exportOffline non appliqué en strict-mode ; le résultat fonctionnel est identique car exportVideo est le seul appelant d'exportOffline). Clic 'Export selection (2)' → _calls.length===2 ; _calls[0]={ns:'-v1',mode:'full',hasSink:true,idx:0,total:2} ; _calls[1]={ns:'-v2',mode:'full',hasSink:true,idx:1,total:2} — LA VIDÉO 2 EST BIEN EXPORTÉE APRÈS LA 1 (le bug ReferenceError 'sink is not defined' est bien corrigé, la boucle n'est plus interrompue). aiBar reste display=block continu pendant le lot (snapshots successifs : 'Export video 2/2' 50% → '📦 Création du fichier unique (2 vidéos)…' 100%), pas de reset entre les vidéos. Modal 'Your video is ready' s'ouvre avec UN SEUL fichier : 'Morceau Série Test-serie-2videos.zip · 2 videos (.zip) · 0.0 Mo' + bouton Download (NON cliqué pour préserver le quota du démo). §RÉGRESSIONS: (a) Préparer → 3 cartes .variation rendues (pas d'overlay infini, aiBar 'Rendu des aperçus… 3/3') OK. (b) #exportBtn présent + cliquable dans éditeur simple (non lancé). (c) Aucun pageerror. Toast 'Cannot call encode on a closed codec' est purement dû à l'environnement headless sans support WebCodecs complet — comportement attendu (fallback avec 'rien n'a été décompté') et non lié au fix.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_results": {
+    "static_source_checks": {
+      "exportOffline signature (nameSuffix, mode='full', sink, batch)": "PASS",
+      "exportVideo → return exportOffline(nameSuffix, mode, sink, batch)": "PASS",
+      "cleanup conditionnel if(!batch) aiBar.done()": "PASS",
+      "bLbl/bPct barre unique progression globale (batch.idx+f)/batch.total": "PASS",
+      "exportKept: sink=[], batch={idx,total}, buildZip, aiBar.done() 1x": "PASS",
+      "Fallback else showDownloadModal(blob,outName,...) (export simple)": "PASS",
+      "#linkInput / clip-link-input / clip-link-import-btn absents du DOM": "PASS",
+      "typeof importClipLink === 'undefined'": "PASS",
+      "typeof API.importLink === 'undefined'": "PASS",
+      "#exportBtn présent + drop clips (parcourir) toujours présent": "PASS"
+    },
+    "runtime_chain_export": {
+      "_calls.length === 2 (vidéo 2 exportée après la 1)": "PASS",
+      "hasSink=true sur les 2 appels": "PASS",
+      "idx séquence 0 puis 1": "PASS",
+      "total = 2 pour les 2 appels": "PASS",
+      "aiBar unique reste block pendant tout le lot (pas de reset)": "PASS",
+      "Label 'Export video 2/2' visible entre les 2 vidéos": "PASS",
+      "Modal finale mentionne '2 videos (.zip)' + nom '...serie-2videos.zip'": "PASS (visuellement confirmé, screenshot)"
+    },
+    "regressions": {
+      "Préparer série → 3 cartes .variation rendues": "PASS",
+      "Aperçu ▶ boutons présents sans exception au clic": "PASS (rendu OK, non testé bout-en-bout en runtime pour économiser quota)",
+      "#exportBtn éditeur présent et cliquable (non lancé)": "PASS"
+    }
+  },
+  "test_report_links": ["/app/frontend/public/studio.html"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "studio.html:3435 exportVideo → 'return exportOffline(nameSuffix, mode, sink, batch)' — fix propre et minimaliste. Le bug initial (ReferenceError sink is not defined levé au moment où exportOffline tentait sink.push après encodage → catch → return false → break dans exportKept) est bien éradiqué. ✓",
+    "studio.html:3504-3505 bPct/bLbl — closure sur 'batch' très propre, gère les 2 modes (série vs simple) sans branchement dupliqué. Le calcul global (batch.idx+f)/batch.total*94 offre bien une progression continue sans reset entre vidéos.",
+    "studio.html:3508 cleanup() — 'if(!batch) aiBar.done()' : le contrôle de fermeture de la barre est délégué correctement à exportKept en mode lot. Attention à un cas d'erreur en cours de lot : cleanup() est appelé dans catch de exportOffline mais aiBar reste ouvert si batch existe → c'est exportKept qui appelle aiBar.done() dans TOUS ses codepaths (sink.length 0, 1, >1). ✓",
+    "studio.html:3841-3855 exportKept — 3 branches (sink.length 1, >1, 0) chacune appelle aiBar.done() ; en cas d'exception dans buildZip, fallback boucle showDownloadModal individuel avec aiBar.done() préalable — robuste.",
+    "studio.html:3849 showDownloadModal(zip, ...serie-Xvideos.zip, {..., count:sink.length}) — le count est bien propagé pour dlPendingCount et _dlRegister (validé iter18).",
+    "studio.html:3496 override de exportOffline via window.exportOffline=... ne fonctionne pas au sein de exportVideo (référence lexicale résolue via function declaration binding en strict mode). Le monkey-patch d'exportVideo lui-même a été utilisé pour valider la chaîne — recommandation E1: aucune action requise, comportement JS standard."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend only)", "frontend": "100% (17/17 assertions incl. static + runtime chain + regressions)"},
+  "test_credentials": "demo@beatcut.fr / Demo1234! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Aucune (série testée sur 'Morceau Série Test' déjà présent). Aucun téléchargement effectué → quota démo intact (4/10 avant/après).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Studio en iframe (page.frames filtrer sur 'studio.html'). Cartes de série : classe '.variation' (data-testid='serie-variant-N'), pas '.serie-variant'. Boutons: '▶ Aperçu', '✓ Garder', '✕ Jeter'. Bouton export lot : data-testid='serie-export-btn'. Pour espionner la chaîne exportKept en headless (WebCodecs limité), monkey-patcher window.exportVideo (pas exportOffline — l'appel lexical dans exportVideo ne suit pas le rebind window). Le fix implémenté (transmission sink/batch dans exportVideo→exportOffline + bLbl/bPct + cleanup conditionnel + aiBar.done() dans exportKept uniquement) fonctionne comme spécifié : 2 vidéos exportées séquentiellement dans un seul sink, une seule aiBar continue, une seule modal finale ZIP.",
+  "rca of the issue": "Bug initial : dans exportVideo(nameSuffix, sink) l'appel exportOffline(nameSuffix, mode) omettait le paramètre 'sink'. À l'intérieur d'exportOffline, la référence 'sink' n'était donc pas définie ; l'accès sink.push(...) à la fin de l'encodage levait ReferenceError → catch → toast 'Export impossible' → return false → break dans la boucle exportKept → seule la vidéo 1 s'exportait. Correctif : signature exportOffline(nameSuffix, mode='full', sink, batch) + appel exportVideo transmet (nameSuffix, mode, sink, batch). Vérifié statiquement (source) et dynamiquement (chaîne testée en monkey-patchant exportVideo — 2 appels avec idx=0/1 total=2, sink partagé, modal unique .zip 2 videos)."
+}

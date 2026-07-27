@@ -468,14 +468,6 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
       <div class="drop" id="clipDrop" style="padding:14px 10px"><div><div class="big" style="font-size:13.5px">＋ Ajouter des vidéos</div><span style="font-size:11.5px">Découpées en plans, placées sur le beat</span></div></div>
       <input type="file" id="clipInput" multiple hidden>
       <div class="field" style="margin-top:10px">
-        <label>🔗 Ou colle un lien vidéo (YouTube…)</label>
-        <div style="display:flex;gap:6px;margin-top:4px">
-          <input type="text" id="linkInput" data-testid="clip-link-input" placeholder="https://youtube.com/watch?v=…" style="flex:1">
-          <button class="small" id="linkImportBtn" data-testid="clip-link-import-btn" onclick="importClipLink()">Importer</button>
-        </div>
-        <p class="hint" style="margin-top:4px">YouTube, TikTok, Vimeo, lien .mp4 direct… (max ~78 Mo / 1080p). Utilise uniquement des vidéos dont tu as les droits.</p>
-      </div>
-      <div class="field" style="margin-top:10px">
         <label>Plans par vidéo : <b id="clipCountVal" style="color:var(--accent)">Auto</b></label>
         <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
           <button class="small on" id="clipCountAuto">Auto</button>
@@ -931,22 +923,6 @@ const API = {
     if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||'Import impossible'); }
     return this._pollMedia(await r.json());
   },
-  /* Import par lien (YouTube & co) : le serveur télécharge via yt-dlp, puis on rapatrie le média */
-  async importLink(url, onStatus){
-    const r=await fetch('/api/media/import-link',{method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-    if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.detail||'Import impossible'); }
-    const {job_id}=await r.json();
-    for(let i=0;i<150;i++){
-      await new Promise(rs=>setTimeout(rs,2000));
-      const s=await fetch('/api/media/import-link/'+job_id,{credentials:'include'}).then(x=>x.ok?x.json():null).catch(()=>null);
-      if(!s) continue;
-      if(onStatus) onStatus(s);
-      if(s.status==='done') return s;
-      if(s.status==='error') throw new Error(s.error||'Téléchargement impossible');
-    }
-    throw new Error('Trop long — réessaie avec une vidéo plus courte');
-  },
   async _pollMedia(j){
     if(j.processing){
       for(let i=0;i<150;i++){
@@ -1158,7 +1134,7 @@ const EN={
 "Dépose ton morceau une fois : BeatCut trouve le tempo, cale les plans sur le beat et écrit tes paroles à l'écran. Ensuite, tu crées des vidéos à volonté.":"Drop your track once: BeatCut finds the tempo, snaps shots to the beat and writes your lyrics on screen. Then create as many videos as you want.",
 "＋ Créer une vidéo":"＋ Create a video","Série de vidéos →":"Video batch →","vidéos créées":"videos created","de montage économisées":"of editing saved","exports restants ce mois":"exports left this month","Tout voir":"See all","Bien démarrer":"Getting started","Dépose ton premier morceau":"Drop your first track","Ajoute tes paroles":"Add your lyrics","Choisis un style":"Pick a style","Exporte et poste ta vidéo":"Export and post your video","＋ Nouveau morceau":"＋ New track",
 "Un morceau se règle une fois (extrait, tempo, paroles). Ensuite tu en tires autant de vidéos que tu veux.":"A track is set up once (extract, tempo, lyrics). Then make as many videos from it as you like.",
-"Morceau":"Track","↶ Annuler":"↶ Undo","Enregistré":"Saved","🕘 Versions":"🕘 History","⏺ Exporter la vidéo":"⏺ Export video","Clips vidéo":"Video clips","＋ Ajouter des vidéos":"＋ Add videos","Découpées en plans, placées sur le beat":"Cut into shots, placed on the beat","Banque de clips gratuits":"Free clip library","🔗 Ou colle un lien vidéo (YouTube…)":"🔗 Or paste a video link (YouTube…)","Importer":"Import","YouTube, TikTok, Vimeo, lien .mp4 direct… (max ~78 Mo / 1080p). Utilise uniquement des vidéos dont tu as les droits.":"YouTube, TikTok, Vimeo, direct .mp4 link… (max ~78 MB / 1080p). Only use videos you have the rights to.","vidéos":"videos",
+"Morceau":"Track","↶ Annuler":"↶ Undo","Enregistré":"Saved","🕘 Versions":"🕘 History","⏺ Exporter la vidéo":"⏺ Export video","Clips vidéo":"Video clips","＋ Ajouter des vidéos":"＋ Add videos","Découpées en plans, placées sur le beat":"Cut into shots, placed on the beat","Banque de clips gratuits":"Free clip library","vidéos":"videos",
 "Entrée pour chercher — clique une vignette pour l'ajouter.":"Press Enter to search — click a thumbnail to add it.",
 "☁ Récupérer mes vidéos déjà envoyées":"☁ Get my uploaded videos","⛶ Plein écran":"⛶ Fullscreen","Dépose ton morceau":"Drop your track","MP3 · WAV · M4A — le tempo et les plans se règlent tout seuls":"MP3 · WAV · M4A — tempo and shots set themselves","Ton extrait":"Your extract","▶ Écouter l'extrait":"▶ Play the extract","▲ Réduire":"▲ Collapse","Libre":"Free","🔁 4 mes.":"🔁 4 bars","🔁 8 mes.":"🔁 8 bars","🔁 16 mes.":"🔁 16 bars","🎯 Trouver le drop":"🎯 Find the drop","Début :":"Start:",
 "Glisse la zone rouge pour déplacer l'extrait · tire ses bords pour l'allonger ou le raccourcir · il joue en boucle pendant que tu ajustes.":"Drag the red zone to move the extract · pull its edges to stretch or shorten it · it loops while you adjust.",
@@ -1964,22 +1940,6 @@ async function retryClipUpload(ci){
 window.addEventListener('beforeunload',e=>{
   if(clips.some(c=>c._optimizing)||(M&&M._uploadingAudio)){ e.preventDefault(); e.returnValue=''; }
 });
-/* Import d'un clip depuis un lien (YouTube & co) — téléchargé côté serveur puis rapatrié */
-async function importClipLink(){
-  const inp=$('#linkInput'), btn=$('#linkImportBtn');
-  const url=(inp.value||'').trim();
-  if(!/^https?:\/\//i.test(url)){ toast('Colle un lien vidéo valide (https://…)'); return; }
-  btn.disabled=true; btn.textContent='⏳…';
-  try{
-    const res=await API.importLink(url, s=>{ if(s.status==='downloading') btn.textContent='⬇ …'; });
-    btn.textContent='⤓ …';
-    const file=await API.fetchMedia(res.media_id, res.filename||'video.mp4');
-    addClip(file,{mediaId:res.media_id,skipUpload:true});
-    inp.value='';
-    toast('🎬 Vidéo importée depuis le lien ✓');
-  }catch(e){ toast('⚠ '+(e.message||'Import impossible')); }
-  finally{ btn.disabled=false; btn.textContent=T('Importer'); }
-}
 /* Récupération : ré-ajoute à la banque toutes les vidéos déjà envoyées au serveur (projet abîmé) */
 async function recoverMedia(){
   try{
@@ -3441,13 +3401,13 @@ document.addEventListener('keydown',e=>{
 /* ---------- Export ---------- */
 let exporting=false;
 /* ---------- EXPORT — dispatcher : offline (image par image, qualité garantie) sinon temps réel ---------- */
-async function exportVideo(nameSuffix, sink){
+async function exportVideo(nameSuffix, sink, batch){
   if(IN_WEBVIEW){ toast('⚠ Le navigateur TikTok/Instagram bloque le téléchargement — ouvre beat-cut.com dans Chrome ou Safari (menu ⋯ → Ouvrir dans le navigateur). Rien n\u2019a été décompté.'); return false; }
   if(exporting){ toast('Un export est déjà en cours — attends la fin'); return false; }
   if(!buffer){toast('Dépose d\u2019abord ton morceau');return false;}
   if(clipsExportBlocking()){ toast('⏳ Une vidéo utilisée dans le montage n\u2019est pas encore lisible — quelques secondes…'); return false; }
   // GARDE ANTI-DIAPORAMA : chaque vidéo utilisée par un plan doit être décodable MAINTENANT
-  aiBar.set('Vérification des vidéos…',1);
+  aiBar.set(batch? 'Export vidéo '+(batch.idx+1)+'/'+batch.total+' — vérification…' : 'Vérification des vidéos…', batch? 2+batch.idx/batch.total*94 : 1);
   const deadClips=await ensureClipsReady();
   if(deadClips.length){
     aiBar.done();
@@ -3472,7 +3432,7 @@ async function exportVideo(nameSuffix, sink){
     aiBar.done();
     return false;
   }
-  return exportOffline(nameSuffix, mode);
+  return exportOffline(nameSuffix, mode, sink, batch);
 }
 let _avcCodec=null;
 /* Vérifie que chaque vidéo utilisée par un plan est réellement décodable (anti-export-diaporama).
@@ -3533,18 +3493,21 @@ async function _aacReallyWorks(sr,nch){
 }
 /* Export offline (comme les logiciels de montage) : chaque image est décodée
    séquentiellement (WebCodecs), rendue, puis encodée en H.264 haut débit. Zéro freeze possible. */
-async function exportOffline(nameSuffix, mode='full'){
+async function exportOffline(nameSuffix, mode='full', sink, batch){
   exporting=true;
   const btn=$('#exportBtn'), btnLabel=btn.textContent;
   btn.disabled=true; btn.textContent='⏺ Export en cours…';
   stopAll();
   const fps=30, fmt=FORMATS[(M&&M.format)||'916'], W=fmt[0], H=fmt[1];
   const total=Math.max(1,Math.round(ext.dur*fps));
+  // barre unique pour un lot (série) : progression globale sur l'ensemble des vidéos
+  const bPct=f=>batch? 2+(batch.idx+f)/batch.total*94 : 2+f*92;
+  const bLbl=s=>batch? 'Export vidéo '+(batch.idx+1)+'/'+batch.total+' — '+s : s;
   const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
   const wcExp=new SegPlayer();
-  const cleanup=()=>{ offlineRender=false; exporting=false; btn.disabled=false; btn.textContent=btnLabel; wcExp.destroy(); wcExpFrame=null; _wcExpPi=-1; aiBar.done(); };
+  const cleanup=()=>{ offlineRender=false; exporting=false; btn.disabled=false; btn.textContent=btnLabel; wcExp.destroy(); wcExpFrame=null; _wcExpPi=-1; if(!batch) aiBar.done(); };
   try{
-    aiBar.set('Préparation de l\u2019export studio…',1);
+    aiBar.set(bLbl('Préparation de l\u2019export studio…'), batch?bPct(0):1);
     // diagnostic : l'extrait audio a-t-il du signal ? (détecte un morceau mal rechargé → export silencieux)
     let srcPeak=-1;
     try{
@@ -3598,9 +3561,9 @@ async function exportOffline(nameSuffix, mode='full'){
       venc.encode(frame,{keyFrame:i%(fps*2)===0}); frame.close();
       if(venc.encodeQueueSize>6) await new Promise(r=>{ const to=setTimeout(r,80); venc.addEventListener('dequeue',()=>{clearTimeout(to);r();},{once:true}); });
       if(vencErr) throw vencErr;
-      if((i&7)===0) aiBar.set('Export studio '+W+'×'+H+'… '+Math.round(i/total*100)+' %', 2+i/total*92);
+      if((i&7)===0) aiBar.set(bLbl('Export studio '+W+'×'+H+'… '+Math.round(i/total*100)+' %'), bPct(i/total));
     }
-    aiBar.set('Finalisation du MP4…',95);
+    aiBar.set(bLbl('Finalisation du MP4…'), bPct(0.96));
     await venc.flush();
     if(aenc){ try{ await aenc.flush(); }catch(e){ aencErr=aencErr||e; } }
     muxer.finalize();
@@ -3609,7 +3572,7 @@ async function exportOffline(nameSuffix, mode='full'){
     if(usedServerAudio){
       // Mobile / AAC client KO : le serveur ajoute la piste audio (aucun ré-encodage vidéo, 2-3 s)
       if(mode==='full') console.warn('[export] AAC client KO ('+((aencErr&&aencErr.message)||'0 chunk')+') → son assemblé par le serveur');
-      aiBar.set('Ajout du son (serveur)…',96);
+      aiBar.set(bLbl('Ajout du son (serveur)…'), bPct(0.98));
       const fd=new FormData();
       fd.append('video', blob, 'v.mp4');
       fd.append('audio', extractWavStereoBlob(ext.start, ext.dur), 'a.wav');
@@ -3864,8 +3827,7 @@ async function exportKept(){
     const va=serieVariants[list[k]];
     style=Object.assign({},va.style); M.style=style;
     M.plans=va.plans.map(p=>({...p}));
-    toast('Export vidéo '+(k+1)+'/'+list.length+' — reste sur cet onglet');
-    const ok=await exportVideo('-v'+(list[k]+1), sink);
+    const ok=await exportVideo('-v'+(list[k]+1), sink, {idx:k, total:list.length});
     if(!ok){
       if(API.plan!=='pro'&&API.quota.left<=0) toast('Quota atteint — '+done+' vidéo(s) exportée(s) sur '+list.length);
       else toast('Série interrompue — '+done+' vidéo(s) exportée(s) sur '+list.length);
@@ -3877,17 +3839,20 @@ async function exportKept(){
   if(origStyle) style=Object.assign({},origStyle);
   dirty();
   if(sink.length===1){
+    aiBar.done();
     showDownloadModal(sink[0].blob, sink[0].fname, {W:sink[0].W, H:sink[0].H});
   } else if(sink.length>1){
-    toast('📦 Création du fichier unique ('+sink.length+' vidéos)…');
+    aiBar.set('📦 Création du fichier unique ('+sink.length+' vidéos)…',97);
     try{
       const zip=await buildZip(sink.map(e=>({name:e.fname, blob:e.blob})));
+      aiBar.done();
       showDownloadModal(zip, (M.title||'beatcut')+'-serie-'+sink.length+'videos.zip', {W:sink[0].W, H:sink[0].H, count:sink.length});
     }catch(e){
       console.warn('[zip]', e);
+      aiBar.done();
       sink.forEach(en=>showDownloadModal(en.blob, en.fname, {W:en.W, H:en.H}));   // repli : une par une
     }
-  }
+  } else { aiBar.done(); }
   if(done===list.length) toast('🎉 '+done+' vidéo(s) prête(s) — télécharge-les dans la fenêtre ✓');
 }
 
