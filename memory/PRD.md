@@ -470,3 +470,12 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Testé iteration_17 : backend 8/8, frontend 11/11
 - PROCHAINES ÉTAPES CdC : §2-B classifier après 3-5 jours de données réelles en prod (rapport % par cause) → §2-C corriger UNIQUEMENT la cause dominante. Validation : -80% de preview_stall sur la cause traitée
 - ⚠️ REDÉPLOIEMENT nécessaire (les données ne se collectent qu'en prod)
+
+## Terminé (27 juillet 2026) — Bug CSS anim, série améliorée, ZIP unique, import par lien
+- FIX CSS : boutons animation (#fAnim, 6 boutons) débordaient avec scrollbar → .seg{flex-wrap:wrap}
+- Série : versions toutes DIFFÉRENTES (pool mélangé de combos clip+seek, évitement doublons à la même position entre versions + variété intra-version) ; aperçus fluides (warmUpPlans avec les plans de la version AVANT le son, bouton ⏳→⏸)
+- Téléchargement série : UN SEUL .zip (buildZip maison, mode STORE + CRC32, sans lib externe) contenant toutes les vidéos ; quota décompté N fois au téléchargement (_dlRegister/dlPendingCount avec info.count) ; repli une-par-une si erreur zip
+- Import clip par LIEN : champ 🔗 dans la colonne clips (i18n FR/EN) → POST /api/media/import-link (yt-dlp nightly + node 24 via nodejs-wheel-binaries + ffmpeg imageio_ffmpeg, tâche de fond, statuts queued/downloading/storing/done, garde SSRF, cap 78 Mo/1080p, isolation par user) → GET status → API.fetchMedia → addClip
+- ⚠ LIMITATION CONNUE : YouTube bloque souvent les IP datacenter (403) → message d'erreur explicite ; TikTok/Vimeo/.mp4 directs fonctionnent (Vimeo + mp4 validés E2E)
+- ✅ Testé iteration_18 : backend 8/8, frontend 100% (CSS, UI lien, série variantes/aperçu, buildZip, régressions)
+- ⚠️ REDÉPLOIEMENT nécessaire
