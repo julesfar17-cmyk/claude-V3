@@ -1,0 +1,54 @@
+{
+  "summary": "Iter17 §2-A télémétrie aperçus (backend + frontend). Backend: 8/8 pytest PASS dans /app/backend/tests/test_telemetry_preview_iter17.py — POST /api/telemetry/preview public 200 {ok, stored:N}, batch de 2 événements stocké, events=[] → stored=0, JSON invalide → 400, events tronqués à 100 (150 envoyés, 100 stockés), whitelist stricte (le champ 'hack' n'est pas remonté dans les samples admin), GET /admin/telemetry/preview: non-auth → 401, non-admin (demo) → 403, admin OK avec agrégats corrects (total_sessions≥2, sessions_with_stall≥1 après notre session iOS, event_counts.preview_stall/frame_miss/clip_not_ready incrémentés, stall_codecs['avc1.640028']≥1, by_browser contient 'iOS Safari' + 'Chrome desktop', by_project_size contient buckets '1-3 clips' et '4-10 clips', pct 0..100). Frontend: iframe studio.html du projet démo d51b835aa74548 → typeof TEL==='object', TEL.sid string non vide, TEL.push/flush = function. Sondes branchées: drawPreview contient 'preview_stall' + 'frame_miss', SegPlayer.prototype._telErr est function, play() contient 'clip_not_ready'. TEL.push('preview_stall')*3 + TEL.flush() → 1 POST 200 sur /api/telemetry/preview. Auto-flush confirmé: 25 push consécutifs → 1 POST auto, queue drainée (q=0). Régression play/stop: 0 pageerror, pas de spam d'événements (q_final=2, _telStallSent=true → dédup via épisode OK). Admin UI: /admin admin → section data-testid preview-telemetry-section visible, telemetry-sessions=7, telemetry-days-select bascule 3/7/30 → recharge sans erreur.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "regression_checks": {
+    "backend": {
+      "POST /api/telemetry/preview no-auth batch 2 events": "PASS 200 stored=2",
+      "POST /api/telemetry/preview events=[]": "PASS 200 stored=0",
+      "POST /api/telemetry/preview body invalide (non-JSON)": "PASS 400",
+      "POST /api/telemetry/preview 150 events → truncated 100": "PASS stored=100",
+      "POST /api/telemetry/preview whitelist filter (hack field not stored)": "PASS (absent des samples admin)",
+      "GET /api/admin/telemetry/preview no-auth": "PASS 401",
+      "GET /api/admin/telemetry/preview demo (non-admin)": "PASS 403",
+      "GET /api/admin/telemetry/preview admin (shape+aggregates)": "PASS (event_counts, stall_codecs['avc1.640028']≥1, by_browser iOS Safari + Chrome desktop, by_project_size 1-3/4-10, pct calculé)"
+    },
+    "frontend": {
+      "studio iframe /studio?project=d51b835aa74548 loaded": "PASS",
+      "TEL introspection (sid/push/flush)": "PASS (sid='33670c40-...', push/flush=function)",
+      "drawPreview source contains 'preview_stall' + 'frame_miss'": "PASS",
+      "SegPlayer.prototype._telErr is function": "PASS",
+      "play() source contains 'clip_not_ready'": "PASS",
+      "TEL.push preview_stall x3 + TEL.flush → 1 POST /api/telemetry/preview": "PASS",
+      "Auto-flush at 25 events (queue drained)": "PASS (q=0 après 25 push, ≥1 POST)",
+      "play/stop no exception, no spam (dedup _telStallSent)": "PASS (0 pageerror, q_final=2, _telStallSent=true)",
+      "/admin preview-telemetry-section visible": "PASS",
+      "telemetry-sessions rendered": "PASS (=7)",
+      "telemetry-days-select 3/7/30 switches without error": "PASS"
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_telemetry_preview_iter17.py",
+    "/app/test_reports/pytest/iter17_telemetry_preview.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:696-728 log_preview_telemetry: whitelist _PREVIEW_EVENT_KEYS bien appliquée par comprehension {k:e.get(k) for k in _PREVIEW_EVENT_KEYS if k in e}. events[:100] tronque bien à 100. body.get() est appelé sur `body` sans vérifier isinstance(body, dict) → si un client poste un JSON de type list (ex: []) au lieu d'un objet, AttributeError → 500. Améliorer: `if not isinstance(body, dict): raise HTTPException(400, 'objet JSON attendu')`. Non testé bloquant mais recommandé.",
+    "server.py:756 admin_preview_report: batches limité à 10000 (to_list(10000)) — OK pour usage actuel mais si trafic élevé sur 7-30 jours, prévoir pagination/agrégat côté Mongo (aggregate pipeline) plutôt qu'en Python. Non urgent.",
+    "server.py:731 _browser_family: la règle 'iOS Safari' exige 'Safari' in ua ET 'CriOS' absent — OK. La règle 'Chrome desktop' capture aussi les WebViews non identifiées, ce qui est acceptable.",
+    "studio.html:810 TEL.max=120 mais serveur tronque à 100 → au-delà, événements côté client jetés (return silencieux). Cohérence: aligner client.max = server limit (100) pour éviter des events perdus après flush. Mineur.",
+    "studio.html:829 sendBeacon envoie sans Content-Type explicite mais avec Blob type application/json → FastAPI accepte. OK.",
+    "PreviewTelemetryAdmin.js:15-22 catch silencieux (setData(null)) — perte d'info en cas d'erreur admin. Aucun affichage d'erreur pour l'admin. Recommandation: log ou toast d'erreur.",
+    "SegPlayer._telErr:2779 emet 1 seul decoder_error par session (this._telSent flag) — bonne dedup. Confirmé côté runtime: le pod headless n'a PAS envoyé decoder_error pendant notre passage (avc1.640028 non décodable mais aucun frame décodé → pas d'appel _telErr côté callback dans notre run)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_telemetry_preview_iter17.py"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (11/11 assertions)"},
+  "test_credentials": "demo@beatcut.fr / Demo1234! ; julesfar17@gmail.com / Carnageproduction1704* (from /app/memory/test_credentials.md).",
+  "seed_data_creation": "Aucune modification. Batches de tests postés dans preview_logs (session_ids préfixés TEST_iter17_*) — laissés en base comme indiqué par le contexte du main agent.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Endpoints /api/telemetry/preview et /api/admin/telemetry/preview stables. Frame studio.html est identifiée par URL substring 'studio.html' — utiliser page.frames. TEL object accessible via sframe.evaluate. Autoflush = 25 events (constante inline dans studio.html:823). Regarder studio.html:836 pour _telStallSent (variable module-level, reset à chaque changement de frame timestamp).",
+  "rca of the issue": "N/A — aucun bug reproduit sur §2-A. La télémétrie est correctement instrumentée, filtre bien les champs, agrège correctement par browser/size/codec, et l'UI admin affiche les KPIs. Le pod headless ne décode pas avc1.640028 (warning [wc] visible dans la console) mais cela ne provoque pas de boucle infinie d'événements grâce au flag _telStallSent + SegPlayer._telSent — dedup confirmé (q_final=2, _telStallSent=true après play/stop)."
+}

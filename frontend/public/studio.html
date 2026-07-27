@@ -806,6 +806,35 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
    7. Persistance        → remplacer localStorage par la base (Morceau/Vidéo/Export)
    8. Watermark aperçu plan Gratuit → reprendre drawForcedWatermark de la v1
 ===================================================================== */
+/* ===== §2-A Télémétrie aperçus : événements envoyés PAR LOTS à /api/telemetry/preview ===== */
+const TEL={
+  sid:(window.crypto&&crypto.randomUUID)?crypto.randomUUID():('s'+Date.now()+Math.random().toString(16).slice(2)),
+  q:[], max:120,
+  ctx(){
+    const m=(window.performance&&performance.memory)||null;
+    return { ua:navigator.userAgent.slice(0,300), mobile:/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
+      clips:(typeof clips!=='undefined'?clips.length:0), plans:(typeof M!=='undefined'&&M&&M.plans?M.plans.length:0),
+      mem:m?{used:Math.round(m.usedJSHeapSize/1048576),limit:Math.round(m.jsHeapSizeLimit/1048576)}:null,
+      build:(typeof BC_BUILD!=='undefined'?BC_BUILD:'') };
+  },
+  push(type,data){
+    if(this.q.length>=this.max) return;
+    this.q.push(Object.assign({type,t:Date.now()},data||{}));
+    if(this.q.length>=25) this.flush();
+  },
+  flush(useBeacon){
+    if(!this.q.length) return;
+    const payload=JSON.stringify({session_id:this.sid, ctx:this.ctx(), events:this.q.splice(0,this.q.length)});
+    try{
+      if(useBeacon&&navigator.sendBeacon) navigator.sendBeacon('/api/telemetry/preview', new Blob([payload],{type:'application/json'}));
+      else fetch('/api/telemetry/preview',{method:'POST',credentials:'include',keepalive:true,headers:{'Content-Type':'application/json'},body:payload}).catch(()=>{});
+    }catch(e){}
+  }
+};
+setInterval(()=>TEL.flush(),20000);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') TEL.flush(true); });
+let _telLastTs=-2,_telSameSince=0,_telStallSent=false,_telLastMiss=0;
+
 const API = {
   user: null,
   plan:'free',
@@ -1699,7 +1728,10 @@ function toggleExtract(){
 function toggleLoop(){ looping?stopAll():startLoop(); }
 async function startLoop(){
   if(!buffer||exporting)return;
-  if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
+  if(clipsBlocking()){
+    TEL.push('clip_not_ready',{optimizing:clips.filter(c=>c._optimizing).length, notReady:clips.filter(c=>!c._wcReady&&!c._wcFail).length});
+    toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return;
+  }
   stopAll(); looping=true;
   await warmUpPlans(ext.start);
   if(exporting||!looping) return;
@@ -2730,7 +2762,7 @@ async function parseClipWC(clip, blob){
       // le codec est-il décodable sur CETTE machine ? (cas HEVC iPhone)
       try{
         const sup=await VideoDecoder.isConfigSupported(wc.config);
-        if(!sup.supported){ fail(new Error('codec '+wc.config.codec+' non décodable sur cette machine')); return; }
+        if(!sup.supported){ TEL.push('decoder_error',{msg:'codec non supporté', codec:wc.config.codec, w:wc.config.codedWidth, h:wc.config.codedHeight, dur:Math.round(wc.durationS||0)}); fail(new Error('codec '+wc.config.codec+' non décodable sur cette machine')); return; }
       }catch(e){ fail(new Error('codec non décodable')); return; }
       if(done) return;
       done=true; clearTimeout(timeout); resolve();
@@ -2742,11 +2774,19 @@ async function parseClipWC(clip, blob){
 }
 /* Lecteur de segment à double tampon — logique du prototype LYRC, à l'identique */
 class SegPlayer{
-  constructor(){ this.clip=null; this.cfgFor=null; this.dec=null; this.frames=[]; this.cur=null; this.si=0; this.targetUs=0; this.err=null; }
+  constructor(){ this.clip=null; this.cfgFor=null; this.dec=null; this.frames=[]; this.cur=null; this.si=0; this.targetUs=0; this.err=null; this._telSent=false; }
   setClip(wc){ this.clip=wc; }
+  _telErr(e){
+    this.err=(e&&e.message)||String(e);
+    if(this._telSent) return; this._telSent=true;
+    const cfg=this.clip&&this.clip.config;
+    TEL.push('decoder_error',{msg:String(this.err).slice(0,200),
+      codec:cfg?cfg.codec:null, w:cfg?cfg.codedWidth:null, h:cfg?cfg.codedHeight:null,
+      dur:this.clip?Math.round(this.clip.durationS||0):null});
+  }
   _newDecoder(){
     if(this.dec){ try{this.dec.close();}catch(e){} }
-    this.dec=new VideoDecoder({ output:f=>this._onFrame(f), error:e=>{this.err=e.message;} });
+    this.dec=new VideoDecoder({ output:f=>this._onFrame(f), error:e=>{this._telErr(e);} });
     this.dec.configure(this.clip.config); this.cfgFor=this.clip;
   }
   _onFrame(f){
@@ -2771,7 +2811,7 @@ class SegPlayer{
     while(this.frames.length<10 && this.dec.decodeQueueSize<14 && this.si<S.length){
       const s=S[this.si++];
       try{ this.dec.decode(new EncodedVideoChunk({type:s.key?'key':'delta', timestamp:s.ts, duration:s.dur, data:s.data})); }
-      catch(e){ this.err=e.message; break; }
+      catch(e){ this._telErr(e); break; }
     }
     if(this.si>=S.length){ try{ this.dec.flush().catch(()=>{}); }catch(e){} }
   }
@@ -2913,7 +2953,10 @@ function togglePlay(){
 }
 async function play(from){
   if(!buffer||exporting)return;
-  if(clipsBlocking()){ toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return; }
+  if(clipsBlocking()){
+    TEL.push('clip_not_ready',{optimizing:clips.filter(c=>c._optimizing).length, notReady:clips.filter(c=>!c._wcReady&&!c._wcFail).length});
+    toast('⏳ Ta vidéo n\u2019est pas encore lisible — optimisation en cours, un instant…'); return;
+  }
   stopAll();
   await warmUpPlans(from);   // la 1re frame est décodée AVANT le départ du son
   if(exporting) return;
@@ -3104,6 +3147,22 @@ function drawPreview(t, cvOverride){
       f=wcA.frameAt(tt);
     }
     else if(!playing&&cl.wc) f=wcScrubFrame(cl,target);
+    // §2-A : détection de gel (même frame > 500 ms pendant la lecture)
+    if(playing&&!offlineRender&&!cvOverride){
+      const ts=f?f.timestamp:-1, nowp=performance.now();
+      if(ts===_telLastTs){
+        if(_telSameSince&&nowp-_telSameSince>500&&!_telStallSent){
+          _telStallSent=true;
+          TEL.push('preview_stall',{plan:pi, clip:plan.clip,
+            codec:cl.wc&&cl.wc.config?cl.wc.config.codec:null,
+            wcReady:!!cl._wcReady, optimizing:!!cl._optimizing,
+            wcAReady:!!(wcA&&cl.wc&&wcA.clip===cl.wc),
+            queue:(wcA&&wcA.dec)?wcA.dec.decodeQueueSize:null,
+            buffered:wcA?wcA.buffered():null,
+            stallMs:Math.round(nowp-_telSameSince)});
+        }
+      } else { _telLastTs=ts; _telSameSince=nowp; _telStallSent=false; }
+    }
     if(f){
       const fw=f.displayWidth||f.codedWidth, fh=f.displayHeight||f.codedHeight;
       const s=Math.max(W/fw,H/fh);
@@ -3112,6 +3171,12 @@ function drawPreview(t, cvOverride){
       drewMedia=true;
     } else {
       // frame pas encore décodée (rare) : vignette du plan → jamais d'écran noir
+      if(playing&&!offlineRender&&!cvOverride&&performance.now()-_telLastMiss>1000){
+        _telLastMiss=performance.now();
+        TEL.push('frame_miss',{plan:pi, clip:plan.clip,
+          codec:cl.wc&&cl.wc.config?cl.wc.config.codec:null,
+          wcReady:!!cl._wcReady, optimizing:!!cl._optimizing});
+      }
       const img=planThumbImg(cl, target);
       if(img&&img.complete&&img.naturalWidth){
         const s=Math.max(W/img.naturalWidth,H/img.naturalHeight);

@@ -688,6 +688,114 @@ async def admin_webview_logs(user: dict = Depends(get_current_user)):
     return {"total": total, "last_30d": last_30d, "samples": samples}
 
 
+_PREVIEW_EVENT_KEYS = ("type", "t", "plan", "clip", "codec", "wcReady", "wcAReady",
+                       "queue", "buffered", "stallMs", "msg", "w", "h", "dur",
+                       "optimizing", "notReady")
+
+
+@api_router.post("/telemetry/preview")
+async def log_preview_telemetry(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON invalide")
+    events = body.get("events") or []
+    if not isinstance(events, list) or not events:
+        return {"ok": True, "stored": 0}
+    user_id = None
+    try:
+        user = await get_current_user(request)
+        user_id = user.get("user_id")
+    except HTTPException:
+        pass
+    ctx = body.get("ctx") or {}
+    doc = {
+        "session_id": str(body.get("session_id") or "")[:64],
+        "user_id": user_id,
+        "ctx": {
+            "ua": str(ctx.get("ua") or "")[:300],
+            "mobile": bool(ctx.get("mobile")),
+            "clips": int(ctx.get("clips") or 0),
+            "plans": int(ctx.get("plans") or 0),
+            "mem": ctx.get("mem") if isinstance(ctx.get("mem"), dict) else None,
+            "build": str(ctx.get("build") or "")[:50],
+        },
+        "events": [{k: e.get(k) for k in _PREVIEW_EVENT_KEYS if k in e}
+                   for e in events[:100] if isinstance(e, dict)],
+        "created_at": iso(now_utc()),
+    }
+    await db.preview_logs.insert_one(doc)
+    return {"ok": True, "stored": len(doc["events"])}
+
+
+def _browser_family(ua: str) -> str:
+    ua = ua or ""
+    if "iPhone" in ua or "iPad" in ua:
+        return "iOS Safari" if "Safari" in ua and "CriOS" not in ua else "iOS (app/Chrome)"
+    if "Android" in ua:
+        return "Android Chrome" if "Chrome" in ua else "Android autre"
+    if "Firefox" in ua:
+        return "Firefox"
+    if "Edg/" in ua:
+        return "Edge"
+    if "Chrome" in ua:
+        return "Chrome desktop"
+    if "Safari" in ua:
+        return "Safari macOS"
+    return "Autre"
+
+
+def _size_bucket(n: int) -> str:
+    if n <= 3:
+        return "1-3 clips"
+    if n <= 10:
+        return "4-10 clips"
+    return ">10 clips"
+
+
+@api_router.get("/admin/telemetry/preview")
+async def admin_preview_report(days: int = 7, user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    cutoff = iso(now_utc() - timedelta(days=min(max(days, 1), 90)))
+    batches = await db.preview_logs.find({"created_at": {"$gt": cutoff}}, {"_id": 0}).to_list(10000)
+    sessions, event_counts, stall_codecs, by_browser, by_size = {}, {}, {}, {}, {}
+    samples = []
+    for b in batches:
+        ctx = b.get("ctx") or {}
+        s = sessions.setdefault(b.get("session_id"), {"types": set(), "browser": _browser_family(ctx.get("ua")), "clips": 0})
+        s["clips"] = max(s["clips"], ctx.get("clips") or 0)
+        for e in b.get("events") or []:
+            et = e.get("type") or "?"
+            s["types"].add(et)
+            event_counts[et] = event_counts.get(et, 0) + 1
+            if et in ("preview_stall", "decoder_error") and e.get("codec"):
+                stall_codecs[e["codec"]] = stall_codecs.get(e["codec"], 0) + 1
+            if len(samples) < 40:
+                samples.append({**e, "session": (b.get("session_id") or "")[:8], "browser": s["browser"]})
+    for s in sessions.values():
+        bb = by_browser.setdefault(s["browser"], {"sessions": 0, "with_stall": 0})
+        bb["sessions"] += 1
+        if "preview_stall" in s["types"]:
+            bb["with_stall"] += 1
+        sb = by_size.setdefault(_size_bucket(s["clips"]), {"sessions": 0, "with_stall": 0})
+        sb["sessions"] += 1
+        if "preview_stall" in s["types"]:
+            sb["with_stall"] += 1
+    total = len(sessions)
+    with_stall = sum(1 for s in sessions.values() if "preview_stall" in s["types"])
+    return {
+        "days": days,
+        "total_sessions": total,
+        "sessions_with_stall": with_stall,
+        "pct_sessions_with_stall": round(100.0 * with_stall / total, 1) if total else 0.0,
+        "event_counts": event_counts,
+        "stall_codecs": stall_codecs,
+        "by_browser": by_browser,
+        "by_project_size": by_size,
+        "samples": samples,
+    }
+
+
 @api_router.post("/telemetry/export")
 async def log_export_telemetry(request: Request, user: dict = Depends(get_current_user)):
     try:

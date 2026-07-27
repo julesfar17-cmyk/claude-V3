@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { AffiliateAdmin } from "@/components/AffiliateAdmin";
+import { PreviewTelemetryAdmin } from "@/components/PreviewTelemetryAdmin";
 
 const fmt = (n, suffix = "") => `${n}${suffix}`;
 
@@ -239,6 +240,8 @@ export default function Admin() {
             </section>
 
             <AffiliateAdmin />
+
+            <PreviewTelemetryAdmin />
 
             <section className="bg-card border border-border p-6 sm:p-8">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
