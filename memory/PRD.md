@@ -486,3 +486,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Import par lien RETIRÉ à la demande de l'utilisateur (YouTube bloque les IP datacenter) : champ 🔗 + importClipLink + API.importLink supprimés du studio. Endpoints backend /api/media/import-link conservés (fonctionnels, inutilisés)
 - ✅ Testé iteration_19 : 100% — espion exportOffline : la vidéo 2 EST exportée après la 1 (chaîne complète), zip unique '2 vidéos (.zip)', barre continue, champ lien absent, régressions OK
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Terminé (28 juillet 2026) — Refonte UX MOBILE (façon CapCut)
+- Éditeur studio ≤700px : écran verrouillé sans scroll (header 50px avec titre + Exporter TOUJOURS visible, aperçu 1fr, transport 52px, timeline 148px) ; body.mob-edit posé par route(), header studio + wrapper React masqués sur mobile
+- Barre d'outils basse #mobBar (5 onglets 🎬 Clips · 🎵 Son · 📝 Paroles · 🎨 Style · ⚙️ Plus, data-testid mob-tab-*) → bottom sheets coulissants (.col / #extractZone / #mobMore, un seul ouvert, re-tap ou tap dehors = fermer, i18n FR/EN)
+- Plus (#mobMore) : Annuler, Versions, FR/EN, Accueil, Mon compte (window.top → /dashboard)
+- Cibles tactiles ≥44px (boutons), transport/tl-bar une ligne en scroll horizontal (plus de chevauchement des formats 9:16/1:1/…), timeline compacte
+- Série mobile : 1 carte/ligne (≤300px centrée), styles 2 colonnes ; pages accueil/morceaux : grille 2 colonnes
+- Dashboard : fix overflow horizontal (min-w-0 sur cartes Parrainage/Code promo)
+- ✅ Testé iteration_20 : 100% (mobile 390×844 + régression desktop 1280px)
+- ⚠️ REDÉPLOIEMENT nécessaire
