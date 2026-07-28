@@ -21,12 +21,13 @@ export default function CGV() {
       <section>
         <h2>3. Offres et tarifs</h2>
         <ul>
-          <li><b>Gratuit</b> — 1 export offert pour tester le service avec ton propre son.</li>
-          <li><b>Basic — 6,99 €/mois</b> — 10 exports par mois, sans watermark, sous-titres .srt.</li>
-          <li><b>Pro — 12,99 €/mois</b> — exports illimités, sans watermark, extraction d'acapella (IA).</li>
-          <li><b>Pro Annuel — 99 €/an</b> — mêmes droits que Pro, facturé une fois par an (soit 8,25 €/mois).</li>
+          <li><b>Essentiel — 9,99 €/mois</b> — 15 exports par mois, tous les styles et effets, banque de clips.</li>
+          <li><b>Pro — 19,99 €/mois</b> — exports illimités, séries de vidéos, tous styles/effets/polices. <b>7 jours d'essai offerts</b> : la carte est enregistrée à la souscription, un email de rappel est envoyé avant la fin de l'essai, et l'abonnement démarre automatiquement à J+7 sauf annulation (possible à tout moment pendant l'essai, sans débit).</li>
+          <li><b>Pro Annuel — 149 €/an</b> — mêmes droits que Pro, facturé une fois par an (soit 12,42 €/mois).</li>
+          <li><b>Studio — 499 €/an</b> — 5 profils artistes séparés, 3 utilisateurs, watermark personnalisé, onboarding individuel et support prioritaire. Facturé une fois par an.</li>
         </ul>
-        <p>Les prix sont exprimés en euros, toutes taxes comprises. Ils peuvent évoluer ; le tarif en vigueur au moment de la souscription s'applique pour la période en cours.</p>
+        <p>Les prix sont exprimés en euros, toutes taxes comprises. Ils peuvent évoluer ; le tarif en vigueur au moment de la souscription s'applique pour la période en cours. Les abonnés ayant souscrit une ancienne formule conservent leur prix et leurs conditions.</p>
+        <p><b>Compte individuel.</b> Le compte BeatCut est strictement personnel : une seule session active à la fois (plans Essentiel et Pro). L'usage multi-utilisateurs (3 sessions simultanées, 5 profils artistes) est réservé au plan Studio.</p>
       </section>
       <section>
         <h2>4. Paiement</h2>
@@ -49,8 +50,9 @@ export default function CGV() {
         <h2>6. Résiliation</h2>
         <p>
           Tu peux résilier à tout moment en 2 clics depuis ton compte (« Se désabonner »). La résiliation prend effet
-          à la fin de la période déjà payée : tu conserves tes droits jusqu'à cette date, puis ton compte repasse en
-          formule gratuite. Aucun remboursement au prorata n'est effectué pour une période entamée.
+          à la fin de la période déjà payée : tu conserves tes droits jusqu'à cette date, puis l'export est verrouillé
+          (tes morceaux et montages restent sauvegardés). Pendant l'essai de 7 jours, l'annulation est immédiate et
+          rien n'est débité. Aucun remboursement au prorata n'est effectué pour une période entamée.
         </p>
       </section>
       <section>

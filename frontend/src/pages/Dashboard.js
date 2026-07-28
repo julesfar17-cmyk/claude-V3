@@ -31,18 +31,28 @@ export default function Dashboard() {
   const [busy, setBusy] = useState(false);
   const pollRef = useRef(false);
 
+  // Nouveau compte : onboarding (5 écrans) dans le studio avant tout
+  useEffect(() => {
+    if (!sessionId && user && user.onboarding_done === false) navigate("/studio", { replace: true });
+  }, [user, navigate, sessionId]);
+
   const sub = user?.subscription || {};
   const isPro = !!user?.is_pro;
   const isVip = sub.status === "vip";
   const canceled = !!sub.cancel_at_period_end;
   const tier = sub.tier || (isPro ? "pro" : "free");
   const isBasic = tier === "basic";
+  const isEssentiel = tier === "essentiel";
+  const isStudio = tier === "studio";
+  const isTrial = !!sub.trial;
+  const hasQuota = isBasic || isEssentiel || isTrial;
   const [quota, setQuota] = useState(null);
+  const LEGACY_EQUIV = { pro_monthly: "monthly", pro_yearly: "yearly", essentiel: "basic" };
 
   useEffect(() => {
-    if (!isBasic) return;
+    if (!hasQuota) return;
     api.get("/export/quota").then(({ data }) => setQuota(data)).catch(() => {});
-  }, [isBasic]);
+  }, [hasQuota]);
 
   // Vérification du paiement au retour de Stripe
   useEffect(() => {
@@ -65,6 +75,12 @@ export default function Dashboard() {
           navigate("/dashboard", { replace: true });
           return;
         }
+        if (data.payment_status === "trial_refused") {
+          setCheckingPayment(false);
+          toast.error("Essai déjà utilisé avec cette carte — choisis un abonnement sans essai.");
+          navigate("/dashboard", { replace: true });
+          return;
+        }
         if (data.status === "expired") {
           setCheckingPayment(false);
           toast.error("La session de paiement a expiré. Réessaie.");
@@ -79,11 +95,12 @@ export default function Dashboard() {
     poll();
   }, [sessionId, refreshUser, navigate]);
 
-  const startCheckout = async (plan = "monthly") => {
+  const startCheckout = async (plan = "pro_monthly") => {
     setBusy(true);
     try {
       const payload = { origin_url: window.location.origin, plan };
-      if (affiliate?.code && affiliate.plans?.includes(plan)) payload.promo_code = affiliate.code;
+      const covered = affiliate?.plans?.includes(plan) || affiliate?.plans?.includes(LEGACY_EQUIV[plan]);
+      if (affiliate?.code && covered) payload.promo_code = affiliate.code;
       const { data } = await api.post("/payments/checkout", payload);
       window.location.href = data.url;
     } catch (e) {
@@ -161,6 +178,33 @@ export default function Dashboard() {
     }
   };
 
+  const [wmBusy, setWmBusy] = useState(false);
+  const uploadWatermark = async (file) => {
+    if (!file) return;
+    setWmBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      await api.post("/studio/watermark", fd);
+      await refreshUser();
+      toast.success("Logo enregistré — il sera incrusté sur tes prochains exports ✓");
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Envoi impossible");
+    } finally {
+      setWmBusy(false);
+    }
+  };
+  const removeWatermark = async () => {
+    setWmBusy(true);
+    try {
+      await api.delete("/studio/watermark");
+      await refreshUser();
+      toast.success("Logo retiré");
+    } finally {
+      setWmBusy(false);
+    }
+  };
+
   const cancelSubscription = async () => {
     setBusy(true);
     try {
@@ -222,11 +266,11 @@ export default function Dashboard() {
                 }`}
                 data-testid="plan-badge"
               >
-                {isVip ? "VIP ✦" : canceled ? (isBasic ? "BASIC — ANNULÉ" : "PRO — ANNULÉ") : isBasic ? "BASIC" : "PRO ✦"}
+                {isVip ? "VIP ✦" : isTrial ? "ESSAI PRO — 7 JOURS" : canceled ? (isBasic ? "BASIC — ANNULÉ" : isEssentiel ? "ESSENTIEL — ANNULÉ" : "PRO — ANNULÉ") : isBasic ? "BASIC" : isEssentiel ? "ESSENTIEL" : isStudio ? "STUDIO ✦" : "PRO ✦"}
               </span>
             ) : (
                 <span className="font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 bg-secondary text-muted-foreground" data-testid="plan-badge">
-                  GRATUIT
+                  SANS ABONNEMENT
                 </span>
               )}
             </div>
@@ -247,61 +291,73 @@ export default function Dashboard() {
             {!isPro && (
               <>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Tu utilises la version gratuite : tout le studio est dispo, avec un watermark BEATCUT sur l'aperçu.
-                  Choisis ton plan pour exporter tes vidéos sans watermark.
+                  Ton studio est prêt : montage complet, aperçu et sauvegarde inclus. Choisis ton plan pour
+                  exporter tes vidéos — <b className="text-foreground">7 jours d'essai offerts</b> sur le plan Pro,
+                  annulable en 2 clics avant le débit.
                 </p>
                 <div className="grid gap-3 mt-6">
                   <button
-                    onClick={() => startCheckout("basic")}
-                    disabled={busy}
-                    data-testid="subscribe-basic-button"
-                    className="relative inline-flex items-center justify-between gap-2 border border-[#8f9bff]/60 bg-[#8f9bff]/10 text-foreground font-bold px-5 py-3.5 hover:bg-[#8f9bff]/20 transition-all hover:-translate-y-0.5 disabled:opacity-50"
-                  >
-                    {promoBadge("basic")}
-                    <span>BASIC — 10 vidéos/mois</span>
-                    <span className="font-display" data-testid="price-basic">
-                      {affPrice("basic") ? (
-                        <><s className="opacity-50 mr-1.5">6,99 €</s>{fmtEUR(affPrice("basic").after_cents)} €/mois</>
-                      ) : "6,99 €/mois"}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => startCheckout("monthly")}
+                    onClick={() => startCheckout("pro_monthly")}
                     disabled={busy}
                     data-testid="subscribe-pro-button"
                     className="relative inline-flex items-center justify-between gap-2 bg-primary text-white font-bold px-5 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
                   >
                     <span className="absolute -top-2.5 right-2 bg-white text-primary font-osd text-[9px] tracking-wider px-2 py-0.5">
-                      RECOMMANDÉ
+                      7 JOURS OFFERTS
                     </span>
-                    {promoBadge("monthly")}
-                    <span className="inline-flex items-center gap-2"><Crown size={16} /> PRO — illimité + acapella</span>
-                    <span className="font-display" data-testid="price-monthly">
-                      {affPrice("monthly") ? (
-                        <><s className="opacity-60 mr-1.5">12,99 €</s>{fmtEUR(affPrice("monthly").after_cents)} €/mois</>
-                      ) : "12,99 €/mois"}
+                    {promoBadge("pro_monthly")}
+                    <span className="inline-flex items-center gap-2"><Crown size={16} /> PRO — essai 7 jours</span>
+                    <span className="font-display" data-testid="price-pro-monthly">
+                      {affPrice("pro_monthly") ? (
+                        <><s className="opacity-60 mr-1.5">19,99 €</s>{fmtEUR(affPrice("pro_monthly").after_cents)} €/mois</>
+                      ) : "19,99 €/mois"}
+                    </span>
+                  </button>
+                  <p className="text-[11px] text-muted-foreground text-center -mt-1">
+                    Exports illimités + séries de vidéos · puis 19,99 €/mois · annulable pendant l'essai
+                  </p>
+                  <button
+                    onClick={() => startCheckout("essentiel")}
+                    disabled={busy}
+                    data-testid="subscribe-essentiel-button"
+                    className="relative inline-flex items-center justify-between gap-2 border border-[#8f9bff]/60 bg-[#8f9bff]/10 text-foreground font-bold px-5 py-3.5 hover:bg-[#8f9bff]/20 transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                  >
+                    {promoBadge("essentiel")}
+                    <span>ESSENTIEL — 15 exports/mois</span>
+                    <span className="font-display" data-testid="price-essentiel">
+                      {affPrice("essentiel") ? (
+                        <><s className="opacity-50 mr-1.5">9,99 €</s>{fmtEUR(affPrice("essentiel").after_cents)} €/mois</>
+                      ) : "9,99 €/mois"}
                     </span>
                   </button>
                   <button
-                    onClick={() => startCheckout("yearly")}
+                    onClick={() => startCheckout("pro_yearly")}
                     disabled={busy}
                     data-testid="subscribe-pro-yearly-button"
-                    className="relative inline-flex items-center justify-between gap-2 border border-[#d9ffd0]/50 bg-[#d9ffd0]/5 text-foreground font-bold px-5 py-3.5 hover:bg-[#d9ffd0]/10 transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                    className="relative inline-flex items-center justify-between gap-2 border border-[#ffd97a]/50 bg-[#ffd97a]/5 text-foreground font-bold px-5 py-3.5 hover:bg-[#ffd97a]/10 transition-all hover:-translate-y-0.5 disabled:opacity-50"
                   >
-                    <span className="absolute -top-2.5 right-2 bg-[#d9ffd0] text-background font-osd text-[9px] tracking-wider px-2 py-0.5">
-                      2 MOIS OFFERTS
+                    <span className="absolute -top-2.5 right-2 bg-[#ffd97a] text-background font-osd text-[9px] tracking-wider px-2 py-0.5">
+                      MEILLEURE AFFAIRE · −38 %
                     </span>
-                    {promoBadge("yearly")}
-                    <span>PRO annuel</span>
-                    <span className="font-display" data-testid="price-yearly">
-                      {affPrice("yearly") ? (
-                        <><s className="opacity-50 mr-1.5">99 €</s>{fmtEUR(affPrice("yearly").after_cents)} €/an</>
-                      ) : "99 €/an"}
+                    {promoBadge("pro_yearly")}
+                    <span>PRO Annuel — 12,42 €/mois</span>
+                    <span className="font-display" data-testid="price-pro-yearly">
+                      {affPrice("pro_yearly") ? (
+                        <><s className="opacity-50 mr-1.5">149 €</s>{fmtEUR(affPrice("pro_yearly").after_cents)} €/an</>
+                      ) : "149 €/an"}
                     </span>
                   </button>
+                  <a
+                    href="mailto:contact@beat-cut.com?subject=D%C3%A9mo%20BeatCut%20Studio"
+                    data-testid="subscribe-studio-button"
+                    className="relative inline-flex items-center justify-between gap-2 border border-border text-foreground font-bold px-5 py-3.5 hover:border-foreground transition-all hover:-translate-y-0.5"
+                  >
+                    <span>STUDIO — 5 profils artistes</span>
+                    <span className="font-display">499 €/an · Planifier une démo</span>
+                  </a>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground text-center">
-                  Paiement sécurisé par Stripe. Désabonnement en 1 clic.
+                  Sans engagement (mensuel) · 🎁 7 jours offerts avec rappel par email avant le débit · Paiement sécurisé Stripe.
                 </p>
               </>
             )}
@@ -311,54 +367,67 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2.5 text-sm">
                   <BadgeCheck size={17} className="text-[#d9ffd0]" />
                   <span data-testid="subscription-status-text">
-                    {isBasic ? "Abonnement BASIC actif" : "Abonnement PRO actif"}
+                    {isTrial ? "Essai Pro en cours — accès complet" : isBasic ? "Abonnement BASIC actif" : isEssentiel ? "Abonnement ESSENTIEL actif" : isStudio ? "Abonnement STUDIO actif" : "Abonnement PRO actif"}
                   </span>
                 </div>
                 <div className="mt-3 flex items-center gap-2.5 text-sm text-muted-foreground">
                   <CalendarClock size={17} />
-                  <span data-testid="subscription-renewal-date">Accès jusqu'au {fmtDate(sub.current_period_end)}</span>
+                  <span data-testid="subscription-renewal-date">
+                    {isTrial
+                      ? `Ton abonnement Pro (19,99 €/mois) démarre le ${fmtDate(sub.current_period_end)} — annulable en 2 clics avant le débit`
+                      : `Accès jusqu'au ${fmtDate(sub.current_period_end)}`}
+                  </span>
                 </div>
-                {isBasic ? (
+                {isTrial && (
+                  <div className="mt-4 border border-primary/40 bg-primary/5 px-4 py-3 font-osd text-xs tracking-wider text-primary" data-testid="trial-day-banner">
+                    ESSAI PRO — J{Math.min(7, Math.max(1, 7 - Math.max(0, Math.ceil((new Date(sub.current_period_end) - Date.now()) / 86400000)) + 1))}/7
+                  </div>
+                )}
+                {hasQuota && quota && quota.quota != null && (
+                  <div className="mt-5" data-testid="quota-section">
+                    <div className="flex items-center justify-between text-sm mb-2">
+                      <span className="text-muted-foreground">
+                        {isTrial ? "Exports pendant l'essai" : "Vidéos exportées ce mois-ci"}
+                      </span>
+                      <span className="font-osd text-[#8f9bff]" data-testid="quota-count">
+                        {quota.used} / {quota.quota}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-secondary overflow-hidden">
+                      <div
+                        className="h-full bg-[#8f9bff] transition-all"
+                        style={{ width: `${Math.min(100, (quota.used / quota.quota) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {(isBasic || isEssentiel) && (
                   <>
-                    {quota && (
-                      <div className="mt-5" data-testid="basic-quota-section">
-                        <div className="flex items-center justify-between text-sm mb-2">
-                          <span className="text-muted-foreground">Vidéos exportées ce mois-ci</span>
-                          <span className="font-osd text-[#8f9bff]" data-testid="basic-quota-count">
-                            {quota.used} / {quota.quota}
-                          </span>
-                        </div>
-                        <div className="h-2 bg-secondary overflow-hidden">
-                          <div
-                            className="h-full bg-[#8f9bff] transition-all"
-                            style={{ width: `${Math.min(100, (quota.used / quota.quota) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
                     <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
-                      Export sans watermark et .srt inclus — 10 vidéos par mois. Passe en PRO pour exporter en
-                      illimité et débloquer l'extraction d'acapella (IA).
+                      {isBasic
+                        ? "Export sans watermark et .srt inclus — 10 vidéos par mois. Passe en PRO pour exporter en illimité et débloquer les séries de vidéos."
+                        : "15 exports par mois, tous les styles et effets. Passe en PRO pour exporter en illimité et débloquer les séries de vidéos."}
                     </p>
                     <button
-                      onClick={() => startCheckout("monthly")}
+                      onClick={() => startCheckout("pro_monthly")}
                       disabled={busy}
                       data-testid="upgrade-to-pro-button"
                       className="relative mt-6 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
                     >
-                      {promoBadge("monthly")}
+                      {promoBadge("pro_monthly")}
                       <Crown size={16} /> Passer en PRO —{" "}
-                      {affPrice("monthly") ? (
-                        <span data-testid="price-upgrade-monthly"><s className="opacity-60 mr-1">12,99 €</s>{fmtEUR(affPrice("monthly").after_cents)} €/mois</span>
-                      ) : "12,99 €/mois"}
+                      {affPrice("pro_monthly") ? (
+                        <span data-testid="price-upgrade-monthly"><s className="opacity-60 mr-1">19,99 €</s>{fmtEUR(affPrice("pro_monthly").after_cents)} €/mois</span>
+                      ) : "19,99 €/mois"}
                     </button>
                     <p className="mt-2 text-xs text-muted-foreground text-center">
-                      Ton abonnement BASIC sera automatiquement remplacé.
+                      Ton abonnement actuel sera automatiquement remplacé.
                     </p>
                   </>
-                ) : (
+                )}
+                {!isBasic && !isEssentiel && !isTrial && (
                   <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
-                    Export sans watermark, sous-titres .srt, acapella — tout est débloqué. Merci de soutenir BEATCUT ✦
+                    Exports illimités, séries de vidéos, tous les styles — tout est débloqué. Merci de soutenir BEATCUT ✦
                   </p>
                 )}
                 <AlertDialog>
@@ -368,27 +437,28 @@ export default function Dashboard() {
                       data-testid="unsubscribe-button"
                       className="mt-7 w-full border border-border text-muted-foreground px-6 py-3 text-sm hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
                     >
-                      Se désabonner
+                      {isTrial ? "Annuler mon essai" : "Se désabonner"}
                     </button>
                   </AlertDialogTrigger>
                   <AlertDialogContent className="bg-card border-border">
                     <AlertDialogHeader>
                       <AlertDialogTitle className="font-display">
-                        Se désabonner de BEATCUT {isBasic ? "BASIC" : "PRO"} ?
+                        {isTrial ? "Annuler ton essai Pro ?" : `Se désabonner de BEATCUT ${isBasic ? "BASIC" : isEssentiel ? "ESSENTIEL" : isStudio ? "STUDIO" : "PRO"} ?`}
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        Tu garderas l'accès {isBasic ? "BASIC" : "PRO"} jusqu'au {fmtDate(sub.current_period_end)}. Ensuite, ton compte
-                        repassera en gratuit (studio complet, aperçu avec watermark). Tu pourras te réabonner à tout moment.
+                        {isTrial
+                          ? "Ton essai sera annulé immédiatement : rien ne sera débité. Ton montage et tes morceaux restent sauvegardés — tu pourras reprendre un abonnement quand tu veux."
+                          : `Tu garderas l'accès jusqu'au ${fmtDate(sub.current_period_end)}. Ensuite, ton compte repassera sans abonnement (montage et sauvegarde conservés, export verrouillé). Tu pourras te réabonner à tout moment.`}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel data-testid="cancel-unsubscribe-button">Garder mon abonnement</AlertDialogCancel>
+                      <AlertDialogCancel data-testid="cancel-unsubscribe-button">{isTrial ? "Garder mon essai" : "Garder mon abonnement"}</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={cancelSubscription}
                         data-testid="confirm-unsubscribe-button"
                         className="bg-primary text-white hover:bg-[#d32f2f]"
                       >
-                        Confirmer le désabonnement
+                        {isTrial ? "Annuler l'essai (aucun débit)" : "Confirmer le désabonnement"}
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -405,7 +475,8 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
-                  Après cette date, ton compte repassera automatiquement en gratuit. Tu peux te réabonner quand tu veux.
+                  Après cette date, ton compte repassera sans abonnement (montage et sauvegarde conservés, export
+                  verrouillé). Tu peux te réabonner quand tu veux.
                 </p>
                 <button
                   onClick={resubscribe}
@@ -413,7 +484,7 @@ export default function Dashboard() {
                   data-testid="resubscribe-button"
                   className="mt-7 w-full bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
                 >
-                  {busy ? "…" : "Se réabonner — 12,99 €/mois"}
+                  {busy ? "…" : "Se réabonner"}
                 </button>
               </>
             )}
@@ -459,6 +530,41 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
+
+        {isStudio && (
+          <section className="mt-6 bg-card border border-border p-8" data-testid="studio-watermark-card">
+            <h2 className="font-display text-lg font-bold mb-3">Watermark personnalisé ✦ Studio</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Ajoute le logo de ta structure (PNG, fond transparent conseillé) : il sera incrusté en bas à droite
+              de chaque vidéo exportée depuis ce compte.
+            </p>
+            <div className="mt-5 flex items-center gap-3 flex-wrap">
+              <label className="cursor-pointer bg-foreground text-background font-bold px-5 py-2.5 text-sm hover:opacity-90 transition-opacity">
+                {wmBusy ? "…" : user?.has_watermark ? "Remplacer le logo" : "Ajouter mon logo (PNG)"}
+                <input
+                  type="file"
+                  accept="image/png"
+                  className="hidden"
+                  data-testid="watermark-upload-input"
+                  onChange={(e) => uploadWatermark(e.target.files?.[0])}
+                />
+              </label>
+              {user?.has_watermark && (
+                <>
+                  <img src="/api/studio/watermark" alt="logo" className="h-10 border border-border bg-background p-1" data-testid="watermark-preview" />
+                  <button
+                    onClick={removeWatermark}
+                    disabled={wmBusy}
+                    data-testid="watermark-delete-button"
+                    className="border border-border text-muted-foreground px-4 py-2.5 text-sm hover:border-primary hover:text-primary transition-colors"
+                  >
+                    Retirer
+                  </button>
+                </>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* ===== Parrainage + Promo ===== */}
         <section className="mt-6 grid md:grid-cols-2 gap-6">

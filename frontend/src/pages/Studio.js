@@ -7,6 +7,12 @@ const BUST = Date.now(); // anti-cache : garantit la dernière version du studio
 export default function Studio() {
   const [params] = useSearchParams();
   const projectId = params.get("project");
+  const sessionId = params.get("session_id");
+  const qs = [
+    projectId ? `project=${projectId}` : null,
+    sessionId ? `session_id=${sessionId}` : null,
+    `v=${BUST}`,
+  ].filter(Boolean).join("&");
   return (
     <div className="h-screen w-full flex flex-col bg-background">
       <div className="hidden sm:flex items-center justify-between px-4 sm:px-6 h-12 bg-[#0d0b11] border-b border-border shrink-0">
@@ -23,7 +29,7 @@ export default function Studio() {
         </span>
       </div>
       <iframe
-        src={projectId ? `/studio.html?project=${projectId}&v=${BUST}` : `/studio.html?v=${BUST}`}
+        src={`/studio.html?${qs}`}
         title="Studio BEATCUT"
         data-testid="studio-iframe"
         className="block w-full flex-1 border-0"

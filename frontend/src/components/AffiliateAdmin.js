@@ -3,9 +3,13 @@ import { toast } from "sonner";
 import api, { formatApiErrorDetail } from "@/lib/api";
 
 const PLANS = [
-  { id: "monthly", label: "PRO mensuel (12,99 €)" },
-  { id: "yearly", label: "PRO annuel (99 €)" },
-  { id: "basic", label: "BASIC (6,99 €)" },
+  { id: "pro_monthly", label: "PRO mensuel (19,99 €)" },
+  { id: "pro_yearly", label: "PRO annuel (149 €)" },
+  { id: "essentiel", label: "ESSENTIEL (9,99 €)" },
+  { id: "studio", label: "STUDIO (499 €/an)" },
+  { id: "monthly", label: "Legacy PRO (12,99 €)" },
+  { id: "yearly", label: "Legacy PRO annuel (99 €)" },
+  { id: "basic", label: "Legacy BASIC (6,99 €)" },
 ];
 const eur = (c) => (c / 100).toFixed(2).replace(".", ",") + " €";
 
@@ -14,7 +18,7 @@ export const AffiliateAdmin = () => {
   const [code, setCode] = useState("");
   const [kind, setKind] = useState("amount");
   const [value, setValue] = useState("2");
-  const [plans, setPlans] = useState(["monthly"]);
+  const [plans, setPlans] = useState(["pro_monthly"]);
   const [commission, setCommission] = useState("20");
   const [busy, setBusy] = useState(false);
   const [detail, setDetail] = useState(null);

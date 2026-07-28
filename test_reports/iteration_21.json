@@ -1,0 +1,69 @@
+{
+  "summary": "Iter21 — Refonte tarifaire BeatCut (Essentiel/Pro/Studio + paywall FREE + sessions uniques + onboarding). Backend: 20/20 tests iter21_pricing_refonte PASS (checkout 4 nouveaux plans + legacy monthly/yearly/basic + return_path, quota FREE paywall + demo basic grandfathering, register_export 402 free / 200 basic, sessions uniques demo invalide 1re / VIP julesfar17 exempté, 5 clips max FREE (6e = 403), watermark studio gating 403+404, onboarding new user done_at + persona/genre + telemetry, activate-now 400 sans essai). Régression pytest test_basic_plan + test_affiliate_iter11: 27/28 PASS, 1 FAIL bug backend NameError 'LEGACY_PLAN_EQUIV' non défini ligne 1025 → 500 sur checkout avec promo_code sur plan non-couvert. Frontend: landing tarifs 4 cartes ordre Essentiel/Pro/Pro Annuel/Studio + badges + CTAs OK ; MAIS violations 'AUCUNE occurrence gratuit/sans carte' → 'Sans carte bancaire' présent dans hero landing sous CTA principal, 'essai gratuit' présent en FAQ ('Comment fonctionne l'essai gratuit de 7 jours ?'). Dashboard FREE (qa_free_ui): badge 'SANS ABONNEMENT' + 4 boutons subscribe-{essentiel,pro,pro-yearly,studio} présents, clic essentiel → checkout.stripe.com/c/pay/cs_live_... URL générée OK. Dashboard demo BASIC: badge BASIC + [data-testid=quota-section] '0 / 10' + [data-testid=upgrade-to-pro-button] '19,99 €/mois' OK. Studio paywall FREE: header counter affiche 🔒/🔒 (verrouillé) confirmé sur nouveau compte. Onboarding /register nouveau compte: /studio ouvre → [data-testid=onboarding-overlay] visible, [data-testid=onb-progress] présent, 5 boutons réponse écran 1 'Tu es plutôt...', clic réponse → écran 2, [data-testid=onb-skip] → écran final avec [data-testid=onb-drop] + [data-testid=onb-later], clic onb-later ferme l'overlay, RELOAD /studio → overlay NE réapparaît PAS, /api/auth/me confirme onboarding_done:true + onboarding.persona:'artiste' + onboarding.skipped_at:2 + onboarding.done_at ISO OK.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/payments/checkout", "issue": "NameError: 'LEGACY_PLAN_EQUIV' is not defined (server.py:1025 dans _apply_affiliate_discount). Se produit dès qu'un code affilié valide est envoyé pour un plan non-couvert (ex: plan='basic' avec code affilié valide couvrant monthly/yearly). Retourne 500 au lieu du 400 'Ce code affilié ne couvre pas ce plan'. Reproduction: POST /api/payments/checkout body {plan:'basic', promo_code:<code affilié actif couvrant monthly>, origin_url:...} → 500 Internal Server Error. Trace supervisor backend.err.log confirme NameError.", "priority": "CRITICAL"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "landing.html hero", "issue": "'Sans carte bancaire · Ta première vidéo pour juger sur pièces' présent sous le CTA principal 'Essaie 7 jours offerts'. Le brief exige AUCUNE occurrence de 'sans carte' dans tarifs/CTA/FAQ (hero = CTA principal).", "selector": "landing.html hero paragraph sous #hero CTA", "priority": "HIGH"},
+      {"component": "landing.html FAQ", "issue": "'Comment fonctionne l'essai gratuit de 7 jours ?' — le mot 'gratuit' est présent en question FAQ. Le brief exige AUCUNE occurrence de 'gratuit' dans tarifs/CTA/FAQ. Remplacer par 'l'essai de 7 jours' ou 'les 7 jours offerts'.", "selector": "landing.html section FAQ question 1", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend_iter21": {
+      "TestCheckoutPlans (7 plans + return_path)": "8/8 PASS",
+      "TestQuotaAndPaywall (free paywall + basic grandfathering)": "4/4 PASS",
+      "TestSingleSession (demo invalidation + VIP exempt)": "2/2 PASS",
+      "TestFreeClipsLimit (5 max, 6e=403)": "1/1 PASS",
+      "TestStudioWatermark (403 non-studio + 404)": "2/2 PASS",
+      "TestOnboarding (new user + telemetry)": "2/2 PASS",
+      "TestActivateNow (400 sans essai)": "1/1 PASS"
+    },
+    "backend_regression": {
+      "test_basic_plan.py": "PASS (10/10 approx)",
+      "test_affiliate_iter11.py::test_checkout_basic_plan_not_covered_still_ok": "FAIL — 500 NameError LEGACY_PLAN_EQUIV",
+      "test_affiliate_iter11.py autres": "PASS"
+    },
+    "frontend": {
+      "landing #tarifs (4 cartes ordre + badges + CTAs + prix)": "PASS",
+      "landing forbidden 'gratuit'/'sans carte' hors #tarifs": "FAIL (2 occurrences hero+FAQ)",
+      "dashboard FREE (SANS ABONNEMENT + 4 boutons + clic essentiel → stripe)": "PASS",
+      "dashboard demo BASIC (badge + quota-section 0/10 + upgrade-to-pro-button 19,99€)": "PASS",
+      "onboarding new register (overlay + progress + réponses + skip + drop + later + reload no-show + /api/auth/me confirm)": "PASS",
+      "header lock icons FREE (🔒/🔒 exports left)": "PASS"
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter21_pricing_refonte.py",
+    "/app/test_reports/pytest/iter21_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Définir la constante LEGACY_PLAN_EQUIV dans /app/backend/server.py (utilisée l.1025). Ex: LEGACY_PLAN_EQUIV = {'basic':'monthly','monthly':'pro_monthly','yearly':'pro_yearly','pro_monthly':'monthly','pro_yearly':'yearly','essentiel':None,'studio':None}. Sans cette map, tout checkout avec promo_code affilié valide sur un plan non-listé dans aff.plans retourne 500 au lieu de 400.",
+    "HIGH: Retirer 'Sans carte bancaire' du hero landing.html (sous CTA 'Essaie 7 jours offerts') pour se conformer au brief 'AUCUNE occurrence de sans carte'.",
+    "HIGH: Reformuler la 1re question FAQ landing.html 'Comment fonctionne l'essai gratuit de 7 jours ?' → 'Comment fonctionne l'essai de 7 jours ?' (ou 'les 7 jours offerts') pour retirer le mot 'gratuit'."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1025 référence 'LEGACY_PLAN_EQUIV' sans définition dans le fichier (grep confirme 1 seule occurrence). Bug latent qui ne se déclenche que sur chemin d'erreur affilié → couverture de test faible sur les codes affiliés partiellement couverts.",
+    "server.py:1038 fallback silencieux 'plan → pro_monthly si inconnu' peut masquer des typos côté client. Envisager 400 explicite pour plans invalides plutôt qu'une conversion silencieuse.",
+    "server.py:1548 register_export : le catch de trial_cap renvoie 429 avec detail dict {code:'trial_cap', message, trial_end}. Cohérent avec paywall 402 (detail dict). Bon pattern.",
+    "server.py:1691 ONBOARDING_FIELDS whitelist stricte + longueur max 40 → validation robuste. skipped_at correctement casté int. done → done_at ISO. OK.",
+    "server.py:240 _check_sid retourne silencieusement si user.sids vide (tolérance sessions pré-mécanisme). OK — évite déconnexions massives lors du déploiement.",
+    "server.py:2138 limite '5 clips FREE' compte via metadata.content_type ~= '^video' — cohérent, mais un utilisateur peut contourner en uploadant en tant que 'application/octet-stream'. Envisager également _is_video(filename) (extension) pour hardening.",
+    "server.py absence d'endpoint DELETE /api/media/{id} — les tests doivent nettoyer via Mongo direct (accepté ici). Endpoint utile pour UX 'supprimer un clip' aussi."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter21_pricing_refonte.py (nouveau)"
+  ],
+  "success_rate": {"backend": "20/20 iter21 (100%) + 27/28 régression (96%)", "frontend": "6/7 (86%) — 2 violations landing wording"},
+  "test_credentials": "demo@beatcut.fr/Demo1234!, qa_free_ui@test.local/Testing1234!, julesfar17@gmail.com/Carnageproduction1704* (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Aucune persistante. Compte onboarding créé (TEST_onb_d88dd2f5@example.com + TEST_onb_87b10f6bf1) puis supprimé via mongo (db.users.delete_many). Uploads FREE 5 mp4 factices supprimés via GridFS direct dans le teardown du test.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sessions uniques : un test qui log in demo@beatcut.fr après un autre test qui l'a loggué se voit toujours accorder /api/auth/me (nouvelle session), mais la session précédente devient 401. Toujours ordonner les tests OU accepter que la session précédente meure. VIP julesfar17@gmail.com est exempté (session_limit=99). Pour cleanup users test: db.users.delete_many({'email': re.compile('TEST_', re.I)}) (les emails sont lowercased par le backend). Pas d'endpoint DELETE /api/media/{id} — cleanup GridFS via db['media.files'].delete_one({_id}) + db['media.chunks'].delete_many({files_id}). Le test file iter21 utilise MongoClient direct pour cleanup, MONGO_URL et DB_NAME chargés depuis backend/.env.",
+  "rca of the issue": "Bug NameError LEGACY_PLAN_EQUIV: la refonte tarifaire a introduit à l.1025 un lookup de mapping ancien-plan→nouveau-plan (pour vérifier qu'un code affilié couvre le plan demandé ou son équivalent legacy), mais la constante LEGACY_PLAN_EQUIV n'a jamais été définie en tête de fichier (aucune occurrence en dehors de l.1025). Reproduction 100 %: coupon affilié actif dont aff.plans=['monthly','yearly'] + POST /api/payments/checkout {plan:'basic', promo_code:<code>, origin_url:...} → server exécute `LEGACY_PLAN_EQUIV.get(plan)` → NameError → 500. Mitigation: ajouter en tête de server.py (après NEW_PLANS l.59) : LEGACY_PLAN_EQUIV = {'basic':'monthly','monthly':'monthly','yearly':'yearly','pro_monthly':'monthly','pro_yearly':'yearly','essentiel':'monthly','studio':'yearly'} (ou la mapping exacte souhaitée). Impact: bloque potentiellement tout achat via code affilié pour un plan non listé dans aff.plans (retourne 500 au lieu de 400 clair). Non détecté avant car les tests précédents utilisaient toujours 'monthly' couvert par le code."
+}

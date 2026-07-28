@@ -14,6 +14,7 @@ import bcrypt
 import jwt
 import httpx
 from datetime import datetime, timezone, timedelta
+from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
@@ -47,6 +48,17 @@ PRO_PRICE_YEAR_CENTS = 9900
 BASIC_PRICE = 6.99          # plan Basic — 10 vidéos/mois, sans acapella
 BASIC_PRICE_CENTS = 699
 BASIC_MONTHLY_EXPORTS = 10
+# --- Nouvelle grille tarifaire (juin 2026) ---
+ESSENTIEL_PRICE_CENTS = 999      # Essentiel — 9,99 €/mois, 15 exports/mois
+PRO2_PRICE_CENTS = 1999          # Pro — 19,99 €/mois, essai 7 jours
+PRO2_YEAR_CENTS = 14900          # Pro annuel — 149 €/an
+STUDIO_YEAR_CENTS = 49900        # Studio — 499 €/an
+ESSENTIEL_MONTHLY_EXPORTS = 15
+TRIAL_DAYS = 7
+TRIAL_EXPORT_CAP = 15            # plafond anti-abus pendant l'essai (invisible marketing)
+NEW_PLANS = ("essentiel", "pro_monthly", "pro_yearly", "studio")
+ANNUAL_PLANS = ("yearly", "pro_yearly", "studio")
+PLAN_TIERS = {"basic": "basic", "essentiel": "essentiel", "studio": "studio"}  # défaut : pro
 PRO_CURRENCY = "eur"
 SUBSCRIPTION_DAYS = 30      # filet de sécurité si Stripe est injoignable
 SUBSCRIPTION_DAYS_YEAR = 365
@@ -116,7 +128,7 @@ def _email_html(title: str, body: str, cta_label: str = None, cta_url: str = Non
 <tr><td style="font-size:17px;font-weight:bold;color:#ece6da;padding:18px 0 8px">{title}</td></tr>
 <tr><td style="font-size:14px;color:#9a93a6;line-height:1.6">{body}</td></tr>
 {button}
-<tr><td style="font-size:11px;color:#6b6478;padding-top:28px">BEATCUT — studio beat-sync. 12,99 €/mois, sans engagement.</td></tr>
+<tr><td style="font-size:11px;color:#6b6478;padding-top:28px">BEATCUT — studio beat-sync. Sans engagement sur les plans mensuels.</td></tr>
 </table></td></tr></table>"""
 
 
@@ -144,10 +156,38 @@ def reset_email_html(link: str) -> str:
 
 def sub_confirmed_email_html(period_end) -> str:
     return _email_html(
-        "Bienvenue en PRO ✦",
-        f"Ton abonnement BEATCUT PRO est actif : export vidéo sans watermark, sous-titres .srt et "
-        f"extraction d'acapella (GPU) débloqués. Renouvellement automatique le {_fmt_date_fr(period_end)} "
-        f"(12,99 €/mois). Tu peux te désabonner à tout moment en 1 clic depuis ton compte.",
+        "Bienvenue ✦",
+        f"Ton abonnement BEATCUT est actif : exports sans watermark, tous les styles et effets débloqués. "
+        f"Renouvellement automatique le {_fmt_date_fr(period_end)}. "
+        f"Tu peux te désabonner à tout moment en 2 clics depuis ton compte.",
+    )
+
+
+def trial_started_email_html(trial_end) -> str:
+    return _email_html(
+        "Ton essai Pro a commencé 🎉",
+        f"Tu as 7 jours d'accès Pro complet : exports illimités, séries de vidéos, tous les styles. "
+        f"Ton abonnement Pro (19,99 €/mois) démarre automatiquement le {_fmt_date_fr(trial_end)}. "
+        f"Tu peux annuler à tout moment avant cette date, en 2 clics, depuis ton compte — rien ne sera débité.",
+        "Gérer mon abonnement", "https://beat-cut.com/dashboard",
+    )
+
+
+def trial_reminder_email_html(trial_end) -> str:
+    return _email_html(
+        "Ton essai se termine bientôt",
+        f"Ton essai Pro se termine le {_fmt_date_fr(trial_end)}. "
+        f"Ton abonnement Pro (19,99 €/mois) démarre automatiquement à cette date. "
+        f"Si tu veux continuer, tu n'as rien à faire. Sinon, annule en 2 clics avant le débit — rien ne sera prélevé.",
+        "Gérer ou annuler", "https://beat-cut.com/dashboard",
+    )
+
+
+def trial_canceled_email_html() -> str:
+    return _email_html(
+        "Essai annulé — rien ne sera débité",
+        "Ton essai Pro a bien été annulé : aucun prélèvement. "
+        "Ton montage et tes morceaux restent sauvegardés sur ton compte — tu peux reprendre un abonnement quand tu veux.",
     )
 
 
@@ -174,14 +214,35 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, email: str) -> str:
+def create_access_token(user_id: str, email: str, sid: str = "") -> str:
     payload = {
         "sub": user_id,
         "email": email,
+        "sid": sid,
         "type": "access",
         "exp": now_utc() + timedelta(days=ACCESS_TOKEN_DAYS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _session_limit(user: dict) -> int:
+    """Anti-partage : 1 session active (3 pour Studio). Admin/VIP : illimité."""
+    if user.get("role") == "admin" or (user.get("email") or "").lower() in PRO_WHITELIST:
+        return 99
+    return 3 if ((user.get("subscription") or {}).get("plan") == "studio") else 1
+
+
+async def register_sid(user: dict, sid: str):
+    sids = list(user.get("sids") or []) + [sid]
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"sids": sids[-_session_limit(user):]}})
+
+
+def _check_sid(user: dict, sid: str):
+    sids = user.get("sids")
+    if not sids:
+        return  # sessions créées avant le mécanisme : tolérées jusqu'au prochain login
+    if sid not in sids:
+        raise HTTPException(status_code=401, detail="Ton compte a été connecté sur un autre appareil.")
 
 
 def set_jwt_cookie(response: Response, token: str):
@@ -215,9 +276,10 @@ def sub_info(user: dict) -> dict:
     sub = user.get("subscription") or {}
     status = sub.get("status")
     end = parse_dt(sub.get("current_period_end"))
-    active = status in ("active", "canceled") and end is not None and end > now_utc()
+    active = status in ("active", "canceled", "trialing") and end is not None and end > now_utc()
     plan = sub.get("plan") or "monthly"
-    tier = ("basic" if plan == "basic" else "pro") if active else "free"
+    tier = PLAN_TIERS.get(plan, "pro") if active else "free"
+    trialing = bool(active and status == "trialing")
     return {
         "is_pro": bool(active),
         "tier": tier,
@@ -225,6 +287,9 @@ def sub_info(user: dict) -> dict:
         "status": status if active else None,
         "current_period_end": end.isoformat() if (active and end) else None,
         "cancel_at_period_end": (status == "canceled") if active else False,
+        "trial": trialing,
+        "trial_end": end.isoformat() if trialing else None,
+        "trial_start": sub.get("started_at") if trialing else None,
     }
 
 
@@ -240,6 +305,9 @@ def public_user(user: dict) -> dict:
         "is_pro": info["is_pro"],
         "subscription": info,
         "ref_code": user.get("ref_code", ""),
+        "onboarding_done": bool(user.get("onboarding_done", True)),
+        "onboarding": user.get("onboarding") or {},
+        "has_watermark": bool(user.get("watermark_media_id")),
     }
 
 
@@ -256,7 +324,10 @@ def _extract_period_end(sub_obj) -> datetime:
 
 
 def _stripe_sub_status(s) -> str:
-    if s.get("status") in ("active", "trialing"):
+    st = s.get("status")
+    if st == "trialing":
+        return "canceled" if s.get("cancel_at_period_end") else "trialing"
+    if st == "active":
         return "canceled" if s.get("cancel_at_period_end") else "active"
     return "expired"
 
@@ -273,7 +344,7 @@ async def _apply_stripe_sub_state(user_id: str, s):
 
 
 async def activate_subscription(user_id: str, customer_id: str = None, subscription_id: str = None, plan: str = "monthly"):
-    days = SUBSCRIPTION_DAYS_YEAR if plan == "yearly" else SUBSCRIPTION_DAYS
+    days = SUBSCRIPTION_DAYS_YEAR if plan in ANNUAL_PLANS else SUBSCRIPTION_DAYS
     # Changement de plan (ex: Basic → PRO) : annule l'ancien abonnement Stripe
     # pour éviter la double facturation.
     existing = await db.users.find_one({"user_id": user_id}, {"_id": 0, "subscription": 1})
@@ -373,10 +444,10 @@ async def _user_from_jwt(token: str):
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access":
-            return None
-        return await db.users.find_one({"user_id": payload["sub"]}, {"_id": 0})
+            return None, ""
+        return await db.users.find_one({"user_id": payload["sub"]}, {"_id": 0}), (payload.get("sid") or "")
     except jwt.PyJWTError:
-        return None
+        return None, ""
 
 
 async def _user_from_session(token: str):
@@ -392,19 +463,26 @@ async def _user_from_session(token: str):
 async def get_current_user(request: Request) -> dict:
     jwt_token = request.cookies.get("access_token")
     if jwt_token:
-        user = await _user_from_jwt(jwt_token)
+        user, sid = await _user_from_jwt(jwt_token)
         if user:
+            _check_sid(user, sid)
             return user
     session_token = request.cookies.get("session_token")
     if session_token:
         user = await _user_from_session(session_token)
         if user:
+            _check_sid(user, session_token)
             return user
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         bearer = auth_header[7:]
-        user = await _user_from_jwt(bearer) or await _user_from_session(bearer)
+        user, sid = await _user_from_jwt(bearer)
         if user:
+            _check_sid(user, sid)
+            return user
+        user = await _user_from_session(bearer)
+        if user:
+            _check_sid(user, bearer)
             return user
     raise HTTPException(status_code=401, detail="Non authentifié")
 
@@ -453,8 +531,9 @@ class GoogleSessionIn(BaseModel):
 
 class CheckoutIn(BaseModel):
     origin_url: str
-    plan: str = "monthly"   # "monthly" ou "yearly"
+    plan: str = "pro_monthly"   # essentiel | pro_monthly | pro_yearly | studio (+ legacy monthly/yearly/basic)
     promo_code: str | None = None   # code affilié (remise Stripe à vie)
+    return_path: str | None = None  # chemin de retour après paiement (ex: /studio?project=ID)
 
 
 class ForgotPasswordIn(BaseModel):
@@ -508,10 +587,13 @@ async def register(data: RegisterIn, response: Response):
         "subscription": None,
         "ref_code": f"REF{uuid.uuid4().hex[:6].upper()}",
         "referred_by": referred_by,
+        "onboarding_done": False,
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(user)
-    set_jwt_cookie(response, create_access_token(user["user_id"], email))
+    sid = uuid.uuid4().hex
+    await register_sid(user, sid)
+    set_jwt_cookie(response, create_access_token(user["user_id"], email, sid))
     return public_user(user)
 
 
@@ -527,7 +609,9 @@ async def login(data: LoginIn, request: Request, response: Response):
         await record_failed_attempt(identifier)
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
     await clear_attempts(identifier)
-    set_jwt_cookie(response, create_access_token(user["user_id"], email))
+    sid = uuid.uuid4().hex
+    await register_sid(user, sid)
+    set_jwt_cookie(response, create_access_token(user["user_id"], email, sid))
     return public_user(user)
 
 
@@ -842,6 +926,18 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
         if tx and tx.get("user_id"):
             plan = tx.get("plan", "monthly")
             await activate_subscription(tx["user_id"], customer_id, subscription_id, plan=plan)
+            trial_started = False
+            if subscription_id:
+                try:
+                    s = await asyncio.to_thread(
+                        lambda: stripe.Subscription.retrieve(subscription_id, expand=["default_payment_method"]))
+                    if s.get("status") == "trialing":
+                        if await _guard_trial_fingerprint(tx["user_id"], tx.get("email"), s):
+                            return
+                        trial_started = True
+                    await _apply_stripe_sub_state(tx["user_id"], s)
+                except Exception:
+                    logger.exception("Sync post-activation impossible pour %s", subscription_id)
             if tx.get("affiliate_code"):
                 await db.affiliate_codes.update_one(
                     {"code": tx["affiliate_code"]},
@@ -851,11 +947,59 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
             user = await db.users.find_one({"user_id": tx["user_id"]}, {"_id": 0})
             if user:
                 end = (user.get("subscription") or {}).get("current_period_end")
-                label = "BASIC" if plan == "basic" else "PRO"
-                await send_email(user["email"], f"Bienvenue en {label} ✦ BEATCUT", sub_confirmed_email_html(end))
+                if trial_started:
+                    await send_email(user["email"], "Ton essai Pro a commencé ✦ BEATCUT", trial_started_email_html(end))
+                else:
+                    label = PLAN_LABELS.get(plan, "PRO")
+                    await send_email(user["email"], f"Bienvenue en {label} ✦ BEATCUT", sub_confirmed_email_html(end))
+
+
+async def _guard_trial_fingerprint(user_id: str, email: str, s) -> bool:
+    """Anti-abus : un seul essai par carte (empreinte Stripe). Retourne True si l'essai est refusé."""
+    fp = None
+    try:
+        pm = s.get("default_payment_method")
+        if pm and pm.get("card"):
+            fp = pm["card"].get("fingerprint")
+    except Exception:
+        pass
+    if fp:
+        dup = await db.trial_fingerprints.find_one({"fingerprint": fp, "user_id": {"$ne": user_id}})
+        if dup:
+            try:
+                await asyncio.to_thread(stripe.Subscription.cancel, s["id"])
+            except Exception:
+                logger.exception("Annulation de l'essai dupliqué impossible (%s)", s["id"])
+            await db.users.update_one(
+                {"user_id": user_id},
+                {"$set": {"subscription.status": "expired", "trial_refused_at": iso(now_utc())}})
+            logger.warning("Essai refusé (carte déjà utilisée pour un essai) : %s", email)
+            return True
+        await db.trial_fingerprints.update_one(
+            {"fingerprint": fp},
+            {"$setOnInsert": {"fingerprint": fp, "user_id": user_id, "email": email, "used_at": iso(now_utc())}},
+            upsert=True)
+    await db.users.update_one({"user_id": user_id}, {"$set": {"trial_used": True}})
+    return False
 
 
 def _plan_pricing(plan: str) -> dict:
+    if plan == "essentiel":
+        return {"amount_cents": ESSENTIEL_PRICE_CENTS, "interval": "month",
+                "name": "BEATCUT ESSENTIEL",
+                "desc": f"{ESSENTIEL_MONTHLY_EXPORTS} exports/mois — tous les styles et effets, banque de clips — sans engagement"}
+    if plan == "pro_monthly":
+        return {"amount_cents": PRO2_PRICE_CENTS, "interval": "month",
+                "name": "BEATCUT PRO",
+                "desc": "Exports illimités + séries de vidéos + tous styles/effets/polices — sans engagement"}
+    if plan == "pro_yearly":
+        return {"amount_cents": PRO2_YEAR_CENTS, "interval": "year",
+                "name": "BEATCUT PRO — annuel",
+                "desc": "Tout le plan Pro — 149 € facturés une fois par an (≈ 12,42 €/mois)"}
+    if plan == "studio":
+        return {"amount_cents": STUDIO_YEAR_CENTS, "interval": "year",
+                "name": "BEATCUT STUDIO",
+                "desc": "5 profils artistes, watermark personnalisé, 3 utilisateurs, support prioritaire — 499 €/an"}
     if plan == "yearly":
         return {"amount_cents": PRO_PRICE_YEAR_CENTS, "interval": "year",
                 "name": "BEATCUT PRO — annuel",
@@ -877,7 +1021,8 @@ async def _apply_affiliate_discount(params: dict, plan: str, promo_code: str) ->
     aff = await db.affiliate_codes.find_one({"code": aff_code, "active": True})
     if not aff:
         raise HTTPException(status_code=400, detail="Code affilié invalide ou expiré")
-    if plan not in (aff.get("plans") or []):
+    _covered = set(aff.get("plans") or [])
+    if plan not in _covered and LEGACY_PLAN_EQUIV.get(plan) not in _covered:
         raise HTTPException(status_code=400, detail="Ce code affilié ne couvre pas ce plan")
     params["discounts"] = [{"coupon": aff["stripe_coupon_id"]}]
     params["metadata"]["affiliate_code"] = aff_code
@@ -890,7 +1035,7 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         raise HTTPException(status_code=400, detail="Compte VIP — déjà PRO")
     origin = data.origin_url.rstrip("/")
     sub = user.get("subscription") or {}
-    plan = data.plan if data.plan in ("yearly", "basic") else "monthly"
+    plan = data.plan if data.plan in (*NEW_PLANS, "monthly", "yearly", "basic") else "pro_monthly"
     pricing = _plan_pricing(plan)
     params = dict(
         mode="subscription",
@@ -909,6 +1054,18 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         metadata={"user_id": user["user_id"], "email": user["email"], "product": f"beatcut_{plan}"},
         subscription_data={"metadata": {"user_id": user["user_id"], "plan": plan}},
     )
+    rp = (data.return_path or "").strip()
+    if rp.startswith("/") and not rp.startswith("//"):
+        sep = "&" if "?" in rp else "?"
+        params["success_url"] = f"{origin}{rp}{sep}session_id={{CHECKOUT_SESSION_ID}}"
+        params["cancel_url"] = f"{origin}{rp}"
+    with_trial = False
+    if plan == "pro_monthly" and not sub.get("stripe_subscription_id"):
+        # Essai 7 jours : un seul par email ET par carte (empreinte vérifiée après le checkout)
+        already = user.get("trial_used") or await db.trial_fingerprints.find_one({"email": user["email"]})
+        if not already:
+            params["subscription_data"]["trial_period_days"] = TRIAL_DAYS
+            with_trial = True
     if sub.get("stripe_customer_id"):
         params["customer"] = sub["stripe_customer_id"]
     else:
@@ -931,6 +1088,7 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         "payment_status": "initiated",
         "processed": False,
         "affiliate_code": aff_code or None,
+        "with_trial": with_trial,
         "created_at": iso(now_utc()),
     })
     return {"url": session.url, "session_id": session.id}
@@ -954,10 +1112,15 @@ async def payment_status(session_id: str, user: dict = Depends(get_current_user)
     )
     if session.payment_status == "paid":
         await _claim_and_activate(session_id, session.get("customer"), session.get("subscription"))
+        fresh = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "trial_refused_at": 1, "subscription": 1})
+        if fresh and fresh.get("trial_refused_at") and ((fresh.get("subscription") or {}).get("status") == "expired"):
+            return {"status": session.status, "payment_status": "trial_refused"}
     return {"status": session.status, "payment_status": session.payment_status}
 
 
 _WEBHOOK_SECRET_CACHE = None
+STRIPE_WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.updated",
+                         "customer.subscription.deleted", "customer.subscription.trial_will_end", "invoice.paid"]
 
 
 async def get_webhook_secret() -> str:
@@ -988,6 +1151,15 @@ async def stripe_webhook(request: Request):
     if etype == "checkout.session.completed":
         if obj.get("payment_status") == "paid":
             await _claim_and_activate(obj["id"], obj.get("customer"), obj.get("subscription"))
+    elif etype == "customer.subscription.trial_will_end":
+        sub_id = obj.get("id")
+        u = await db.users.find_one({"subscription.stripe_subscription_id": sub_id},
+                                    {"_id": 0, "user_id": 1, "email": 1, "subscription": 1})
+        if u and not (u.get("subscription") or {}).get("trial_reminder_sent"):
+            te = obj.get("trial_end")
+            end_iso = iso(datetime.fromtimestamp(te, tz=timezone.utc)) if te else (u.get("subscription") or {}).get("current_period_end")
+            await send_email(u["email"], "Ton essai Pro se termine bientôt — BEATCUT", trial_reminder_email_html(end_iso))
+            await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"subscription.trial_reminder_sent": True}})
     elif etype in ("customer.subscription.updated", "customer.subscription.deleted", "invoice.paid"):
         sub_id = obj.get("id") if etype.startswith("customer.subscription") else obj.get("subscription")
         if sub_id:
@@ -1098,6 +1270,13 @@ async def admin_webhook_setup(request: Request, user: dict = Depends(get_current
     url = f"https://{host}/api/webhook/stripe"
     doc = await db.config.find_one({"_id": "stripe_webhook"})
     if doc and doc.get("url") == url and doc.get("secret"):
+        # Met à jour la liste d'événements (ex: trial_will_end ajouté après coup)
+        if doc.get("endpoint_id"):
+            try:
+                await asyncio.to_thread(lambda: stripe.WebhookEndpoint.modify(
+                    doc["endpoint_id"], enabled_events=STRIPE_WEBHOOK_EVENTS))
+            except Exception:
+                logger.warning("Mise à jour des événements webhook impossible")
         return {"configured": True, "url": url, "already": True}
     if doc and doc.get("endpoint_id"):
         try:
@@ -1107,8 +1286,7 @@ async def admin_webhook_setup(request: Request, user: dict = Depends(get_current
     try:
         ep = await asyncio.to_thread(lambda: stripe.WebhookEndpoint.create(
             url=url,
-            enabled_events=["checkout.session.completed", "customer.subscription.updated",
-                            "customer.subscription.deleted", "invoice.paid"],
+            enabled_events=STRIPE_WEBHOOK_EVENTS,
             description="BEATCUT — créé automatiquement",
         ))
     except Exception as e:
@@ -1144,6 +1322,21 @@ async def cancel_subscription(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Aucun abonnement actif à annuler")
     if info["cancel_at_period_end"]:
         raise HTTPException(status_code=400, detail="Ton abonnement est déjà annulé")
+    if info.get("trial"):
+        # Annulation PENDANT l'essai : immédiate, aucun débit, accès coupé
+        if sub.get("stripe_subscription_id"):
+            try:
+                await asyncio.to_thread(stripe.Subscription.cancel, sub["stripe_subscription_id"])
+            except Exception as e:
+                logger.error("Stripe trial cancel error: %s", e)
+                raise HTTPException(status_code=502, detail="Erreur Stripe lors de l'annulation — réessaie")
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": {"subscription.status": "expired", "subscription.canceled_at": iso(now_utc())}},
+        )
+        await send_email(user["email"], "Essai annulé — BEATCUT", trial_canceled_email_html())
+        return {"message": "Essai annulé — rien ne sera débité. Ton montage reste sauvegardé, tu peux te réabonner quand tu veux.",
+                "current_period_end": None}
     if sub.get("stripe_subscription_id"):
         # Annulation RÉELLE côté Stripe : aucun prélèvement futur
         try:
@@ -1329,12 +1522,12 @@ async def _run_separation(job_id: str, input_path: str):
 
 
 async def require_pro(user: dict) -> dict:
-    """Extraction acapella : réservée au plan PRO (pas Basic)."""
+    """Extraction acapella : réservée aux plans PRO et STUDIO."""
     user = await sync_stripe_subscription(user)
     info = sub_info(user)
-    if info["tier"] != "pro":
-        if info["tier"] == "basic":
-            raise HTTPException(status_code=403, detail="Extraction acapella réservée au plan PRO — passe en PRO depuis Mon compte")
+    if info["tier"] not in ("pro", "studio"):
+        if info["tier"] in ("basic", "essentiel"):
+            raise HTTPException(status_code=403, detail="Extraction acapella réservée aux plans PRO et STUDIO — passe en PRO depuis Mon compte")
         raise HTTPException(status_code=403, detail="Fonction réservée aux abonnés PRO")
     return user
 
@@ -1343,24 +1536,48 @@ def _month_start_iso() -> str:
     return iso(now_utc().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
 
 
+def _essentiel_period_start(user: dict) -> str:
+    """Début de la période mensuelle en cours (reset à la date anniversaire d'abonnement)."""
+    end = parse_dt((user.get("subscription") or {}).get("current_period_end"))
+    if end:
+        return iso(end - relativedelta(months=1))
+    return _month_start_iso()
+
+
 @api_router.post("/export/register")
 async def register_export(user: dict = Depends(get_current_user)):
-    """Appelé par le studio à l'export vidéo.
-    Free : 1 export découverte AU TOTAL (sans watermark). Basic : quota mensuel. PRO/VIP : illimité."""
+    """Free : aucun export (paywall essai Pro). Essai Pro : plafond 15. Essentiel : 15/mois
+    (reset à la date d'abonnement). Basic (legacy) : 10/mois. Pro/Studio/VIP : illimité."""
     user = await sync_stripe_subscription(user)
     info = sub_info(user)
-    if info["tier"] == "free":
-        used = await db.export_logs.count_documents({"user_id": user["user_id"], "tier": "free"})
-        if used >= 1:
+    tier = info["tier"]
+    if tier == "free":
+        raise HTTPException(status_code=402, detail={
+            "code": "paywall",
+            "message": "Ta vidéo est prête. Débloque-la avec 7 jours offerts.",
+        })
+    if info.get("trial"):
+        since = (user.get("subscription") or {}).get("started_at") or _month_start_iso()
+        used = await db.export_logs.count_documents({"user_id": user["user_id"], "created_at": {"$gte": since}})
+        if used >= TRIAL_EXPORT_CAP:
+            raise HTTPException(status_code=429, detail={
+                "code": "trial_cap",
+                "message": f"Tu as atteint la limite de l'essai — ton accès illimité démarre avec ton abonnement le {_fmt_date_fr(info.get('trial_end'))}, ou active-le maintenant.",
+                "trial_end": info.get("trial_end"),
+            })
+        await db.export_logs.insert_one({"user_id": user["user_id"], "tier": "trial", "created_at": iso(now_utc())})
+        return {"allowed": True, "used": used + 1, "quota": TRIAL_EXPORT_CAP, "trial": True}
+    if tier == "essentiel":
+        since = _essentiel_period_start(user)
+        used = await db.export_logs.count_documents({"user_id": user["user_id"], "created_at": {"$gte": since}})
+        if used >= ESSENTIEL_MONTHLY_EXPORTS:
             raise HTTPException(
                 status_code=429,
-                detail="Ton export découverte est déjà utilisé — passe en Basic (10 vidéos/mois, 6,99 €) ou PRO (illimité).",
+                detail=f"Quota atteint : {ESSENTIEL_MONTHLY_EXPORTS} exports/mois avec le plan Essentiel. Passe en Pro pour exporter en illimité.",
             )
-        await db.export_logs.insert_one({
-            "user_id": user["user_id"], "tier": "free", "created_at": iso(now_utc()),
-        })
-        return {"allowed": True, "used": used + 1, "quota": 1}
-    if info["tier"] == "basic":
+        await db.export_logs.insert_one({"user_id": user["user_id"], "tier": "essentiel", "created_at": iso(now_utc())})
+        return {"allowed": True, "used": used + 1, "quota": ESSENTIEL_MONTHLY_EXPORTS}
+    if tier == "basic":
         used = await db.export_logs.count_documents({
             "user_id": user["user_id"], "created_at": {"$gte": _month_start_iso()},
         })
@@ -1382,15 +1599,126 @@ async def register_export(user: dict = Depends(get_current_user)):
 @api_router.get("/export/quota")
 async def export_quota(user: dict = Depends(get_current_user)):
     info = sub_info(user)
-    if info["tier"] == "free":
-        used = await db.export_logs.count_documents({"user_id": user["user_id"], "tier": "free"})
-        return {"tier": "free", "used": used, "quota": 1}
-    if info["tier"] != "basic":
-        return {"tier": info["tier"], "used": None, "quota": None}
+    tier = info["tier"]
+    if tier == "free":
+        return {"tier": "free", "used": 0, "quota": 0, "paywall": True}
+    if info.get("trial"):
+        since = (user.get("subscription") or {}).get("started_at") or _month_start_iso()
+        used = await db.export_logs.count_documents({"user_id": user["user_id"], "created_at": {"$gte": since}})
+        return {"tier": tier, "used": used, "quota": TRIAL_EXPORT_CAP, "trial": True, "trial_end": info.get("trial_end")}
+    if tier == "essentiel":
+        used = await db.export_logs.count_documents({
+            "user_id": user["user_id"], "created_at": {"$gte": _essentiel_period_start(user)},
+        })
+        return {"tier": "essentiel", "used": used, "quota": ESSENTIEL_MONTHLY_EXPORTS}
+    if tier != "basic":
+        return {"tier": tier, "used": None, "quota": None}
     used = await db.export_logs.count_documents({
         "user_id": user["user_id"], "created_at": {"$gte": _month_start_iso()},
     })
     return {"tier": "basic", "used": used, "quota": BASIC_MONTHLY_EXPORTS}
+
+
+@api_router.post("/payments/activate-now")
+async def activate_now(user: dict = Depends(get_current_user)):
+    """Fin d'essai anticipée : démarre l'abonnement Pro immédiatement (débit immédiat, exports illimités)."""
+    user = await sync_stripe_subscription(user)
+    info = sub_info(user)
+    sub = user.get("subscription") or {}
+    if not (info.get("trial") and sub.get("stripe_subscription_id")):
+        raise HTTPException(status_code=400, detail="Aucun essai en cours")
+    try:
+        s = await asyncio.to_thread(
+            lambda: stripe.Subscription.modify(sub["stripe_subscription_id"], trial_end="now"))
+    except Exception as e:
+        logger.error("Fin d'essai anticipée : %s", e)
+        raise HTTPException(status_code=502, detail="Erreur Stripe — réessaie") from e
+    await _apply_stripe_sub_state(user["user_id"], s)
+    return {"message": "Ton abonnement Pro est actif — exports illimités débloqués 🎉"}
+
+
+# ---------------------------------------------------------------------------
+# Studio (plan 499 €/an) — watermark personnalisé (logo PNG incrusté aux exports)
+# ---------------------------------------------------------------------------
+@api_router.post("/studio/watermark")
+async def upload_watermark(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    info = sub_info(user)
+    if info["tier"] != "studio":
+        raise HTTPException(status_code=403, detail="Watermark personnalisé réservé au plan Studio")
+    content = await file.read()
+    if len(content) > 2_000_000:
+        raise HTTPException(status_code=413, detail="Logo trop lourd (max 2 Mo)")
+    if not content.startswith(b"\x89PNG"):
+        raise HTTPException(status_code=400, detail="Le logo doit être un fichier PNG")
+    old = user.get("watermark_media_id")
+    media_id = await media_fs.upload_from_stream("watermark.png", content, metadata={
+        "user_id": user["user_id"], "content_type": "image/png", "kind": "watermark",
+        "created_at": iso(now_utc())})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"watermark_media_id": str(media_id)}})
+    if old:
+        try:
+            await media_fs.delete(ObjectId(old))
+        except Exception:
+            pass
+    return {"ok": True}
+
+
+@api_router.get("/studio/watermark")
+async def get_watermark(user: dict = Depends(get_current_user)):
+    mid = user.get("watermark_media_id")
+    if not mid or sub_info(user)["tier"] != "studio":
+        raise HTTPException(status_code=404, detail="Pas de watermark configuré")
+    stream = await media_fs.open_download_stream(ObjectId(mid))
+    data = await stream.read()
+    return Response(content=data, media_type="image/png")
+
+
+@api_router.delete("/studio/watermark")
+async def delete_watermark(user: dict = Depends(get_current_user)):
+    mid = user.get("watermark_media_id")
+    if mid:
+        try:
+            await media_fs.delete(ObjectId(mid))
+        except Exception:
+            pass
+        await db.users.update_one({"user_id": user["user_id"]}, {"$unset": {"watermark_media_id": ""}})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Onboarding (formulaire de bienvenue, 5 écrans)
+# ---------------------------------------------------------------------------
+ONBOARDING_FIELDS = ("persona", "genre", "release_timing", "current_method", "source")
+
+
+@api_router.post("/onboarding")
+async def save_onboarding(payload: dict, user: dict = Depends(get_current_user)):
+    sets = {}
+    for f in ONBOARDING_FIELDS:
+        v = payload.get(f)
+        if isinstance(v, str) and 0 < len(v) <= 40:
+            sets[f"onboarding.{f}"] = v
+    if payload.get("skipped_at") is not None:
+        try:
+            sets["onboarding.skipped_at"] = int(payload["skipped_at"])
+        except (TypeError, ValueError):
+            pass
+    if payload.get("done"):
+        sets["onboarding_done"] = True
+        sets["onboarding.done_at"] = iso(now_utc())
+    if sets:
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": sets})
+    return {"ok": True}
+
+
+@api_router.post("/telemetry/onboarding")
+async def telemetry_onboarding(payload: dict, user: dict = Depends(get_current_user)):
+    event = str(payload.get("event") or "")[:40]
+    if event:
+        await db.onboarding_logs.insert_one({
+            "user_id": user["user_id"], "event": event,
+            "step": payload.get("step"), "at": iso(now_utc())})
+    return {"ok": True}
 
 
 @api_router.post("/separate")
@@ -1548,8 +1876,9 @@ import hashlib
 from bson import ObjectId
 from fastapi.responses import StreamingResponse as _SR  # alias local
 
-PROJECT_QUOTAS = {"free": 1, "basic": 10, "pro": None}          # None = illimité
-STORAGE_QUOTAS = {"free": 200_000_000, "basic": 2_000_000_000, "pro": 10_000_000_000}
+PROJECT_QUOTAS = {"free": 1, "basic": 10, "essentiel": 20, "pro": None, "studio": None}   # None = illimité
+STORAGE_QUOTAS = {"free": 200_000_000, "basic": 2_000_000_000, "essentiel": 5_000_000_000,
+                  "pro": 10_000_000_000, "studio": 20_000_000_000}
 MAX_MEDIA_SIZE = 300_000_000  # 300 Mo par fichier (les vidéos iPhone 4K dépassent vite 80 Mo)
 
 # --- Transcodage vidéo (H.264 1080p, keyframes 0.5s, AAC, faststart) -------
@@ -1801,6 +2130,14 @@ async def _store_media(user: dict, content: bytes, filename: str, content_type: 
             detail=f"Stockage plein ({quota_mb} Mo sur ton plan). Supprime un projet ou passe au plan supérieur.",
         )
     is_video = _is_video(content_type, filename)
+    if is_video and info["tier"] == "free":
+        nvids = await db["media.files"].count_documents({
+            "metadata.user_id": user["user_id"],
+            "metadata.content_type": {"$regex": "^video"},
+        })
+        if nvids >= 5:
+            raise HTTPException(status_code=403,
+                                detail="5 clips maximum sans abonnement — débloque tout avec ton essai Pro (7 jours offerts).")
     media_id = await media_fs.upload_from_stream(
         filename or "media",
         content,
@@ -2390,7 +2727,7 @@ async def admin_all_users(user: dict = Depends(get_current_user)):
     await require_admin(user)
     docs = await db.users.find(
         {},
-        {"_id": 0, "email": 1, "name": 1, "auth_provider": 1, "created_at": 1, "subscription": 1, "role": 1},
+        {"_id": 0, "email": 1, "name": 1, "auth_provider": 1, "created_at": 1, "subscription": 1, "role": 1, "onboarding": 1},
     ).sort("created_at", -1).to_list(50000)
     users = []
     for u in docs:
@@ -2406,6 +2743,7 @@ async def admin_all_users(user: dict = Depends(get_current_user)):
             "promo": sub.get("promo_applied"),
             "paying": bool(sub.get("stripe_subscription_id")) and info["is_pro"],
             "role": u.get("role"),
+            "onboarding": u.get("onboarding") or {},
         })
     return {"count": len(users), "users": users}
 

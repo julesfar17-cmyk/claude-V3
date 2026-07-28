@@ -19,7 +19,7 @@ export default function Footer() {
         </div>
         <div className="font-osd text-xs text-muted-foreground space-y-1 sm:text-right">
           <p>BPM AUTO • CUTS • PAROLES IA • EXPORT 9:16</p>
-          <p>© {new Date().getFullYear()} BEATCUT — 12,99 €/mois, sans engagement.</p>
+          <p>© {new Date().getFullYear()} BEATCUT — sans engagement, annulable en 2 clics.</p>
         </div>
       </div>
     </footer>
