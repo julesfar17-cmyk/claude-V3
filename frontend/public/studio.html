@@ -385,6 +385,70 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
   nav{overflow-x:auto;scrollbar-width:none}
   nav::-webkit-scrollbar{display:none}
 }
+
+/* ===================== MOBILE V2 — éditeur façon CapCut (≤700px) ===================== */
+#mobBar,#mobMore{display:none}
+@media (max-width:700px){
+  /* --- écran verrouillé : aperçu + timeline + barre d'outils, zéro scroll --- */
+  body.mob-edit{overflow:hidden;position:fixed;inset:0;width:100%}
+  body.mob-edit header{display:none}
+  #pageEdit.show{grid-template-rows:50px minmax(0,1fr) 148px;height:100dvh;padding:0 0 calc(64px + env(safe-area-inset-bottom))}
+  .edit-top{flex-wrap:nowrap;overflow:visible;height:50px;min-height:50px;padding:0 8px;gap:6px}
+  .edit-top .mob-tgl,.edit-top #backupsBtn,.edit-top .savestate{display:none}
+  .edit-top .crumb{flex:1;min-width:0}
+  .edit-top input.title{width:100%;min-width:0;font-size:13.5px}
+  .edit-top #undoBtn{font-size:0;padding:0;min-width:42px;min-height:42px;flex-shrink:0}
+  .edit-top #undoBtn::before{content:'↶';font-size:18px}
+  .edit-top #exportBtn{padding:9px 13px;font-size:13px;white-space:nowrap;flex-shrink:0;min-height:42px}
+  .edit-main{display:block;position:relative;min-height:0}
+  .stage{height:100%}
+  .canvas-wrap{min-height:0;padding:4px}
+  .transport{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;height:52px;min-height:52px;padding:4px 8px;gap:8px}
+  .transport::-webkit-scrollbar{display:none}
+  .transport .seg{flex-wrap:nowrap;flex-shrink:0}
+  .transport .seg button{min-height:34px;padding:5px 9px;font-size:11.5px;white-space:nowrap}
+  .play-btn{width:42px;height:42px;flex-shrink:0}
+  .timecode{flex-shrink:0}
+  .timeline{grid-template-rows:auto 1fr}
+  .tl-bar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;height:auto;min-height:40px;padding:4px 8px;align-items:center}
+  .tl-bar::-webkit-scrollbar{display:none}
+  .tl-bar button{min-height:32px;padding:4px 9px;font-size:11.5px;white-space:nowrap;flex-shrink:0}
+  .tl-bar .hint{display:none}
+  /* --- panneaux coulissants depuis le bas (bottom sheets) --- */
+  .edit-main>.col,#extractZone,#mobMore{
+    position:fixed;left:0;right:0;top:auto;bottom:calc(64px + env(safe-area-inset-bottom));width:100%;
+    max-height:58dvh;overflow-y:auto;z-index:75;background:var(--panel);
+    border:none;border-top:1px solid var(--line);border-radius:18px 18px 0 0;
+    transform:translateY(130%);transition:transform .28s cubic-bezier(.3,.9,.3,1);
+    box-shadow:0 -24px 70px rgba(0,0,0,.65);padding:6px 16px 20px;overscroll-behavior:contain;display:block}
+  .edit-main>.col::before,#extractZone::before,#mobMore::before{
+    content:'';display:block;width:44px;height:4px;border-radius:2px;background:#3A4450;margin:8px auto 12px}
+  .edit-main>.col.open,#extractZone.open,#mobMore.open{transform:none}
+  
+  /* --- barre d'outils basse : grandes cibles pouce --- */
+  body.mob-edit #mobBar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:90;
+    height:calc(64px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);
+    background:rgba(14,17,22,.97);border-top:1px solid var(--line);backdrop-filter:blur(12px)}
+  #mobBar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    background:none;border:none;border-radius:0;min-height:100%;padding:6px 2px;color:var(--muted)}
+  #mobBar button .ic{font-size:20px;line-height:1}
+  #mobBar button .lb{font-size:10.5px;font-weight:600;letter-spacing:.02em}
+  #mobBar button.on{color:var(--text)}
+  #mobBar button.on .lb{color:var(--accent)}
+  #mobBar button:hover{background:none;box-shadow:none}
+  /* --- cibles tactiles 44px minimum, calibrées --- */
+  button{min-height:44px}
+  button.small{min-height:40px;padding:8px 12px;font-size:13px}
+  input[type=text],select{min-height:42px}
+  .seg button{min-height:38px}
+  /* --- Série : liste verticale, 1 vidéo par ligne, gros boutons --- */
+  #serieGrid{grid-template-columns:1fr;justify-items:center}
+  #serieGrid>*{width:min(100%,300px)}
+  #serieStyles{grid-template-columns:1fr 1fr}
+  /* --- pages accueil / morceaux : cartes plus aérées --- */
+  .grid{grid-template-columns:1fr 1fr;gap:12px}
+  .hero{padding:22px 16px}
+}
 </style>
 </head>
 <body>
@@ -784,6 +848,25 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
   <p class="hint" style="margin-top:6px">4 coupes = 4 images sur ce temps (parfait pour un roll de batterie).</p>
 </div>
 <div id="toast"></div>
+
+<!-- ============ Barre d'outils mobile (façon CapCut) + panneaux coulissants ============ -->
+<div id="mobBar" data-testid="mobile-toolbar">
+  <button data-ms="clips" onclick="mobSheet('clips')" data-testid="mob-tab-clips"><span class="ic">🎬</span><span class="lb">Clips</span></button>
+  <button data-ms="extract" onclick="mobSheet('extract')" data-testid="mob-tab-son"><span class="ic">🎵</span><span class="lb">Son</span></button>
+  <button data-ms="paroles" onclick="mobSheet('paroles')" data-testid="mob-tab-paroles"><span class="ic">📝</span><span class="lb">Paroles</span></button>
+  <button data-ms="style" onclick="mobSheet('style')" data-testid="mob-tab-style"><span class="ic">🎨</span><span class="lb">Style</span></button>
+  <button data-ms="more" onclick="mobSheet('more')" data-testid="mob-tab-more"><span class="ic">⚙️</span><span class="lb">Plus</span></button>
+</div>
+<div id="mobMore" data-testid="mobile-more-sheet">
+  <h4 style="margin-bottom:12px">Réglages</h4>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <button class="small" onclick="undo()">↶ Annuler la dernière action</button>
+    <button class="small" onclick="mobSheet('more');openBackups()">🕘 Versions du morceau</button>
+    <button class="small" onclick="toggleLang()">🌐 Français / English</button>
+    <button class="small" onclick="mobSheet('more');go('accueil')">🏠 Retour à l'accueil</button>
+    <button class="small" onclick="try{window.top.location.href='/dashboard'}catch(e){}">👤 Mon compte</button>
+  </div>
+</div>
 <div class="ai-bar" id="aiBar" data-testid="ai-progress-bar"><div class="track"><div class="fill" id="aiBarFill"></div></div><div class="lbl" id="aiBarLbl">IA en cours…</div></div>
 
 <script src="/vendor/mp4-muxer.min.js"></script>
@@ -1139,7 +1222,7 @@ const EN={
 "☁ Récupérer mes vidéos déjà envoyées":"☁ Get my uploaded videos","⛶ Plein écran":"⛶ Fullscreen","Dépose ton morceau":"Drop your track","MP3 · WAV · M4A — le tempo et les plans se règlent tout seuls":"MP3 · WAV · M4A — tempo and shots set themselves","Ton extrait":"Your extract","▶ Écouter l'extrait":"▶ Play the extract","▲ Réduire":"▲ Collapse","Libre":"Free","🔁 4 mes.":"🔁 4 bars","🔁 8 mes.":"🔁 8 bars","🔁 16 mes.":"🔁 16 bars","🎯 Trouver le drop":"🎯 Find the drop","Début :":"Start:",
 "Glisse la zone rouge pour déplacer l'extrait · tire ses bords pour l'allonger ou le raccourcir · il joue en boucle pendant que tu ajustes.":"Drag the red zone to move the extract · pull its edges to stretch or shorten it · it loops while you adjust.",
 "Tempo du morceau":"Track tempo","Tape TAP en rythme sur le beat, ou entre la valeur si tu la connais.":"Hit TAP on the beat, or type the value if you know it.",
-"Paroles":"Lyrics","Style":"Style","✨ Détecter les paroles":"✨ Detect lyrics","L'IA isole d'abord la voix, puis écrit chaque mot au bon moment.":"AI isolates the vocals first, then writes each word at the right time.","✍️ J'ai mes paroles":"✍️ I have my lyrics","Colle ton texte : il sera calé sur ta voix, orthographe intacte.":"Paste your text: it gets synced to your vocals, spelling untouched.","Caler mes paroles":"Sync my lyrics",
+"Paroles":"Lyrics","Style":"Style","Son":"Sound","Plus":"More","Réglages":"Settings","↶ Annuler la dernière action":"↶ Undo last action","🕘 Versions du morceau":"🕘 Track versions","🏠 Retour à l'accueil":"🏠 Back to home","👤 Mon compte":"👤 My account","✨ Détecter les paroles":"✨ Detect lyrics","L'IA isole d'abord la voix, puis écrit chaque mot au bon moment.":"AI isolates the vocals first, then writes each word at the right time.","✍️ J'ai mes paroles":"✍️ I have my lyrics","Colle ton texte : il sera calé sur ta voix, orthographe intacte.":"Paste your text: it gets synced to your vocals, spelling untouched.","Caler mes paroles":"Sync my lyrics",
 "Ton texte est calé mot par mot sur ta voix (transcription IA + alignement) — orthographe intacte.":"Your text is synced word by word to your vocals (AI transcription + alignment) — spelling untouched.",
 "1. Isolation de la voix…":"1. Isolating vocals…","2. Détection des paroles…":"2. Detecting lyrics…","↻ Recaler les paroles":"↻ Re-sync lyrics","Repartir de zéro":"Start over",
 "Double-clique un mot pour le corriger · bouton « + » entre les mots pour en insérer un · double-clique la piste paroles de la timeline pour ajouter un mot à cet instant.":"Double-click a word to fix it · \"+\" button between words to insert one · double-click the lyrics track on the timeline to add a word at that moment.",
@@ -1215,10 +1298,27 @@ function mobCol(side){
   other.classList.remove('open');
   el.classList.toggle('open');
 }
+/* Panneaux mobiles façon CapCut : un seul ouvert à la fois, re-tap = fermer */
+let _mobOpen=null;
+function mobSheet(name){
+  const cols=document.querySelectorAll('.edit-main>.col');
+  const map={clips:cols[0], paroles:cols[cols.length-1], style:cols[cols.length-1], extract:$('#extractZone'), more:$('#mobMore')};
+  const el=map[name]; if(!el) return;
+  document.querySelectorAll('.edit-main>.col.open,#extractZone.open,#mobMore.open').forEach(x=>x.classList.remove('open'));
+  $$('#mobBar button').forEach(b=>b.classList.remove('on'));
+  if(_mobOpen===name){ _mobOpen=null; return; }
+  if(name==='paroles'||name==='style') tab(name);
+  el.classList.add('open');
+  const btn=document.querySelector('#mobBar button[data-ms="'+name+'"]'); if(btn) btn.classList.add('on');
+  _mobOpen=name;
+  if(name==='extract') requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));   // waveform redessinée
+}
 document.addEventListener('click',e=>{
   if(window.innerWidth>900) return;
-  if(e.target.closest('.edit-main>.col')||e.target.closest('.mob-tgl')) return;
-  document.querySelectorAll('.edit-main>.col.open').forEach(c=>c.classList.remove('open'));
+  if(e.target.closest('.edit-main>.col')||e.target.closest('.mob-tgl')||e.target.closest('#mobBar')||e.target.closest('#mobMore')||e.target.closest('#extractZone')) return;
+  document.querySelectorAll('.edit-main>.col.open,#extractZone.open,#mobMore.open').forEach(c=>c.classList.remove('open'));
+  $$('#mobBar button').forEach(b=>b.classList.remove('on'));
+  _mobOpen=null;
 });
 
 /* ---------------- Store : projets serveur (MongoDB + GridFS) — cross-device ---------------- */
@@ -1296,6 +1396,10 @@ function route(){
   serieStopPreview();
   $$('.page').forEach(el=>el.classList.remove('show'));
   $$('nav a').forEach(a=>a.classList.toggle('active',a.dataset.nav===p[0]));
+  document.body.classList.toggle('mob-edit', p[0]==='edit');
+  document.querySelectorAll('.edit-main>.col.open,#extractZone.open,#mobMore.open').forEach(c=>c.classList.remove('open'));
+  $$('#mobBar button').forEach(b=>b.classList.remove('on'));
+  _mobOpen=null;
   if(p[0]==='edit'&&p[1]){ openEditor(p[1]); $('#pageEdit').classList.add('show'); }
   else if(p[0]==='morceaux'){ renderMorceaux(); $('#pageMorceaux').classList.add('show'); }
   else if(p[0]==='serie'){ renderSerie(); $('#pageSerie').classList.add('show'); }

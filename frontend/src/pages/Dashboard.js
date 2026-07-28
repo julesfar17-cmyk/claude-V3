@@ -462,7 +462,7 @@ export default function Dashboard() {
 
         {/* ===== Parrainage + Promo ===== */}
         <section className="mt-6 grid md:grid-cols-2 gap-6">
-          <div className="bg-card border border-border p-8" data-testid="referral-card">
+          <div className="bg-card border border-border p-8 min-w-0" data-testid="referral-card">
             <h2 className="font-display text-lg font-bold mb-3">Parrainage ✦</h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Invite un ami : <b>+1 mois offert</b> pour lui ET pour toi dès qu'il prend un abonnement payant.
@@ -490,7 +490,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="bg-card border border-border p-8" data-testid="promo-card">
+          <div className="bg-card border border-border p-8 min-w-0" data-testid="promo-card">
             <h2 className="font-display text-lg font-bold mb-3">Code promo</h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Tu as déniché un code promo ? Rentre-le ici.
