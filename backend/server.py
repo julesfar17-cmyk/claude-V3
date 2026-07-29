@@ -1363,6 +1363,8 @@ async def cancel_subscription(user: dict = Depends(get_current_user)):
 # Formulaire d'annulation + offre de rétention (−50 % sur la prochaine facture)
 # ---------------------------------------------------------------------------
 CANCEL_REASONS = ("too_expensive", "not_enough_use", "missing_features", "technical_issues", "promo_done", "other")
+# Offre de rétention −50 % : plans MENSUELS uniquement (sur une facture annuelle la remise serait énorme)
+RETENTION_PLANS = ("monthly", "pro_monthly", "basic", "essentiel")
 
 
 async def _mark_feedback_lost(user_id: str):
@@ -1398,6 +1400,7 @@ async def cancel_feedback(payload: dict, user: dict = Depends(get_current_user))
     offer_available = bool(
         sub.get("stripe_subscription_id") and info["is_pro"]
         and not info["cancel_at_period_end"] and not user.get("retention_offer_used")
+        and (sub.get("plan") or "monthly") in RETENTION_PLANS
     )
     return {"ok": True, "offer_available": offer_available}
 
@@ -1410,6 +1413,8 @@ async def retention_accept(user: dict = Depends(get_current_user)):
     sub = user.get("subscription") or {}
     if not (sub.get("stripe_subscription_id") and info["is_pro"] and not info["cancel_at_period_end"]):
         raise HTTPException(status_code=400, detail="Aucun abonnement actif")
+    if (sub.get("plan") or "monthly") not in RETENTION_PLANS:
+        raise HTTPException(status_code=400, detail="Offre réservée aux abonnements mensuels")
     if user.get("retention_offer_used"):
         raise HTTPException(status_code=400, detail="Offre déjà utilisée")
     cid = await _retention_coupon_id()

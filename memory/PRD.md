@@ -542,3 +542,4 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Backend : POST /api/subscription/cancel-feedback (collection cancel_feedback {user_id, email, plan, trial, reason, comment, retained, at}), POST /api/subscription/retention-accept (coupon Stripe 50% duration=once caché dans db.config retention_coupon, appliqué via Subscription.modify discounts) ; cancel réel → _mark_feedback_lost (retained=False)
 - Admin : section « Pourquoi ils annulent » — barres % par raison, cartes « Restés grâce à l'offre −50 % (X %) » / « Partis quand même », derniers commentaires ; données dans stats.cancel_feedback
 - Testé : formulaire UI (screenshot), 400 raison invalide, agrégations %, section admin. Offre −50 % non testable de bout en bout sans vrai abonnement Stripe (LIVE) — code conforme API Stripe 14 (discounts=[{coupon}])
+- 29/07 : offre rétention −50 % restreinte aux plans MENSUELS (RETENTION_PLANS) — refus 400 sur pro_yearly/yearly/studio, testé
