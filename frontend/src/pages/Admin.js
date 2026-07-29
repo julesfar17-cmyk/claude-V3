@@ -113,7 +113,9 @@ export default function Admin() {
               <Stat label="MRR RÉEL (STRIPE)" value={stats.stripe_mrr != null ? `${stats.stripe_mrr.toFixed(2)} €` : `${stats.mrr.toFixed(2)} € (estimé)`} accent />
               <Stat label="ENCAISSÉ CE MOIS" value={stats.revenue_this_month != null ? `${stats.revenue_this_month.toFixed(2)} €` : "—"} accent />
               <Stat label="ENCAISSÉ TOTAL" value={stats.revenue_total != null ? `${stats.revenue_total.toFixed(2)} €` : "—"} accent />
-              <Stat label="Abos Stripe actifs" value={stats.stripe_active_subs != null ? fmt(stats.stripe_active_subs) : fmt(stats.real_paid_users)} accent />
+              <Stat label="Abonnés actifs (payants réels)" value={stats.stripe_active_subs != null ? fmt(stats.stripe_active_subs) : fmt(stats.real_paid_users)} accent />
+              <Stat label="En essai gratuit (7 j)" value={stats.stripe_trialing_subs != null ? fmt(stats.stripe_trialing_subs) : fmt(stats.trial_users || 0)} accent />
+              <Stat label="Convertis depuis l'essai" value={fmt(stats.trial_converted || 0)} accent />
               <Stat label="Payants réels (Stripe)" value={fmt(stats.real_paid_users)} />
               <Stat label="Actifs via promo / offert" value={fmt(stats.promo_active_users)} />
               <Stat label="Inscrits totaux" value={fmt(stats.total_users)} />

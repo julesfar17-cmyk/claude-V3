@@ -348,7 +348,7 @@ export default function Dashboard() {
                     </span>
                   </button>
                   <a
-                    href="mailto:contact@beat-cut.com?subject=D%C3%A9mo%20BeatCut%20Studio"
+                    href="mailto:jules.beatcut@gmail.com?subject=D%C3%A9mo%20BeatCut%20Studio"
                     data-testid="subscribe-studio-button"
                     className="relative inline-flex items-center justify-between gap-2 border border-border text-foreground font-bold px-5 py-3.5 hover:border-foreground transition-all hover:-translate-y-0.5"
                   >

@@ -2652,11 +2652,15 @@ async def _stripe_revenue_stats() -> dict:
 
     def compute():
         mrr_cents, active_count = _stripe_mrr_cents()
+        trialing_count = 0
+        for _ in stripe.Subscription.list(status="trialing", limit=100).auto_paging_iter():
+            trialing_count += 1
         month_start = int(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp())
         total_cents, month_cents = _stripe_charge_totals(month_start)
         return {
             "stripe_mrr": round(mrr_cents / 100.0, 2),
             "stripe_active_subs": active_count,
+            "stripe_trialing_subs": trialing_count,
             "revenue_this_month": round(month_cents / 100.0, 2),
             "revenue_total": round(total_cents / 100.0, 2),
         }
@@ -2665,7 +2669,7 @@ async def _stripe_revenue_stats() -> dict:
         data = await asyncio.to_thread(compute)
     except Exception as e:
         logger.warning("Stats Stripe indisponibles : %s", e)
-        return {"stripe_mrr": None, "stripe_active_subs": None,
+        return {"stripe_mrr": None, "stripe_active_subs": None, "stripe_trialing_subs": None,
                 "revenue_this_month": None, "revenue_total": None}
     _STRIPE_STATS_CACHE.update({"at": now, "data": data})
     return data
@@ -2691,9 +2695,15 @@ async def admin_stats(user: dict = Depends(get_current_user)):
     real_paid_filter = {**active_paid, "subscription.stripe_subscription_id": {"$nin": [None, ""]}}
     real_paid = await db.users.count_documents(real_paid_filter)
     promo_active = max(0, paid_users - real_paid)  # actifs sans Stripe = promo / offert
-    yearly = await db.users.count_documents({**real_paid_filter, "subscription.plan": "yearly"})
-    basic = await db.users.count_documents({**real_paid_filter, "subscription.plan": "basic"})
+    yearly = await db.users.count_documents({**real_paid_filter, "subscription.plan": {"$in": ["yearly", "pro_yearly", "studio"]}})
+    basic = await db.users.count_documents({**real_paid_filter, "subscription.plan": {"$in": ["basic", "essentiel"]}})
     monthly = max(0, real_paid - yearly - basic)
+    # Essai gratuit 7 jours : en cours / convertis en payant réel
+    trial_users = await db.users.count_documents({
+        "subscription.status": "trialing",
+        "subscription.current_period_end": {"$gt": iso(now_utc())},
+    })
+    trial_converted = await db.users.count_documents({**real_paid_filter, "trial_used": True})
     # MRR : uniquement les payants réels — annuels comptés au prorata mensuel
     mrr = round(monthly * PRO_PRICE + basic * BASIC_PRICE + yearly * (PRO_PRICE_YEAR / 12), 2)
     # Séparations du mois
@@ -2713,6 +2723,8 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "monthly_subscribers": monthly,
         "basic_subscribers": basic,
         "yearly_subscribers": yearly,
+        "trial_users": trial_users,
+        "trial_converted": trial_converted,
         "mrr": mrr,
         **stripe_stats,
         "separations_this_month": sep_count,
@@ -2776,9 +2788,12 @@ async def admin_create_promo(payload: dict, user: dict = Depends(get_current_use
 @api_router.delete("/admin/promo/{code}")
 async def admin_delete_promo(code: str, user: dict = Depends(get_current_user)):
     await require_admin(user)
-    res = await db.promo_codes.delete_one({"code": _normalize_promo(code)})
+    norm = _normalize_promo(code)
+    res = await db.promo_codes.delete_one({"code": norm})
     if not res.deleted_count:
         raise HTTPException(status_code=404, detail="Code introuvable")
+    # Mémorise la suppression : le seed de démarrage ne recréera plus ce code par défaut
+    await db.config.update_one({"_id": "deleted_promo_codes"}, {"$addToSet": {"codes": norm}}, upsert=True)
     return {"ok": True}
 
 
@@ -2997,8 +3012,12 @@ async def startup():
             "synced_at": iso(now_utc()),
         }}},
     )
-    # Codes promo par défaut
+    # Codes promo par défaut (jamais recréés s'ils ont été supprimés dans /admin)
+    _deleted_doc = await db.config.find_one({"_id": "deleted_promo_codes"}) or {}
+    _deleted_codes = set(_deleted_doc.get("codes") or [])
     for code, days in (("BIENVENUE50", 15), ("LAUNCH30", 30), ("BEATCUTSTART", 30)):
+        if code in _deleted_codes:
+            continue
         existing = await db.promo_codes.find_one({"code": code})
         if not existing:
             await db.promo_codes.insert_one({

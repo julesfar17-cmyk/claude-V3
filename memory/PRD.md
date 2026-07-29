@@ -525,3 +525,9 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - P1 : §2-B analyse télémétrie aperçus en prod → §2-C fix cause dominante des freezes
 - P1 : UpChunk uploads reprenables ; email Resend auto sur échec d'export
 - P2 : Studio multi-profils produit (lot ultérieur explicitement exclu du brief) ; nettoyage GridFS orphelins ; DELETE /api/media/{id}
+
+## Implémenté (29 juillet 2026) — correctifs post-refonte
+- Mail Studio corrigé partout : mailto **jules.beatcut@gmail.com** (paywall studio, Dashboard, landing) — contact@beat-cut.com supprimé
+- Admin : nouvelles cartes « En essai gratuit (7 j) » (Stripe trialing, fallback DB trial_users) et « Convertis depuis l'essai » (trial_used + payant réel actif) ; « Abonnés actifs (payants réels) » = Stripe status=active uniquement (les trialing n'y figurent PAS) ; compteurs plans mis à jour (yearly inclut pro_yearly/studio, basic inclut essentiel)
+- 🐛 FIX suppression code promo : le seed startup recréait les codes par défaut (BIENVENUE50/LAUNCH30/BEATCUTSTART) après chaque redémarrage → les suppressions sont maintenant mémorisées dans db.config `deleted_promo_codes` et jamais recréées. Testé : delete + restart backend → le code ne revient plus
+- Confirmé au user : les anciens abonnements Stripe ne bougent pas (grandfathering, aucun prix modifié côté Stripe)
