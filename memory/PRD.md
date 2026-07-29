@@ -543,3 +543,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Admin : section « Pourquoi ils annulent » — barres % par raison, cartes « Restés grâce à l'offre −50 % (X %) » / « Partis quand même », derniers commentaires ; données dans stats.cancel_feedback
 - Testé : formulaire UI (screenshot), 400 raison invalide, agrégations %, section admin. Offre −50 % non testable de bout en bout sans vrai abonnement Stripe (LIVE) — code conforme API Stripe 14 (discounts=[{coupon}])
 - 29/07 : offre rétention −50 % restreinte aux plans MENSUELS (RETENTION_PLANS) — refus 400 sur pro_yearly/yearly/studio, testé
+
+## Implémenté (29 juillet 2026 — suite 3) — Refonte UX MOBILE du studio (≤700px), testée
+- **Accueil** : barre d'onglets fixe en bas `#homeTabs` (Accueil · Morceaux · Série · Compte→/dashboard), nav header masquée, header épuré (logo + quota pill + avatar 36px), hero resserré avec CTA pleine largeur, onglet actif suivi via hashchange (updateHomeTabs)
+- **Éditeur** : bouton ← retour `#editBack` (mobile only), transport sans débordement : `#fmtSeg` remplacé par bouton ratio cyclique `#fmtCycle` (cycleFmt() → 9:16→1:1→4:5→16:9, délègue aux boutons cachés), BPM chip compact
+- **Timeline** : pistes plus hautes (paroles 32px, plans 104px), plans arrondis 88px borde 2px, tl-bar chips pill 36px scrollables (hint/kbd masqués), fix libellé toggleSnap («Beat : ON/OFF»)
+- **Bottom sheet « Ce plan »** `#planSheet` au tap d'un plan (mobile, desktop garde planPop) : 🔄 Remplacer le clip (grille horizontale des clips → verrouille), 🎲 Autre plan (seek suivant du même clip ou clip aléatoire), ✂️ Découper en 2 (cut au milieu), 🗑 Supprimer (fusion avec le voisin via suppression de la coupe), 🔒 verrou. Fonctions psReplace/psOther/psSplit/psDelete/psLockToggle (~l.4050). mobSheet() ferme le planSheet
+- i18n EN ajouté pour les nouveaux libellés. Desktop vérifié intact (fmtSeg visible, nouveaux éléments display:none)
+- Testé par navigation scriptée mobile 390px : split 20→21, delete 21→20, autre plan, undo, retour accueil, tabs OK

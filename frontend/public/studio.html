@@ -387,14 +387,43 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
 }
 
 /* ===================== MOBILE V2 — éditeur façon CapCut (≤700px) ===================== */
-#mobBar,#mobMore{display:none}
+#mobBar,#mobMore,#homeTabs,#planSheet,#editBack,#fmtCycle{display:none}
 @media (max-width:700px){
+  /* --- entête épurée : logo + quota pill + avatar (la nav passe en bas) --- */
+  header{padding:0 14px;gap:8px;height:54px}
+  header nav{display:none}
+  .logo span{font-size:17px}
+  .counter{border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:12.5px;padding:6px 12px}
+  #avatar{width:36px;height:36px}
+  /* --- barre d'onglets basse (accueil / morceaux / série / compte) --- */
+  body:not(.mob-edit) #homeTabs{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;left:0;right:0;bottom:0;z-index:90;
+    height:calc(62px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);
+    background:rgba(14,17,22,.97);border-top:1px solid var(--line);backdrop-filter:blur(12px)}
+  #homeTabs button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    background:none;border:none;border-radius:0;color:var(--muted);min-height:100%;padding:6px 2px}
+  #homeTabs button .ic{font-size:20px;line-height:1}
+  #homeTabs button .lb{font-size:10.5px;font-weight:600;letter-spacing:.02em}
+  #homeTabs button.on{color:var(--text)}
+  #homeTabs button.on .lb{color:var(--accent)}
+  #homeTabs button:hover{background:none;box-shadow:none}
+  .page{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+  /* --- accueil : hero resserré, gros CTA pleine largeur --- */
+  .hero{padding:24px 18px;border-radius:18px}
+  .hero h1{font-size:26px;line-height:1.12}
+  .hero p{font-size:13.5px}
+  .hero button.primary{width:100%;margin:14px 0 0;padding:15px;font-size:15.5px;border-radius:14px}
+  .hero button.ghost{width:100%;margin:8px 0 0;padding:13px;border-radius:14px}
+  .stat{border-radius:14px}
+  .card{border-radius:16px}
+  .section-title h2{font-size:19px}
   /* --- écran verrouillé : aperçu + timeline + barre d'outils, zéro scroll --- */
   body.mob-edit{overflow:hidden;position:fixed;inset:0;width:100%}
   body.mob-edit header{display:none}
-  #pageEdit.show{grid-template-rows:50px minmax(0,1fr) 148px;height:100dvh;padding:0 0 calc(64px + env(safe-area-inset-bottom))}
+  body.mob-edit #homeTabs{display:none!important}
+  #pageEdit.show{grid-template-rows:50px minmax(0,1fr) 172px;height:100dvh;padding:0 0 calc(64px + env(safe-area-inset-bottom))}
   .edit-top{flex-wrap:nowrap;overflow:visible;height:50px;min-height:50px;padding:0 8px;gap:6px}
   .edit-top .mob-tgl,.edit-top #backupsBtn,.edit-top .savestate{display:none}
+  .edit-top #editBack{display:inline-flex;align-items:center;justify-content:center;min-width:42px;min-height:42px;padding:0;font-size:19px;flex-shrink:0;border-radius:12px}
   .edit-top .crumb{flex:1;min-width:0}
   .edit-top input.title{width:100%;min-width:0;font-size:13.5px}
   .edit-top #undoBtn{font-size:0;padding:0;min-width:42px;min-height:42px;flex-shrink:0}
@@ -403,17 +432,38 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
   .edit-main{display:block;position:relative;min-height:0}
   .stage{height:100%}
   .canvas-wrap{min-height:0;padding:4px}
-  .transport{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;height:52px;min-height:52px;padding:4px 8px;gap:8px}
-  .transport::-webkit-scrollbar{display:none}
-  .transport .seg{flex-wrap:nowrap;flex-shrink:0}
-  .transport .seg button{min-height:34px;padding:5px 9px;font-size:11.5px;white-space:nowrap}
-  .play-btn{width:42px;height:42px;flex-shrink:0}
-  .timecode{flex-shrink:0}
+  /* --- transport : un seul bouton ratio (cyclique) → plus aucun débordement --- */
+  .transport{flex-wrap:nowrap;overflow:hidden;height:52px;min-height:52px;padding:4px 10px;gap:8px}
+  #fmtSeg{display:none}
+  #fmtCycle{display:inline-flex;align-items:center;gap:5px;min-height:40px;padding:6px 12px;border-radius:999px;font-size:12.5px;white-space:nowrap;flex-shrink:0}
+  .transport .bpm-chip{min-height:40px;font-size:12px;white-space:nowrap}
+  .play-btn{width:44px;height:44px;flex-shrink:0}
+  .timecode{flex-shrink:0;font-size:11.5px}
   .timeline{grid-template-rows:auto 1fr}
-  .tl-bar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;height:auto;min-height:40px;padding:4px 8px;align-items:center}
+  .tl-bar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;height:auto;min-height:44px;padding:5px 8px;align-items:center;gap:6px}
   .tl-bar::-webkit-scrollbar{display:none}
-  .tl-bar button{min-height:32px;padding:4px 9px;font-size:11.5px;white-space:nowrap;flex-shrink:0}
-  .tl-bar .hint{display:none}
+  .tl-bar button{min-height:36px;padding:5px 11px;font-size:12px;white-space:nowrap;flex-shrink:0;border-radius:999px}
+  .tl-bar .hint,.tl-bar .mono,.tl-bar .lbl{display:none}
+  /* --- timeline lisible : pistes plus hautes, plans arrondis, tap franc --- */
+  .tl-lab{height:32px!important}
+  .tl-lab:last-child{height:104px!important}
+  #trWords{height:32px!important}
+  #trPlans{height:104px!important}
+  #trWords .wblock{top:4px;height:24px}
+  .plan{top:7px!important;height:88px!important;border-radius:12px;border-width:2px}
+  .plan .tag{font-size:11px;padding:4px 6px;text-align:center}
+  /* --- bottom sheet « Ce plan » : remplacer / autre / découper / supprimer --- */
+  #planSheet{display:block;position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));max-height:60dvh;overflow-y:auto;z-index:85;
+    background:var(--panel);border-top:1px solid var(--line);border-radius:18px 18px 0 0;
+    transform:translateY(160%);transition:transform .28s cubic-bezier(.3,.9,.3,1);
+    box-shadow:0 -24px 70px rgba(0,0,0,.65);padding:8px 16px 18px}
+  #planSheet.open{transform:none}
+  #planSheet::before{content:'';display:block;width:44px;height:4px;border-radius:2px;background:#3A4450;margin:4px auto 12px}
+  .ps-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .ps-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .ps-actions button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 8px;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:14px;font-size:13px;font-weight:600;color:var(--text)}
+  .ps-actions button .ic{font-size:22px;line-height:1}
   /* --- panneaux coulissants depuis le bas (bottom sheets) --- */
   .edit-main>.col,#extractZone,#mobMore{
     position:fixed;left:0;right:0;top:auto;bottom:calc(64px + env(safe-area-inset-bottom));width:100%;
@@ -516,6 +566,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
 <!-- ================= ÉDITEUR ================= -->
 <div class="page" id="pageEdit">
   <div class="edit-top">
+    <button class="small" id="editBack" onclick="go('accueil')" data-testid="edit-back-button" title="Retour à l'accueil">←</button>
     <button class="small mob-tgl" onclick="mobCol('left')" title="Clips vidéo">🎬</button>
     <div class="crumb"><span>Morceau</span><input class="title" id="editTitle" value="Sans titre"></div>
     <button class="small ghost" id="undoBtn" onclick="undo()" disabled title="Annuler (Ctrl+Z)">↶ Annuler</button>
@@ -601,6 +652,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
         <div class="seg" id="fmtSeg" title="Format de la vidéo">
           <button data-f="916" class="on">9:16</button><button data-f="11">1:1</button><button data-f="45">4:5</button><button data-f="169">16:9</button>
         </div>
+        <button class="small" id="fmtCycle" onclick="cycleFmt()" data-testid="format-cycle-button">▭ 9:16</button>
         <div style="position:relative;margin-left:auto">
           <button class="bpm-chip" id="bpmChip" style="border-radius:999px" title="Régler le tempo"><span class="bpm-led" id="bpmLed"></span><span id="bpmVal">— BPM</span> <span style="opacity:.5">▾</span></button>
           <div class="bpm-pop" id="bpmPop">
@@ -848,6 +900,31 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
   <p class="hint" style="margin-top:6px">4 coupes = 4 images sur ce temps (parfait pour un roll de batterie).</p>
 </div>
 <div id="toast"></div>
+
+<!-- ============ Onglets bas (accueil mobile) ============ -->
+<div id="homeTabs" data-testid="home-tabs">
+  <button data-ht="accueil" onclick="go('accueil')" data-testid="home-tab-accueil"><span class="ic">🏠</span><span class="lb">Accueil</span></button>
+  <button data-ht="morceaux" onclick="go('morceaux')" data-testid="home-tab-morceaux"><span class="ic">🎵</span><span class="lb">Morceaux</span></button>
+  <button data-ht="serie" onclick="go('serie')" data-testid="home-tab-serie"><span class="ic">🎞</span><span class="lb">Série</span></button>
+  <button data-ht="compte" onclick="try{window.top.location.href='/dashboard'}catch(e){}" data-testid="home-tab-compte"><span class="ic">👤</span><span class="lb">Compte</span></button>
+</div>
+
+<!-- ============ Bottom sheet « Ce plan » (mobile) ============ -->
+<div id="planSheet" data-testid="plan-sheet">
+  <div class="ps-head">
+    <b style="font-size:15px">Ce plan</b>
+    <span class="hint" id="psInfo"></span>
+    <button class="small" onclick="closePlanSheet()" data-testid="plan-sheet-close" style="margin-left:auto;min-width:40px">✕</button>
+  </div>
+  <div class="ps-actions">
+    <button onclick="psReplace()" data-testid="plan-replace-btn"><span class="ic">🔄</span>Remplacer le clip</button>
+    <button onclick="psOther()" data-testid="plan-other-btn"><span class="ic">🎲</span>Autre plan</button>
+    <button onclick="psSplit()" data-testid="plan-split-btn"><span class="ic">✂️</span>Découper en 2</button>
+    <button onclick="psDelete()" data-testid="plan-delete-btn"><span class="ic">🗑</span>Supprimer</button>
+  </div>
+  <div id="psClips" style="display:none;margin-top:12px"></div>
+  <button class="small" id="psLock" onclick="psLockToggle()" data-testid="plan-lock-btn" style="width:100%;margin-top:12px">🔒 Verrouiller ce plan</button>
+</div>
 
 <!-- ============ Barre d'outils mobile (façon CapCut) + panneaux coulissants ============ -->
 <div id="mobBar" data-testid="mobile-toolbar">
@@ -1252,7 +1329,7 @@ const EN={
 "Styles":"Styles","Texte":"Text","Effets":"Effects","Animation":"Animation","Police":"Font","Bricolage — moderne":"Bricolage — modern","Anton — impact condensé":"Anton — condensed impact","Archivo Black — massif":"Archivo Black — massive","Impact — classique":"Impact — classic","Inter — sobre":"Inter — clean","Special Elite — machine à écrire":"Special Elite — typewriter","Marker — feutre":"Marker — felt pen","Caveat — manuscrit":"Caveat — handwritten","VT323 — écran rétro":"VT323 — retro screen","Monoton — néon":"Monoton — neon","Fraktur — gothique":"Fraktur — gothic","Rubik Glitch — glitché":"Rubik Glitch — glitched",
 "Affichage":"Display","Mot seul":"Single word","Phrase":"Sentence","Étalé":"Spread","Taille":"Size","Épaisseur":"Weight","Fin":"Thin","Normal":"Normal","Gras":"Bold","Casse":"Case","MAJ":"UPPER","min":"lower","Couleur du texte":"Text color","Position":"Position","Haut":"Top","Centre":"Center","Bas":"Bottom","Mot en cours coloré (karaoké)":"Current word colored (karaoke)","Contour":"Outline","Lueur (néon)":"Glow (neon)","Ombre portée":"Drop shadow","Espacement des lettres":"Letter spacing","Inclinaison":"Slant","Lignes d'écran rétro (CRT)":"Retro screen lines (CRT)","Fond derrière le texte":"Background behind text",
 "Effets vidéo — au rythme des coupures":"Video effects — on every cut","⚡ Flash blanc sur les coupures":"⚡ White flash on cuts","🔍 Zoom punch":"🔍 Punch zoom","💥 Secousse légère":"💥 Light shake","📼 VHS (lignes d'écran)":"📼 VHS (screen lines)","🎞 Grain de pellicule":"🎞 Film grain","Apparition des mots":"Word entrance","Aucune":"None","Pop":"Pop","Fondu":"Fade","Glissé":"Slide","Zoom":"Zoom","Secousse":"Shake","Le mot reste affiché jusqu'au suivant":"Each word stays until the next one","💾 Enregistrer comme mon style":"💾 Save as my style",
-"Timeline":"Timeline","✂ Couper ici":"✂ Cut here","🧲 Beat : ON":"🧲 Beat: ON","🧲 Beat : OFF":"🧲 Beat: OFF","🎲 Mélanger":"🎲 Shuffle","⧉ Copier":"⧉ Copy","🗑 Supprimer":"🗑 Delete","📋 Coller au curseur":"📋 Paste at cursor","Adapter":"Fit","Clic sur un plan = coupes & verrou · glisser un clip dessus = le changer":"Click a shot = cuts & lock · drag a clip onto it = swap it","Plans":"Shots",
+"Timeline":"Timeline","✂ Couper ici":"✂ Cut here","🧲 Beat : ON":"🧲 Beat: ON","🧲 Beat : OFF":"🧲 Beat: OFF","🎲 Mélanger":"🎲 Shuffle","⧉ Copier":"⧉ Copy","🗑 Supprimer":"🗑 Delete","📋 Coller au curseur":"📋 Paste at cursor","Adapter":"Fit","Clic sur un plan = coupes & verrou · glisser un clip dessus = le changer":"Click a shot = cuts & lock · drag a clip onto it = swap it","Plans":"Shots","Accueil":"Home","Morceaux":"Songs","Série":"Series","Compte":"Account","Ce plan":"This shot","Remplacer le clip":"Swap clip","Autre plan":"Another shot","Découper en 2":"Split in 2","Supprimer":"Delete","🔒 Verrouiller ce plan":"🔒 Lock this shot",
 "Choisis un morceau, tes styles de sous-titres préférés et un nombre de vidéos : BeatCut prépare plusieurs versions réelles. Tu gardes les meilleures, tu exportes, c'est posté.":"Pick a track, your favorite subtitle styles and a number of videos: BeatCut builds several real versions. Keep the best, export, post.",
 "Préparer":"Set up","Choisir les meilleures":"Pick the best","Nombre de vidéos":"Number of videos","Styles de sous-titres — choisis-en un ou plusieurs (tes styles ★ inclus)":"Subtitle styles — pick one or more (your ★ styles included)","Préparer les vidéos →":"Prepare videos →",
 "Chaque vidéo garde tes paroles calées : seuls les plans et le style changent. Seules celles que tu gardes comptent dans tes exports.":"Every video keeps your synced lyrics: only the shots and style change. Only the ones you keep count toward your exports.",
@@ -1323,6 +1400,7 @@ function mobCol(side){
 /* Panneaux mobiles façon CapCut : un seul ouvert à la fois, re-tap = fermer */
 let _mobOpen=null;
 function mobSheet(name){
+  if(typeof closePlanSheet==='function') closePlanSheet();
   const cols=document.querySelectorAll('.edit-main>.col');
   const map={clips:cols[0], paroles:cols[cols.length-1], style:cols[cols.length-1], extract:$('#extractZone'), more:$('#mobMore')};
   const el=map[name]; if(!el) return;
@@ -1911,7 +1989,7 @@ function addCutAtPlayhead(){
   if(taken(t)){ hist.pop(); updateUndoBtn(); toast('Il y a déjà une coupure exactement ici — avance un peu'); return; }
   M.cuts.push({time:t,source:'manual'}); rebuildPlans(); drawTimeline(); dirty(); toast('Coupure ajoutée ✂');
 }
-function toggleSnap(){ snap=!snap; $('#snapBtn').textContent='🧲 Aimanté au beat : '+(snap?'ON':'OFF'); }
+function toggleSnap(){ snap=!snap; $('#snapBtn').textContent='🧲 Beat : '+(snap?'ON':'OFF'); }
 function toggleNoCuts(){
   if(!M) return;
   pushHistory();
@@ -3465,6 +3543,7 @@ function drawTimeline(){
         drawTimeline(); dirty(); toast('Plan remplacé ✓ (verrouillé 🔒)');
         return;
       }
+      if(matchMedia('(max-width:700px)').matches){ openPlanSheet(p); return; }
       openPlanPop(p,e);
     };
     d.addEventListener('dragover',e=>{ e.preventDefault(); d.classList.add('dropover'); e.dataTransfer.dropEffect='copy'; });
@@ -3988,6 +4067,92 @@ async function exportKept(){
 
 /* ---------- Popover de plan (coupes par temps + verrou) ---------- */
 let popPlan=null;
+/* ---------- Bottom sheet « Ce plan » (mobile) : 4 actions simples ---------- */
+let sheetPlan=null;
+function openPlanSheet(p){
+  sheetPlan=p;
+  $('#psInfo').textContent=(p.end-p.start).toFixed(1).replace('.',',')+' s';
+  $('#psLock').textContent=p.locked?'🔓 Déverrouiller ce plan':'🔒 Verrouiller ce plan';
+  $('#psClips').style.display='none';
+  $('#planSheet').classList.add('open');
+}
+function closePlanSheet(){ $('#planSheet').classList.remove('open'); sheetPlan=null; }
+function psOther(){
+  if(!sheetPlan) return;
+  if(!clips.length){ toast('Ajoute d\u2019abord des vidéos (onglet Clips)'); return; }
+  pushHistory();
+  const p=sheetPlan, c=p.clip!=null?clips[p.clip]:null;
+  if(c&&c.seeks&&c.seeks.length>1){
+    const i=Math.max(0,c.seeks.findIndex(s=>Math.abs(s-p.seek)<0.01));
+    p.seek=c.seeks[(i+1)%c.seeks.length];
+  }else{
+    p.clip=Math.floor(Math.random()*clips.length);
+    const nc=clips[p.clip];
+    p.seek=(nc.seeks&&nc.seeks.length)?nc.seeks[Math.floor(Math.random()*nc.seeks.length)]:0;
+  }
+  drawTimeline(); dirty(); toast('Plan changé 🎲');
+}
+function psSplit(){
+  if(!sheetPlan) return;
+  const p=sheetPlan;
+  if(p.end-p.start<0.2){ toast('Plan trop court pour être découpé'); return; }
+  pushHistory();
+  M.cuts.push({time:(p.start+p.end)/2,source:'manual'});
+  rebuildPlans(); drawTimeline(); dirty(); closePlanSheet(); toast('Plan découpé en 2 ✂');
+}
+function psDelete(){
+  if(!sheetPlan) return;
+  const p=sheetPlan, eps=0.03;
+  let i=M.cuts.findIndex(c=>Math.abs(c.time-p.start)<eps&&c.time>ext.start+eps);
+  if(i<0) i=M.cuts.findIndex(c=>Math.abs(c.time-p.end)<eps);
+  if(i<0){ toast('C\u2019est le seul plan — impossible de le supprimer'); return; }
+  pushHistory(); M.cuts.splice(i,1);
+  rebuildPlans(); drawTimeline(); dirty(); closePlanSheet(); toast('Plan supprimé — fusionné avec le voisin 🗑');
+}
+function psLockToggle(){
+  if(!sheetPlan) return;
+  pushHistory(); sheetPlan.locked=!sheetPlan.locked;
+  drawTimeline(); dirty();
+  $('#psLock').textContent=sheetPlan.locked?'🔓 Déverrouiller ce plan':'🔒 Verrouiller ce plan';
+  toast(sheetPlan.locked?'Plan verrouillé 🔒 — le mélange ne le touchera plus':'Plan déverrouillé');
+}
+function psReplace(){
+  if(!sheetPlan) return;
+  if(!clips.length){ toast('Ajoute d\u2019abord des vidéos (onglet Clips)'); return; }
+  const z=$('#psClips'); z.style.display='block';
+  z.innerHTML='<p class="hint" style="margin-bottom:8px">Touche le clip à mettre sur ce plan :</p>';
+  const row=document.createElement('div');
+  row.style.cssText='display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch';
+  clips.forEach((c,ci)=>{
+    const b=document.createElement('button');
+    b.style.cssText='flex:0 0 auto;width:76px;height:76px;border-radius:12px;border:2px solid var(--line);background:#1A2028 center/cover no-repeat;padding:0';
+    if(c.thumbs&&c.thumbs.length) b.style.backgroundImage='url('+c.thumbs[0]+')';
+    b.setAttribute('data-testid','plan-replace-clip-'+ci);
+    b.onclick=()=>{
+      pushHistory();
+      sheetPlan.clip=ci;
+      sheetPlan.seek=(c.seeks&&c.seeks.length)?c.seeks[Math.floor(Math.random()*c.seeks.length)]:0;
+      sheetPlan.locked=true;
+      drawTimeline(); dirty(); closePlanSheet(); toast('Plan remplacé ✓ (verrouillé 🔒)');
+    };
+    row.append(b);
+  });
+  z.append(row);
+}
+/* ---------- Ratio cyclique (mobile) + onglets bas ---------- */
+function cycleFmt(){
+  const bs=$$('#fmtSeg button');
+  const i=bs.findIndex(b=>b.classList.contains('on'));
+  const nb=bs[(i+1)%bs.length];
+  nb.click();
+  $('#fmtCycle').textContent='▭ '+nb.textContent;
+}
+function updateHomeTabs(){
+  const h=location.hash||'#/accueil';
+  $$('#homeTabs button[data-ht]').forEach(b=>b.classList.toggle('on', h.indexOf(b.dataset.ht)>=0 || (b.dataset.ht==='accueil'&&(h==='#/'||h==='#'||h==='#/accueil'||h===''))));
+}
+window.addEventListener('hashchange',updateHomeTabs);
+updateHomeTabs();
 function openPlanPop(p,e){
   popPlan=p;
   const pop=$('#planPop');
