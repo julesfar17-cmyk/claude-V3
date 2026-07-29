@@ -557,3 +557,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Doublon CTA : le sticky bas n'apparaît plus que lorsque le CTA hero sort de l'écran (IntersectionObserver)
 - Vérifié : overflow-x = 0, rendu propre 390px. ⚠️ Le user voit la PROD (beat-cut.com) : redéploiement nécessaire pour voir le fix. NOTE : dernier deploy a échoué (Cloud Build docker-push, probablement transitoire) — retenter.
 - 29/07 : annulations d'ESSAI marquées « Essai Pro (avant débit) » dans /admin → Suivi des annulations (flag subscription.was_trial posé au cancel trial, exposé par /api/admin/cancellations, badge bleu dans Admin.js). Testé + nettoyé.
+
+## Implémenté (29 juillet 2026 — suite 5) — Fix tl-bar PC + emphase sous-titres + onglet Effets embelli
+- 🐛 tl-bar desktop : boutons qui wrappaient sur 2 lignes → nowrap + scroll-x + hint ellipsis (`.tl-bar` l.208), vérifié 29px/1 ligne
+- ⭐ **Mot mis en avant toutes les 2 mesures** : nouveaux props style `emph/emphScale/emphColor/emphFont` ; logique isEmph dans drawLyricBlock (per=480/bpm, premier mot de chaque fenêtre de 2 mesures) ; mode word = taille×couleur×police, modes line/spread = couleur+police seulement ; drawWordAt accepte param emph ; s'applique preview ET exports (même pipeline)
+- UI carte `#emphCard` dans Style→Effets : toggle + slider taille (1.1–2) + 6 swatches couleur ronds (= même couleur / rouge / jaune / vert / bleu / violet) + select police ; bord accent + glow quand actif ; sync via syncStyleUI, sauvegardé avec « Mon style » et le projet
+- Onglet Effets embelli : checkboxes → cartes toggle (bord accent quand coché, :has), effets vidéo en grille 2 colonnes `.fx-grid`
+- Testé par screenshots desktop : tl-bar propre, carte emphase, grille effets. i18n EN ajouté
+- 29/07 (correctif emphase) : la mise en avant cible désormais les mots dits sur le DERNIER temps du cycle (fenêtre [cyc−beatDur, cyc), grille calée sur beats[0], tolérance 0.02s) + réglage Fréquence 1/2/4 mesures (style.emphEvery, seg #xEmphEvery). Logique validée par test unitaire node + UI vérifiée en screenshot.
