@@ -220,11 +220,8 @@ nav a.active,nav a:hover{color:var(--text);background:var(--panel-2)}
 .fx-emph-head em{font-style:normal;color:var(--muted);font-weight:500;font-size:12px;margin-left:auto}
 .fx-emph-body{display:none;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
 .fx-emph:has(#xEmph:checked) .fx-emph-body{display:block}
-.emph-swatches{display:flex;gap:8px;flex-wrap:wrap}
-.emph-swatches .sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;padding:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);transition:transform .12s,border-color .15s}
-.emph-swatches .sw:hover{transform:scale(1.12)}
-.emph-swatches .sw.on{border-color:#fff;transform:scale(1.12)}
-.emph-swatches .sw.same{background:var(--panel);color:var(--muted);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+#xEmphColor{flex-wrap:wrap;align-items:center}
+#xEmphColor .sw.same{display:flex;align-items:center;justify-content:center;background:var(--panel);color:var(--muted);font-weight:800;font-size:12px}
 .tl-bar{display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--line);flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
 .tl-bar::-webkit-scrollbar{display:none}
 .tl-bar>*{flex-shrink:0}
@@ -819,14 +816,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
               </div>
               <div class="field"><label>Taille du mot</label><input type="range" id="xEmphSize" min="1.1" max="2" step="0.05" value="1.45" data-testid="emphasis-size" style="width:100%"></div>
               <div class="field"><label>Couleur</label>
-                <div class="emph-swatches" id="xEmphColor">
-                  <button data-c="" class="sw same" title="Même couleur">=</button>
-                  <button data-c="#FF453A" class="sw on" style="background:#FF453A"></button>
-                  <button data-c="#FFD60A" class="sw" style="background:#FFD60A"></button>
-                  <button data-c="#32D74B" class="sw" style="background:#32D74B"></button>
-                  <button data-c="#0A84FF" class="sw" style="background:#0A84FF"></button>
-                  <button data-c="#BF5AF2" class="sw" style="background:#BF5AF2"></button>
-                </div>
+                <div class="swatches" id="xEmphColor"></div>
               </div>
               <div class="field"><label>Police</label>
                 <select id="xEmphFont" data-testid="emphasis-font">
@@ -2840,6 +2830,21 @@ function renderSwatches(){
   pick.oninput=e=>{style.color=e.target.value;style.preset='perso?';dirty();};
   root.append(pick);
 }
+function renderEmphSwatches(){
+  const colors=['#FFFFFF','#FFD400','#FF453A','#3FCF8E','#7DF9FF','#FF7AD9','#B388FF','#FFE066','#111111'];
+  const root=$('#xEmphColor'); if(!root) return; root.innerHTML='';
+  const same=document.createElement('div');
+  same.className='sw same'+((style.emphColor||'')===''?' on':''); same.textContent='='; same.title='Même couleur que le texte';
+  same.onclick=()=>{style.emphColor='';renderEmphSwatches();dirty();};
+  root.append(same);
+  colors.forEach(cc=>{ const s=document.createElement('div'); s.className='sw'+(style.emphColor===cc?' on':''); s.style.background=cc;
+    s.onclick=()=>{style.emphColor=cc;renderEmphSwatches();dirty();}; root.append(s); });
+  const pick=document.createElement('input'); pick.type='color';
+  pick.value=/^#([0-9A-Fa-f]{6})$/.test(style.emphColor||'')?style.emphColor:'#FF453A';
+  pick.title='Couleur libre'; pick.style.cssText='width:26px;height:26px;padding:0;border:1px solid var(--line);border-radius:6px;background:none;cursor:pointer';
+  pick.oninput=e=>{style.emphColor=e.target.value;dirty();};
+  root.append(pick);
+}
 function syncStyleUI(){
   $('#fFont').value=style.font;
   $$('#fSize button').forEach(b=>b.classList.toggle('on',+b.dataset.v===style.size));
@@ -2856,7 +2861,7 @@ function syncStyleUI(){
   $('#xEmph').checked=!!style.emph;
   $('#xEmphSize').value=style.emphScale||1.45;
   $('#xEmphFont').value=style.emphFont||'';
-  $$('#xEmphColor .sw').forEach(b=>b.classList.toggle('on',(style.emphColor||'')===b.dataset.c));
+  renderEmphSwatches();
   $$('#xEmphEvery button').forEach(b=>b.classList.toggle('on',+b.dataset.v===(style.emphEvery||2)));
   renderSwatches();
 }
@@ -2864,7 +2869,6 @@ $('#xEmph').onchange=e=>{style.emph=e.target.checked;dirty();};
 $('#xEmphSize').oninput=e=>{style.emphScale=parseFloat(e.target.value);dirty();};
 $('#xEmphFont').onchange=e=>{style.emphFont=e.target.value;dirty();};
 $$('#xEmphEvery button').forEach(b=>b.onclick=()=>{ $$('#xEmphEvery button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); style.emphEvery=+b.dataset.v; dirty(); });
-$$('#xEmphColor .sw').forEach(b=>b.onclick=()=>{ $$('#xEmphColor .sw').forEach(x=>x.classList.remove('on')); b.classList.add('on'); style.emphColor=b.dataset.c; dirty(); });
 $('#fFont').onchange=e=>{style.font=e.target.value;dirty();};
 [['#fSize','size',parseFloat],['#fPos','pos',parseFloat],['#fAnim','anim',String]].forEach(([sel,key,cast])=>{
   $$(sel+' button').forEach(b=>b.onclick=()=>{ $$(sel+' button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); style[key]=cast(b.dataset.v); dirty(); });
