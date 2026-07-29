@@ -1332,7 +1332,8 @@ async def cancel_subscription(user: dict = Depends(get_current_user)):
                 raise HTTPException(status_code=502, detail="Erreur Stripe lors de l'annulation — réessaie")
         await db.users.update_one(
             {"user_id": user["user_id"]},
-            {"$set": {"subscription.status": "expired", "subscription.canceled_at": iso(now_utc())}},
+            {"$set": {"subscription.status": "expired", "subscription.canceled_at": iso(now_utc()),
+                      "subscription.was_trial": True}},
         )
         await send_email(user["email"], "Essai annulé — BEATCUT", trial_canceled_email_html())
         await _mark_feedback_lost(user["user_id"])
@@ -2858,6 +2859,7 @@ async def admin_cancellations(user: dict = Depends(get_current_user)):
             "email": u.get("email"),
             "name": u.get("name"),
             "plan": PLAN_LABELS.get(sub.get("plan"), sub.get("plan") or "—"),
+            "was_trial": bool(sub.get("was_trial")),
             "canceled_at": sub.get("canceled_at"),
             "access_until": sub.get("current_period_end"),
             "state": "access_until_end" if still else "ended",

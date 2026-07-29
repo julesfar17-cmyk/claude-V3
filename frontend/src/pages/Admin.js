@@ -218,9 +218,11 @@ export default function Admin() {
                       {cancellations.cancellations.map((c, i) => (
                         <tr key={i} className="border-b border-border/50" data-testid={`admin-cancel-row-${i}`}>
                           <td className="py-2 pr-4">{c.email}</td>
-                          <td className="py-2 pr-4">{c.plan}</td>
+                          <td className="py-2 pr-4">
+                            {c.was_trial ? <span className="text-[#8f9bff]">Essai Pro (avant débit)</span> : c.plan}
+                          </td>
                           <td className="py-2 pr-4">{c.canceled_at ? new Date(c.canceled_at).toLocaleDateString("fr-FR") : "—"}</td>
-                          <td className="py-2 pr-4">{c.access_until ? new Date(c.access_until).toLocaleDateString("fr-FR") : "—"}</td>
+                          <td className="py-2 pr-4">{c.was_trial ? "—" : c.access_until ? new Date(c.access_until).toLocaleDateString("fr-FR") : "—"}</td>
                           <td className="py-2">
                             {c.state === "access_until_end" ? (
                               <span className="text-[#ffd97a]">Accès encore actif</span>
