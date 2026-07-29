@@ -551,3 +551,8 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - **Bottom sheet « Ce plan »** `#planSheet` au tap d'un plan (mobile, desktop garde planPop) : 🔄 Remplacer le clip (grille horizontale des clips → verrouille), 🎲 Autre plan (seek suivant du même clip ou clip aléatoire), ✂️ Découper en 2 (cut au milieu), 🗑 Supprimer (fusion avec le voisin via suppression de la coupe), 🔒 verrou. Fonctions psReplace/psOther/psSplit/psDelete/psLockToggle (~l.4050). mobSheet() ferme le planSheet
 - i18n EN ajouté pour les nouveaux libellés. Desktop vérifié intact (fmtSeg visible, nouveaux éléments display:none)
 - Testé par navigation scriptée mobile 390px : split 20→21, delete 21→20, autre plan, undo, retour accueil, tabs OK
+
+## Implémenté (29 juillet 2026 — suite 4) — Fix landing MOBILE (rapport screenshot prod)
+- Cause racine du rendu cassé : la nav débordait horizontalement (liens + CTA wrappés) → scroll-x + font boosting iOS. Fixes : `html,body{overflow-x:hidden}` + `-webkit-text-size-adjust:100%`, nav ≤600px = logo + Connexion + CTA compact (liens Comment/Tarifs masqués), h1 clamp(34px,10.5vw,42px), CTA hero pleine largeur, kicker sans trait
+- Doublon CTA : le sticky bas n'apparaît plus que lorsque le CTA hero sort de l'écran (IntersectionObserver)
+- Vérifié : overflow-x = 0, rendu propre 390px. ⚠️ Le user voit la PROD (beat-cut.com) : redéploiement nécessaire pour voir le fix. NOTE : dernier deploy a échoué (Cloud Build docker-push, probablement transitoire) — retenter.
