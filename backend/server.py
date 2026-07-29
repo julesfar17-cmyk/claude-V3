@@ -1335,6 +1335,7 @@ async def cancel_subscription(user: dict = Depends(get_current_user)):
             {"$set": {"subscription.status": "expired", "subscription.canceled_at": iso(now_utc())}},
         )
         await send_email(user["email"], "Essai annulé — BEATCUT", trial_canceled_email_html())
+        await _mark_feedback_lost(user["user_id"])
         return {"message": "Essai annulé — rien ne sera débité. Ton montage reste sauvegardé, tu peux te réabonner quand tu veux.",
                 "current_period_end": None}
     if sub.get("stripe_subscription_id"):
@@ -1351,10 +1352,77 @@ async def cancel_subscription(user: dict = Depends(get_current_user)):
         {"$set": {"subscription.status": "canceled", "subscription.canceled_at": iso(now_utc())}},
     )
     await send_email(user["email"], "Abonnement annulé — BEATCUT", sub_canceled_email_html(info["current_period_end"]))
+    await _mark_feedback_lost(user["user_id"])
     return {
         "message": "Abonnement annulé — aucun prélèvement futur. Tu gardes l'accès PRO jusqu'à la fin de la période en cours.",
         "current_period_end": info["current_period_end"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Formulaire d'annulation + offre de rétention (−50 % sur la prochaine facture)
+# ---------------------------------------------------------------------------
+CANCEL_REASONS = ("too_expensive", "not_enough_use", "missing_features", "technical_issues", "promo_done", "other")
+
+
+async def _mark_feedback_lost(user_id: str):
+    await db.cancel_feedback.find_one_and_update(
+        {"user_id": user_id, "retained": None}, {"$set": {"retained": False}}, sort=[("at", -1)])
+
+
+async def _retention_coupon_id() -> str:
+    doc = await db.config.find_one({"_id": "retention_coupon"})
+    if doc and doc.get("coupon_id"):
+        return doc["coupon_id"]
+    c = await asyncio.to_thread(lambda: stripe.Coupon.create(
+        percent_off=50, duration="once", name="On reste ensemble −50 %"))
+    await db.config.update_one({"_id": "retention_coupon"}, {"$set": {"coupon_id": c["id"]}}, upsert=True)
+    return c["id"]
+
+
+@api_router.post("/subscription/cancel-feedback")
+async def cancel_feedback(payload: dict, user: dict = Depends(get_current_user)):
+    """Étape 1 du formulaire d'annulation : enregistre la raison, dit si l'offre −50 % est disponible."""
+    user = await sync_stripe_subscription(user)
+    info = sub_info(user)
+    reason = payload.get("reason")
+    if reason not in CANCEL_REASONS:
+        raise HTTPException(status_code=400, detail="Raison invalide")
+    comment = str(payload.get("comment") or "")[:500].strip()
+    sub = user.get("subscription") or {}
+    await db.cancel_feedback.insert_one({
+        "user_id": user["user_id"], "email": user["email"], "plan": sub.get("plan"),
+        "trial": bool(info.get("trial")), "reason": reason, "comment": comment,
+        "retained": None, "at": iso(now_utc()),
+    })
+    offer_available = bool(
+        sub.get("stripe_subscription_id") and info["is_pro"]
+        and not info["cancel_at_period_end"] and not user.get("retention_offer_used")
+    )
+    return {"ok": True, "offer_available": offer_available}
+
+
+@api_router.post("/subscription/retention-accept")
+async def retention_accept(user: dict = Depends(get_current_user)):
+    """Le client accepte l'offre : −50 % sur sa prochaine facture, l'abonnement continue."""
+    user = await sync_stripe_subscription(user)
+    info = sub_info(user)
+    sub = user.get("subscription") or {}
+    if not (sub.get("stripe_subscription_id") and info["is_pro"] and not info["cancel_at_period_end"]):
+        raise HTTPException(status_code=400, detail="Aucun abonnement actif")
+    if user.get("retention_offer_used"):
+        raise HTTPException(status_code=400, detail="Offre déjà utilisée")
+    cid = await _retention_coupon_id()
+    try:
+        await asyncio.to_thread(lambda: stripe.Subscription.modify(
+            sub["stripe_subscription_id"], discounts=[{"coupon": cid}]))
+    except Exception as e:
+        logger.error("Application remise rétention : %s", e)
+        raise HTTPException(status_code=502, detail="Erreur Stripe — réessaie") from e
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"retention_offer_used": True}})
+    await db.cancel_feedback.find_one_and_update(
+        {"user_id": user["user_id"], "retained": None}, {"$set": {"retained": True}}, sort=[("at", -1)])
+    return {"message": "C'est noté : −50 % sur ta prochaine facture. Content de continuer avec toi 🖤"}
 
 
 @api_router.post("/subscription/reactivate")
@@ -2720,6 +2788,25 @@ async def admin_stats(user: dict = Depends(get_current_user)):
     sep_count = await db.separation_logs.count_documents({"created_at": {"$gt": start_month}})
     est_sep_cost = round(sep_count * 0.015, 2)
     promos = await db.promo_codes.find({}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    # Formulaire d'annulation : répartition des raisons (%) + efficacité de l'offre −50 %
+    fb_total = await db.cancel_feedback.count_documents({})
+    fb_reasons = {}
+    if fb_total:
+        async for g in db.cancel_feedback.aggregate([{"$group": {"_id": "$reason", "n": {"$sum": 1}}}]):
+            fb_reasons[g["_id"]] = {"count": g["n"], "pct": round(g["n"] / fb_total * 100)}
+    fb_retained = await db.cancel_feedback.count_documents({"retained": True})
+    fb_lost = await db.cancel_feedback.count_documents({"retained": False})
+    fb_recent = await db.cancel_feedback.find(
+        {}, {"_id": 0, "email": 1, "reason": 1, "comment": 1, "retained": 1, "at": 1, "plan": 1},
+    ).sort("at", -1).to_list(20)
+    cancel_fb = {
+        "total": fb_total,
+        "reasons": fb_reasons,
+        "retained": fb_retained,
+        "lost": fb_lost,
+        "retained_pct": round(fb_retained / fb_total * 100) if fb_total else None,
+        "recent": fb_recent,
+    }
     stripe_stats = await _stripe_revenue_stats()
     return {
         "total_users": total_users,
@@ -2742,6 +2829,7 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "separations_this_month": sep_count,
         "estimated_separation_cost_eur": est_sep_cost,
         "promo_codes": promos,
+        "cancel_feedback": cancel_fb,
     }
 
 

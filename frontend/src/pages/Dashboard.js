@@ -7,19 +7,24 @@ import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "";
+
+const CANCEL_REASONS = [
+  ["too_expensive", "💸 Trop cher pour moi"],
+  ["not_enough_use", "🕒 Je ne l'utilise pas assez"],
+  ["missing_features", "🧩 Il manque des fonctionnalités"],
+  ["technical_issues", "🐞 Problèmes techniques / bugs"],
+  ["promo_done", "🎤 Ma promo est terminée"],
+  ["other", "🤷 Autre raison"],
+];
 
 export default function Dashboard() {
   const { user, refreshUser } = useAuth();
@@ -179,6 +184,55 @@ export default function Dashboard() {
   };
 
   const [wmBusy, setWmBusy] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelStep, setCancelStep] = useState("reason");
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelComment, setCancelComment] = useState("");
+  const [offerAvailable, setOfferAvailable] = useState(false);
+
+  const openCancelFlow = () => {
+    setCancelReason("");
+    setCancelComment("");
+    setCancelStep("reason");
+    setCancelOpen(true);
+  };
+
+  const submitCancelFeedback = async () => {
+    if (!cancelReason) return;
+    setBusy(true);
+    try {
+      const { data } = await api.post("/subscription/cancel-feedback", {
+        reason: cancelReason,
+        comment: cancelComment,
+      });
+      setOfferAvailable(!!data.offer_available);
+      setCancelStep("offer");
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Erreur — réessaie");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const acceptRetention = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/subscription/retention-accept");
+      toast.success(data.message);
+      setCancelOpen(false);
+      await refreshUser();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Erreur — réessaie");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmCancelNow = async () => {
+    setCancelOpen(false);
+    await cancelSubscription();
+  };
+
   const uploadWatermark = async (file) => {
     if (!file) return;
     setWmBusy(true);
@@ -430,39 +484,14 @@ export default function Dashboard() {
                     Exports illimités, séries de vidéos, tous les styles — tout est débloqué. Merci de soutenir BEATCUT ✦
                   </p>
                 )}
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <button
-                      disabled={busy}
-                      data-testid="unsubscribe-button"
-                      className="mt-7 w-full border border-border text-muted-foreground px-6 py-3 text-sm hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
-                    >
-                      {isTrial ? "Annuler mon essai" : "Se désabonner"}
-                    </button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent className="bg-card border-border">
-                    <AlertDialogHeader>
-                      <AlertDialogTitle className="font-display">
-                        {isTrial ? "Annuler ton essai Pro ?" : `Se désabonner de BEATCUT ${isBasic ? "BASIC" : isEssentiel ? "ESSENTIEL" : isStudio ? "STUDIO" : "PRO"} ?`}
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {isTrial
-                          ? "Ton essai sera annulé immédiatement : rien ne sera débité. Ton montage et tes morceaux restent sauvegardés — tu pourras reprendre un abonnement quand tu veux."
-                          : `Tu garderas l'accès jusqu'au ${fmtDate(sub.current_period_end)}. Ensuite, ton compte repassera sans abonnement (montage et sauvegarde conservés, export verrouillé). Tu pourras te réabonner à tout moment.`}
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel data-testid="cancel-unsubscribe-button">{isTrial ? "Garder mon essai" : "Garder mon abonnement"}</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={cancelSubscription}
-                        data-testid="confirm-unsubscribe-button"
-                        className="bg-primary text-white hover:bg-[#d32f2f]"
-                      >
-                        {isTrial ? "Annuler l'essai (aucun débit)" : "Confirmer le désabonnement"}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <button
+                  onClick={openCancelFlow}
+                  disabled={busy}
+                  data-testid="unsubscribe-button"
+                  className="mt-7 w-full border border-border text-muted-foreground px-6 py-3 text-sm hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+                >
+                  {isTrial ? "Annuler mon essai" : "Se désabonner"}
+                </button>
               </>
             )}
 
@@ -631,6 +660,104 @@ export default function Dashboard() {
       </main>
 
       <Footer />
+
+      <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <DialogContent className="bg-card border-border sm:max-w-md" data-testid="cancel-flow-modal">
+          {cancelStep === "reason" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display">Avant de partir… dis-nous pourquoi 🙏</DialogTitle>
+                <DialogDescription>30 secondes — ça nous aide vraiment à améliorer BEATCUT.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-2 mt-1">
+                {CANCEL_REASONS.map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setCancelReason(val)}
+                    data-testid={`cancel-reason-${val}`}
+                    className={`text-left text-sm px-4 py-2.5 border transition-colors ${
+                      cancelReason === val
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border text-muted-foreground hover:border-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <textarea
+                  value={cancelComment}
+                  onChange={(e) => setCancelComment(e.target.value)}
+                  maxLength={500}
+                  placeholder="Un détail à ajouter ? (facultatif)"
+                  data-testid="cancel-comment-input"
+                  className="mt-1 bg-background border border-border px-3 py-2 text-sm min-h-[70px] resize-none"
+                />
+              </div>
+              <div className="flex justify-between items-center mt-2">
+                <button
+                  onClick={() => setCancelOpen(false)}
+                  data-testid="cancel-flow-keep-button"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {isTrial ? "Garder mon essai" : "Garder mon abonnement"}
+                </button>
+                <button
+                  onClick={submitCancelFeedback}
+                  disabled={!cancelReason || busy}
+                  data-testid="cancel-feedback-continue-button"
+                  className="bg-primary text-white font-bold px-5 py-2.5 text-sm hover:bg-[#d32f2f] transition-colors disabled:opacity-40"
+                >
+                  {busy ? "…" : "Continuer"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display">
+                  {offerAvailable ? "Attends — on t'offre −50 % ✦" : (isTrial ? "Annuler ton essai Pro ?" : "Confirmer l'annulation ?")}
+                </DialogTitle>
+                <DialogDescription>
+                  {offerAvailable
+                    ? `−50 % sur ta prochaine facture, appliqué automatiquement. Tu gardes tout : ${isTrial ? "ton essai puis ton accès Pro complet" : "exports, séries, styles"} — et tu restes libre d'annuler quand tu veux.`
+                    : isTrial
+                      ? "Ton essai sera annulé immédiatement : rien ne sera débité. Ton montage et tes morceaux restent sauvegardés."
+                      : `Tu garderas l'accès jusqu'au ${fmtDate(sub.current_period_end)}. Ensuite, l'export sera verrouillé (montage et sauvegarde conservés).`}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-2 mt-2">
+                {offerAvailable && (
+                  <button
+                    onClick={acceptRetention}
+                    disabled={busy}
+                    data-testid="retention-accept-button"
+                    className="bg-primary text-white font-bold px-5 py-3 hover:bg-[#d32f2f] transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
+                  >
+                    {busy ? "…" : "✦ J'accepte −50 % et je reste"}
+                  </button>
+                )}
+                <button
+                  onClick={confirmCancelNow}
+                  disabled={busy}
+                  data-testid="confirm-unsubscribe-button"
+                  className="border border-border text-muted-foreground px-5 py-3 text-sm hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+                >
+                  {isTrial ? "Annuler mon essai quand même (aucun débit)" : "Annuler quand même"}
+                </button>
+                {!offerAvailable && (
+                  <button
+                    onClick={() => setCancelOpen(false)}
+                    data-testid="cancel-unsubscribe-button"
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+                  >
+                    {isTrial ? "Garder mon essai" : "Garder mon abonnement"}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

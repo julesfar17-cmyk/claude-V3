@@ -10,6 +10,15 @@ import { PreviewTelemetryAdmin } from "@/components/PreviewTelemetryAdmin";
 
 const fmt = (n, suffix = "") => `${n}${suffix}`;
 
+const REASON_LABELS = {
+  too_expensive: "💸 Trop cher",
+  not_enough_use: "🕒 Pas assez utilisé",
+  missing_features: "🧩 Fonctionnalités manquantes",
+  technical_issues: "🐞 Problèmes techniques",
+  promo_done: "🎤 Promo terminée",
+  other: "🤷 Autre",
+};
+
 export default function Admin() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
@@ -224,6 +233,58 @@ export default function Admin() {
                     </tbody>
                   </table>
                 </div>
+              )}
+            </section>
+
+            <section className="bg-card border border-border p-6 sm:p-8 mb-8" data-testid="admin-cancel-feedback-section">
+              <h2 className="font-display text-lg font-bold mb-2">Pourquoi ils annulent</h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                Réponses du formulaire d'annulation (en %) + efficacité de l'offre de rétention −50 %.
+              </p>
+              {!stats.cancel_feedback?.total ? (
+                <p className="text-sm text-muted-foreground" data-testid="admin-cancel-feedback-empty">
+                  Aucune réponse pour l'instant — les données arriveront avec les premières annulations.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                    <Stat label="Réponses au formulaire" value={fmt(stats.cancel_feedback.total)} />
+                    <Stat
+                      label="Restés grâce à l'offre −50 %"
+                      value={`${fmt(stats.cancel_feedback.retained)}${stats.cancel_feedback.retained_pct != null ? ` (${stats.cancel_feedback.retained_pct} %)` : ""}`}
+                      accent
+                    />
+                    <Stat label="Partis quand même" value={fmt(stats.cancel_feedback.lost)} />
+                  </div>
+                  <div className="space-y-2 max-w-xl">
+                    {Object.entries(stats.cancel_feedback.reasons || {})
+                      .sort((a, b) => b[1].count - a[1].count)
+                      .map(([reason, r]) => (
+                        <div key={reason} data-testid={`admin-cancel-reason-${reason}`}>
+                          <div className="flex items-center justify-between text-sm mb-1">
+                            <span>{REASON_LABELS[reason] || reason}</span>
+                            <span className="font-osd text-[#8f9bff]">{r.pct} % ({r.count})</span>
+                          </div>
+                          <div className="h-2 bg-secondary overflow-hidden">
+                            <div className="h-full bg-[#8f9bff]" style={{ width: `${r.pct}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                  {stats.cancel_feedback.recent?.some((f) => f.comment) && (
+                    <div className="mt-6">
+                      <p className="font-osd text-[11px] text-muted-foreground mb-2">DERNIERS COMMENTAIRES</p>
+                      <div className="space-y-2">
+                        {stats.cancel_feedback.recent.filter((f) => f.comment).slice(0, 8).map((f, i) => (
+                          <p key={i} className="text-sm text-muted-foreground border-l-2 border-border pl-3">
+                            « {f.comment} » — <span className="text-foreground">{f.email}</span>{" "}
+                            ({REASON_LABELS[f.reason] || f.reason}{f.retained === true ? " · resté ✦" : f.retained === false ? " · parti" : ""})
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </section>
 
