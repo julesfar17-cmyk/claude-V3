@@ -496,3 +496,32 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Dashboard : fix overflow horizontal (min-w-0 sur cartes Parrainage/Code promo)
 - ✅ Testé iteration_20 : 100% (mobile 390×844 + régression desktop 1280px)
 - ⚠️ REDÉPLOIEMENT nécessaire
+
+## Implémenté (28 juillet 2026) — 🏷️ REFONTE TARIFAIRE COMPLÈTE (brief_tarifs.md) — testé iteration_21
+### Nouvelle grille (§1)
+- Plans : **Essentiel 9,99 €/mois** (15 exports/mois, pas de séries) · **Pro 19,99 €/mois** (essai 7 j, illimité+séries) · **Pro Annuel 149 €/an** · **Studio 499 €/an** (watermark perso, 3 sessions, démo par mailto)
+- Backend : `_plan_pricing` étendu (prix inline Stripe), `sub_info` → tiers free/essentiel/basic/pro/studio + `trial/trial_end`, quotas export réécrits (free=402 paywall, essai=cap 15, essentiel=15/mois reset date anniversaire via `_essentiel_period_start`, basic legacy=10/mois inchangé), `PLAN_PRICES/PLAN_LABELS/LEGACY_PLAN_EQUIV` (codes affiliés legacy couvrent les nouveaux plans équivalents)
+### Essai 7 jours (§2)
+- Checkout pro_monthly → `trial_period_days:7` (sauf trial_used/fingerprint déjà connu) ; `_guard_trial_fingerprint` post-checkout : carte déjà utilisée pour un essai → abonnement annulé (payment_status `trial_refused`), sinon empreinte stockée (`trial_fingerprints`) + `trial_used`
+- Webhook `customer.subscription.trial_will_end` → email rappel Resend (trial_reminder_email_html) ; webhook-setup met à jour les enabled_events des endpoints existants (⚠️ PROD : re-cliquer « Activer le webhook Stripe » dans /admin après déploiement)
+- `POST /api/payments/activate-now` (fin d'essai anticipée trial_end=now) ; annulation PENDANT l'essai = cancel Stripe immédiat, 0 débit, email
+- Parcours sans carte : free = 1 morceau (quota projets), **5 clips max** (403 à l'upload vidéo), export → modale paywall studio (`paywall-modal`, 4 offres) ; `return_path` dans checkout → retour /studio?project=ID&session_id → `checkPaidReturn()` (projet intact)
+### Sessions uniques (§3)
+- `sids` sur le user (JWT claim sid + session_token Google), 1 session (3 studio, ∞ admin/VIP) — `_check_sid` → 401 « Ton compte a été connecté sur un autre appareil. » Tolérance : sessions d'avant le mécanisme valides jusqu'au prochain login. CGV mises à jour (compte individuel)
+### Grandfathering (§4) : anciens plans basic/monthly/yearly intacts (tests 200 OK), plus proposés nulle part
+### Landing + app (§5-6)
+- landing.html : pastille essai, 4 cartes (Essentiel / Pro badge « Le plus choisi » / Pro Annuel doré −38 % / Studio mailto démo), réassurance, FAQ essai, **0 occurrence « gratuit »/« sans carte »** (vérifié grep) ; Dashboard : grille 4 plans, badge SANS ABONNEMENT/ESSAI PRO/ESSENTIEL/STUDIO, quota bar 15 ou 10, bandeau « ESSAI PRO — Jx/7 », annulation essai dédiée, **upload watermark PNG Studio** (POST/GET/DELETE /api/studio/watermark, incrusté bas-droit 12 %/85 % via studioWM dans drawPreview)
+- Studio : compteur 🔒 pour free, messages 19,99 €, séries bloquées essentiel/free, trial banner + modale trial_cap avec activation anticipée
+### Onboarding (§6bis)
+- Overlay studio 5 écrans + écran hype « ES-TU PRÊT… » + écran final dépôt du son (crée le morceau + ouvre l'éditeur, preset par genre : rap_drill→impact, plugg_hyperpop→neon, afro_shatta→comics, pop_chanson→karaoke, electro_club→glitch) ; « Passer » enregistre skipped_at ; flag `onboarding_done` (nouveaux comptes register+Google = false, legacy = true) ; POST /api/onboarding + /api/telemetry/onboarding (collection onboarding_logs) ; réponses visibles dans GET /api/admin/users
+### Emails Resend RÉELS : clé re_CWTg… en .env, domaine beat-cut.com vérifié, sender no-reply@beat-cut.com
+### Tests : iteration_21 = backend 20/20 + régression 28/28 (après fix LEGACY_PLAN_EQUIV) + frontend 7/7 (après fix wording landing) ; pytest test_basic_plan adapté au paywall 402 ; nouveau fichier tests/test_iter21_pricing_refonte.py
+### ⚠️ ACTIONS PROD après REDÉPLOIEMENT
+1. Re-cliquer « ⚡ Activer le webhook Stripe » dans /admin (ajoute trial_will_end aux événements)
+2. Vérifier RESEND_API_KEY + SENDER_EMAIL repris dans les env prod
+3. Les sessions existantes des clients restent valides jusqu'à leur prochain login (tolérance sids vide)
+
+## Backlog (mise à jour 28 juillet 2026)
+- P1 : §2-B analyse télémétrie aperçus en prod → §2-C fix cause dominante des freezes
+- P1 : UpChunk uploads reprenables ; email Resend auto sur échec d'export
+- P2 : Studio multi-profils produit (lot ultérieur explicitement exclu du brief) ; nettoyage GridFS orphelins ; DELETE /api/media/{id}

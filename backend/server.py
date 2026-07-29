@@ -2785,8 +2785,13 @@ async def admin_delete_promo(code: str, user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # Codes AFFILIÉS : remise Stripe automatique À VIE + suivi pour les affiliés
 # ---------------------------------------------------------------------------
-PLAN_PRICES = {"monthly": PRO_PRICE_CENTS, "yearly": PRO_PRICE_YEAR_CENTS, "basic": BASIC_PRICE_CENTS}
-PLAN_LABELS = {"monthly": "PRO mensuel", "yearly": "PRO annuel", "basic": "BASIC"}
+PLAN_PRICES = {"monthly": PRO_PRICE_CENTS, "yearly": PRO_PRICE_YEAR_CENTS, "basic": BASIC_PRICE_CENTS,
+               "essentiel": ESSENTIEL_PRICE_CENTS, "pro_monthly": PRO2_PRICE_CENTS,
+               "pro_yearly": PRO2_YEAR_CENTS, "studio": STUDIO_YEAR_CENTS}
+PLAN_LABELS = {"monthly": "PRO mensuel", "yearly": "PRO annuel", "basic": "BASIC",
+               "essentiel": "ESSENTIEL", "pro_monthly": "PRO mensuel", "pro_yearly": "PRO annuel", "studio": "STUDIO"}
+# Équivalence nouveaux plans → anciens (codes affiliés créés avant la refonte)
+LEGACY_PLAN_EQUIV = {"pro_monthly": "monthly", "pro_yearly": "yearly", "essentiel": "basic"}
 
 
 def _aff_price_after(aff: dict, plan: str) -> int:

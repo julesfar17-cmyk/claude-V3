@@ -1101,11 +1101,10 @@ function extractWavStereoBlob(start, dur){
   for(let i=0;i<n;i++) for(let k=0;k<nch;k++){ const x=Math.max(-1,Math.min(1,chs[k][s0+i])); dv.setInt16(o, x*0x7FFF, true); o+=2; }
   return new Blob([dv],{type:'audio/wav'});
 }
-/* RÈGLE WATERMARK (à reproduire telle quelle côté prod) :
-   - Gratuit : 1 export découverte SANS watermark. Quota épuisé → watermark sur l'aperçu.
-   - Basic  : 10 exports/mois propres. Quota épuisé → watermark sur l'aperçu jusqu'au reset mensuel.
-   - Pro    : JAMAIS de watermark, AUCUNE limite.
-   L'export reste bloqué au-delà du quota (paywall) ; le watermark d'aperçu sert de rappel visuel. */
+/* RÈGLE WATERMARK (nouvelle grille) :
+   - Sans abonnement : export verrouillé (paywall essai Pro) → watermark sur l'aperçu uniquement.
+   - Tous les plans payants + essai : JAMAIS de watermark BeatCut.
+   - Studio : logo personnalisé du client incrusté aux exports (studioWM). */
 const PLANS={ free:{max:0,label:'Sans abonnement'}, essentiel:{max:15,label:'Essentiel'}, basic:{max:10,label:'Basic'}, pro:{max:Infinity,label:'Pro'}, studio:{max:Infinity,label:'Studio'} };
 let studioWM=null;   // logo PNG du plan Studio, incrusté aux exports
 function updateQuotaUI(){
