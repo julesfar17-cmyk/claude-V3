@@ -21,17 +21,20 @@ export default function Admin() {
   const [reconciling, setReconciling] = useState(false);
   const [reconcileResult, setReconcileResult] = useState(null);
   const [webhook, setWebhook] = useState(null);
+  const [cancellations, setCancellations] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [{ data }, { data: usersData }, { data: wh }] = await Promise.all([
+      const [{ data }, { data: usersData }, { data: wh }, { data: cancels }] = await Promise.all([
         api.get("/admin/stats"),
         api.get("/admin/users"),
         api.get("/admin/payments/webhook"),
+        api.get("/admin/cancellations"),
       ]);
       setStats(data);
       setAllUsers(usersData);
       setWebhook(wh);
+      setCancellations(cancels);
     } catch (e) {
       toast.error(formatApiErrorDetail(e.response?.data?.detail));
     } finally {
@@ -115,13 +118,21 @@ export default function Admin() {
               <Stat label="ENCAISSÉ TOTAL" value={stats.revenue_total != null ? `${stats.revenue_total.toFixed(2)} €` : "—"} accent />
               <Stat label="Abonnés actifs (payants réels)" value={stats.stripe_active_subs != null ? fmt(stats.stripe_active_subs) : fmt(stats.real_paid_users)} accent />
               <Stat label="En essai gratuit (7 j)" value={stats.stripe_trialing_subs != null ? fmt(stats.stripe_trialing_subs) : fmt(stats.trial_users || 0)} accent />
-              <Stat label="Convertis depuis l'essai" value={fmt(stats.trial_converted || 0)} accent />
+              <Stat
+                label="Convertis depuis l'essai"
+                value={`${fmt(stats.trial_converted || 0)}${stats.trial_conversion_rate != null ? ` (${stats.trial_conversion_rate} %)` : ""}`}
+                accent
+              />
               <Stat label="Payants réels (Stripe)" value={fmt(stats.real_paid_users)} />
               <Stat label="Actifs via promo / offert" value={fmt(stats.promo_active_users)} />
               <Stat label="Inscrits totaux" value={fmt(stats.total_users)} />
-              <Stat label="Basic" value={fmt(stats.basic_subscribers)} />
-              <Stat label="PRO mensuel" value={fmt(stats.monthly_subscribers)} />
-              <Stat label="PRO annuel" value={fmt(stats.yearly_subscribers)} />
+              <Stat label="Essentiel (9,99 €)" value={fmt(stats.plans?.essentiel ?? 0)} />
+              <Stat label="Pro (19,99 €)" value={fmt(stats.plans?.pro_monthly ?? 0)} />
+              <Stat label="Pro annuel (149 €)" value={fmt(stats.plans?.pro_yearly ?? 0)} />
+              <Stat label="Studio (499 €)" value={fmt(stats.plans?.studio ?? 0)} />
+              <Stat label="Ancien Basic (6,99 €)" value={fmt(stats.plans?.basic ?? stats.basic_subscribers)} />
+              <Stat label="Ancien Pro (12,99 €)" value={fmt(stats.plans?.monthly ?? stats.monthly_subscribers)} />
+              <Stat label="Ancien Pro annuel (99 €)" value={fmt(stats.plans?.yearly ?? stats.yearly_subscribers)} />
               <Stat label="Annulés" value={fmt(stats.canceled)} />
               <Stat label="Connexion Google" value={fmt(stats.google_users)} />
               <Stat label="Connexion email" value={fmt(stats.password_users)} />
@@ -171,6 +182,47 @@ export default function Admin() {
                       .map((c) => ` · ${c.email} : ${c.avant || "?"} → ${c.apres}`)
                       .join("")}
                   </p>
+                </div>
+              )}
+            </section>
+
+            <section className="bg-card border border-border p-6 sm:p-8 mb-8" data-testid="admin-cancellations-section">
+              <h2 className="font-display text-lg font-bold mb-2">Suivi des annulations</h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                Qui a annulé son abonnement (ou son essai), quand, et jusqu'à quand son accès court encore.
+              </p>
+              {!cancellations?.cancellations?.length ? (
+                <p className="text-sm text-muted-foreground" data-testid="admin-cancellations-empty">Aucune annulation pour l'instant 🎉</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left font-osd text-[11px] text-muted-foreground border-b border-border">
+                        <th className="py-2 pr-4">EMAIL</th>
+                        <th className="py-2 pr-4">PLAN</th>
+                        <th className="py-2 pr-4">ANNULÉ LE</th>
+                        <th className="py-2 pr-4">ACCÈS JUSQU'AU</th>
+                        <th className="py-2">STATUT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cancellations.cancellations.map((c, i) => (
+                        <tr key={i} className="border-b border-border/50" data-testid={`admin-cancel-row-${i}`}>
+                          <td className="py-2 pr-4">{c.email}</td>
+                          <td className="py-2 pr-4">{c.plan}</td>
+                          <td className="py-2 pr-4">{c.canceled_at ? new Date(c.canceled_at).toLocaleDateString("fr-FR") : "—"}</td>
+                          <td className="py-2 pr-4">{c.access_until ? new Date(c.access_until).toLocaleDateString("fr-FR") : "—"}</td>
+                          <td className="py-2">
+                            {c.state === "access_until_end" ? (
+                              <span className="text-[#ffd97a]">Accès encore actif</span>
+                            ) : (
+                              <span className="text-muted-foreground">Terminé</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </section>

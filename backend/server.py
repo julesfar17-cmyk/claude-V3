@@ -2695,17 +2695,26 @@ async def admin_stats(user: dict = Depends(get_current_user)):
     real_paid_filter = {**active_paid, "subscription.stripe_subscription_id": {"$nin": [None, ""]}}
     real_paid = await db.users.count_documents(real_paid_filter)
     promo_active = max(0, paid_users - real_paid)  # actifs sans Stripe = promo / offert
-    yearly = await db.users.count_documents({**real_paid_filter, "subscription.plan": {"$in": ["yearly", "pro_yearly", "studio"]}})
-    basic = await db.users.count_documents({**real_paid_filter, "subscription.plan": {"$in": ["basic", "essentiel"]}})
-    monthly = max(0, real_paid - yearly - basic)
-    # Essai gratuit 7 jours : en cours / convertis en payant réel
+    # Répartition par plan (payants réels actifs) — anciens et nouveaux plans séparés
+    plans = {}
+    for key in ("essentiel", "pro_monthly", "pro_yearly", "studio", "basic", "yearly"):
+        plans[key] = await db.users.count_documents({**real_paid_filter, "subscription.plan": key})
+    plans["monthly"] = max(0, real_paid - sum(plans.values()))  # legacy PRO mensuel (plan par défaut)
+    # Essai gratuit 7 jours : en cours / démarrés / convertis en payant réel
     trial_users = await db.users.count_documents({
         "subscription.status": "trialing",
         "subscription.current_period_end": {"$gt": iso(now_utc())},
     })
+    trial_started = await db.users.count_documents({"trial_used": True})
     trial_converted = await db.users.count_documents({**real_paid_filter, "trial_used": True})
+    trial_conversion_rate = round(trial_converted / trial_started * 100) if trial_started else None
     # MRR : uniquement les payants réels — annuels comptés au prorata mensuel
-    mrr = round(monthly * PRO_PRICE + basic * BASIC_PRICE + yearly * (PRO_PRICE_YEAR / 12), 2)
+    mrr = round(
+        plans["monthly"] * PRO_PRICE + plans["basic"] * BASIC_PRICE + plans["yearly"] * (PRO_PRICE_YEAR / 12)
+        + plans["essentiel"] * (ESSENTIEL_PRICE_CENTS / 100)
+        + plans["pro_monthly"] * (PRO2_PRICE_CENTS / 100)
+        + plans["pro_yearly"] * (PRO2_YEAR_CENTS / 100 / 12)
+        + plans["studio"] * (STUDIO_YEAR_CENTS / 100 / 12), 2)
     # Séparations du mois
     start_month = iso(now_utc().replace(day=1, hour=0, minute=0, second=0, microsecond=0))
     sep_count = await db.separation_logs.count_documents({"created_at": {"$gt": start_month}})
@@ -2720,17 +2729,48 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "canceled": canceled,
         "google_users": google_users,
         "password_users": pwd_users,
-        "monthly_subscribers": monthly,
-        "basic_subscribers": basic,
-        "yearly_subscribers": yearly,
+        "monthly_subscribers": plans["monthly"],
+        "basic_subscribers": plans["basic"],
+        "yearly_subscribers": plans["yearly"],
+        "plans": plans,
         "trial_users": trial_users,
+        "trial_started": trial_started,
         "trial_converted": trial_converted,
+        "trial_conversion_rate": trial_conversion_rate,
         "mrr": mrr,
         **stripe_stats,
         "separations_this_month": sep_count,
         "estimated_separation_cost_eur": est_sep_cost,
         "promo_codes": promos,
     }
+
+
+@api_router.get("/admin/cancellations")
+async def admin_cancellations(user: dict = Depends(get_current_user)):
+    """Suivi des annulations : qui a annulé, quand, et jusqu'à quand l'accès court."""
+    await require_admin(user)
+    docs = await db.users.find(
+        {"$or": [
+            {"subscription.canceled_at": {"$exists": True}},
+            {"subscription.status": "canceled"},
+        ]},
+        {"_id": 0, "email": 1, "name": 1, "subscription": 1},
+    ).to_list(5000)
+    rows = []
+    for u in docs:
+        sub = u.get("subscription") or {}
+        end = parse_dt(sub.get("current_period_end"))
+        still = sub.get("status") == "canceled" and end is not None and end > now_utc()
+        rows.append({
+            "email": u.get("email"),
+            "name": u.get("name"),
+            "plan": PLAN_LABELS.get(sub.get("plan"), sub.get("plan") or "—"),
+            "canceled_at": sub.get("canceled_at"),
+            "access_until": sub.get("current_period_end"),
+            "state": "access_until_end" if still else "ended",
+        })
+    rows.sort(key=lambda r: r.get("canceled_at") or "", reverse=True)
+    return {"count": len(rows), "cancellations": rows}
 
 
 @api_router.get("/admin/users")

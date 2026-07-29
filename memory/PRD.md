@@ -531,3 +531,8 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Admin : nouvelles cartes « En essai gratuit (7 j) » (Stripe trialing, fallback DB trial_users) et « Convertis depuis l'essai » (trial_used + payant réel actif) ; « Abonnés actifs (payants réels) » = Stripe status=active uniquement (les trialing n'y figurent PAS) ; compteurs plans mis à jour (yearly inclut pro_yearly/studio, basic inclut essentiel)
 - 🐛 FIX suppression code promo : le seed startup recréait les codes par défaut (BIENVENUE50/LAUNCH30/BEATCUTSTART) après chaque redémarrage → les suppressions sont maintenant mémorisées dans db.config `deleted_promo_codes` et jamais recréées. Testé : delete + restart backend → le code ne revient plus
 - Confirmé au user : les anciens abonnements Stripe ne bougent pas (grandfathering, aucun prix modifié côté Stripe)
+
+## Implémenté (29 juillet 2026 — suite) — Admin : répartition plans + suivi annulations
+- Taux de conversion essai : case « Convertis depuis l'essai » affiche X (Y %) — trial_started (trial_used=True) / trial_converted / trial_conversion_rate dans /api/admin/stats
+- Répartition par plan (payants réels) : 4 cases nouveaux plans (Essentiel 9,99 / Pro 19,99 / Pro annuel 149 / Studio 499) + 3 cases anciens (Basic 6,99 / Pro 12,99 / Pro annuel 99) — champ `plans` dans stats ; MRR estimé fallback recalculé avec les 7 plans
+- **GET /api/admin/cancellations** : liste des annulations (email, plan, annulé le, accès jusqu'au, statut « Accès encore actif »/« Terminé ») triée par date desc — nouvelle section « Suivi des annulations » dans /admin (testée avec un user factice puis nettoyé)
