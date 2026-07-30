@@ -2032,8 +2032,7 @@ function buildPlans(){
   if(M.noCuts){ M.cuts=[{time:ext.start,source:'auto'}]; rebuildPlans(); return; }
   if(!beats.length){M.cuts=[];M.plans=[];return;}
   const inB=beats.filter(b=>b>=ext.start&&b<ext.start+ext.dur);
-  const step= bpm>=140?2:1;
-  M.cuts=inB.filter((_,i)=>i%step===0).map(t=>({time:t,source:'auto'}));
+  M.cuts=inB.map(t=>({time:t,source:'auto'}));
   if(!M.cuts.length||M.cuts[0].time>ext.start+0.05) M.cuts.unshift({time:ext.start,source:'auto'});
   rebuildPlans();
 }

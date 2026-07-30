@@ -596,3 +596,7 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Refactor _claim_and_activate : guard clauses / early returns (nesting 6 → 2).
 - Non fait (choix délibéré, risque > bénéfice sur du code paiement LIVE fonctionnel) : redesign sub_info/admin_preview_report, state machine média, classe PromoValidator.
 - Régression : 48/48 tests pytest PASS (iter21 + basic_plan + affiliate_iter11).
+
+## Fix cuts BPM élevé (30 juin 2026)
+- ✅ buildPlans() (studio.html ~2035) : suppression du `step = bpm>=140 ? 2 : 1` — les coupes auto se font désormais sur CHAQUE temps quel que soit le BPM. Vérifié sur la fixture Recette 150BPM : 76 cuts à 0,4 s (avant : 38 cuts à 0,8 s).
+- Note : les morceaux déjà sauvegardés conservent leurs anciennes coupes tant que l'extrait/BPM n'est pas modifié (les cuts sont persistés) ; toute régénération applique la nouvelle règle.
