@@ -565,3 +565,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Onglet Effets embelli : checkboxes → cartes toggle (bord accent quand coché, :has), effets vidéo en grille 2 colonnes `.fx-grid`
 - Testé par screenshots desktop : tl-bar propre, carte emphase, grille effets. i18n EN ajouté
 - 29/07 (correctif emphase) : la mise en avant cible désormais les mots dits sur le DERNIER temps du cycle (fenêtre [cyc−beatDur, cyc), grille calée sur beats[0], tolérance 0.02s) + réglage Fréquence 1/2/4 mesures (style.emphEvery, seg #xEmphEvery). Logique validée par test unitaire node + UI vérifiée en screenshot.
+
+
+## Implémenté (30 juin 2026 — fork)
+- ✅ **Bouton "Passer en illimité maintenant"** (Dashboard) pour les utilisateurs en essai gratuit : dialog de confirmation (débit immédiat 19,99 €) → `POST /api/payments/activate-now` (Stripe `trial_end="now"`). Le studio avait déjà ce bouton au cap d'essai ; le Dashboard l'affiche désormais en permanence pendant l'essai.
+
+## Backlog
+- P0 : Erreur Cloudflare intermittente au login ("response that Cloudflare could not parse") — NON DÉMARRÉ
+- P1 : Nettoyage systématique des fichiers orphelins GridFS
+- P2 : Mini-tutoriel (3 étapes) au premier lancement mobile
+- Suivi : lags/freeze lecture vidéo (télémétrie en prod, en attente de données)

@@ -233,6 +233,21 @@ export default function Dashboard() {
     await cancelSubscription();
   };
 
+  const [activateOpen, setActivateOpen] = useState(false);
+  const activateNow = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/payments/activate-now");
+      toast.success(data.message);
+      setActivateOpen(false);
+      await refreshUser();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Activation impossible — réessaie");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const uploadWatermark = async (file) => {
     if (!file) return;
     setWmBusy(true);
@@ -436,6 +451,21 @@ export default function Dashboard() {
                   <div className="mt-4 border border-primary/40 bg-primary/5 px-4 py-3 font-osd text-xs tracking-wider text-primary" data-testid="trial-day-banner">
                     ESSAI PRO — J{Math.min(7, Math.max(1, 7 - Math.max(0, Math.ceil((new Date(sub.current_period_end) - Date.now()) / 86400000)) + 1))}/7
                   </div>
+                )}
+                {isTrial && (
+                  <>
+                    <button
+                      onClick={() => setActivateOpen(true)}
+                      disabled={busy}
+                      data-testid="activate-now-button"
+                      className="relative mt-4 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
+                    >
+                      <Crown size={16} /> Déjà convaincu ? Passer en illimité maintenant
+                    </button>
+                    <p className="mt-2 text-xs text-muted-foreground text-center">
+                      Ton abonnement Pro démarre tout de suite — exports illimités débloqués immédiatement.
+                    </p>
+                  </>
                 )}
                 {hasQuota && quota && quota.quota != null && (
                   <div className="mt-5" data-testid="quota-section">
@@ -756,6 +786,36 @@ export default function Dashboard() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={activateOpen} onOpenChange={setActivateOpen}>
+        <DialogContent className="bg-card border-border sm:max-w-md" data-testid="activate-now-modal">
+          <DialogHeader>
+            <DialogTitle className="font-display">Activer ton abonnement Pro maintenant ?</DialogTitle>
+            <DialogDescription>
+              Ton essai se termine immédiatement : <b className="text-foreground">19,99 €</b> sont débités aujourd'hui
+              sur ta carte, et tu débloques les <b className="text-foreground">exports illimités</b> tout de suite.
+              Ton prochain débit aura lieu dans un mois.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 mt-2">
+            <button
+              onClick={activateNow}
+              disabled={busy}
+              data-testid="confirm-activate-now-button"
+              className="bg-primary text-white font-bold px-5 py-3 hover:bg-[#d32f2f] transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
+            >
+              {busy ? "…" : "⚡ Activer maintenant — 19,99 €"}
+            </button>
+            <button
+              onClick={() => setActivateOpen(false)}
+              data-testid="cancel-activate-now-button"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+            >
+              Continuer mon essai gratuit
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
