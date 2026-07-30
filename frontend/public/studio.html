@@ -1395,7 +1395,22 @@ const EN={
 "Le décompte se fait au téléchargement — fermer sans télécharger ne consomme rien.":"Your quota is only used when you download — closing without downloading costs nothing.",
 "Télécharge d'abord ta vidéo prête (fenêtre ✓) — elle utilise ton quota restant":"Download your ready video first (✓ window) — it uses your remaining quota",
 "⚠ Le navigateur TikTok/Instagram bloque le téléchargement — ouvre beat-cut.com dans Chrome ou Safari (menu ⋯ → Ouvrir dans le navigateur). Rien n'a été décompté.":"⚠ The TikTok/Instagram browser blocks downloads — open beat-cut.com in Chrome or Safari (⋯ menu → Open in browser). Nothing was deducted.",
-"Plans par vidéo :":"Shots per video:","Plans par vidéo":"Shots per video","Jusqu'à 24 plans par vidéo — limité par la durée du clip.":"Up to 24 shots per video — limited by clip length.","Auto":"Auto","🎬 Sans coupes : OFF":"🎬 No cuts: OFF","🎬 Sans coupes : ON":"🎬 No cuts: ON","Vidéo entière, sans coupes 🎬":"Full video, no cuts 🎬","Coupes sur le beat réactivées ✂":"Beat cuts back on ✂","🔳 Texte en négatif (couleur inversée du fond)":"🔳 Negative text (inverts what's behind)","🌈 Saturé 4K":"🌈 4K saturated","✨ Glow (halo lumineux)":"✨ Glow (bloom)","🎥 Caméra instable":"🎥 Handheld camera","🐟 Fisheye léger":"🐟 Light fisheye","Archivo Narrow — condensé viral":"Archivo Narrow — viral condensed","Silkscreen — pixel rétro":"Silkscreen — retro pixel","Rubik Distressed — abrasé":"Rubik Distressed — distressed","Plans mélangés 🎲 — chaque clip est servi équitablement (les 🔒 n'ont pas bougé)":"Shots shuffled 🎲 — every clip dealt fairly (🔒 untouched)","Ajoute d'abord des vidéos à gauche":"Add videos on the left first","Préparation de l'export studio…":"Preparing studio export…","Finalisation du MP4…":"Finalizing MP4…","Ajout du son (serveur)…":"Adding audio (server)…","Vérification des vidéos…":"Checking videos…"
+"Plans par vidéo :":"Shots per video:","Plans par vidéo":"Shots per video","Jusqu'à 24 plans par vidéo — limité par la durée du clip.":"Up to 24 shots per video — limited by clip length.","Auto":"Auto","🎬 Sans coupes : OFF":"🎬 No cuts: OFF","🎬 Sans coupes : ON":"🎬 No cuts: ON","Vidéo entière, sans coupes 🎬":"Full video, no cuts 🎬","Coupes sur le beat réactivées ✂":"Beat cuts back on ✂","🔳 Texte en négatif (couleur inversée du fond)":"🔳 Negative text (inverts what's behind)","🌈 Saturé 4K":"🌈 4K saturated","✨ Glow (halo lumineux)":"✨ Glow (bloom)","🎥 Caméra instable":"🎥 Handheld camera","🐟 Fisheye léger":"🐟 Light fisheye","Archivo Narrow — condensé viral":"Archivo Narrow — viral condensed","Silkscreen — pixel rétro":"Silkscreen — retro pixel","Rubik Distressed — abrasé":"Rubik Distressed — distressed","Plans mélangés 🎲 — chaque clip est servi équitablement (les 🔒 n'ont pas bougé)":"Shots shuffled 🎲 — every clip dealt fairly (🔒 untouched)","Ajoute d'abord des vidéos à gauche":"Add videos on the left first","Préparation de l'export studio…":"Preparing studio export…","Finalisation du MP4…":"Finalizing MP4…","Ajout du son (serveur)…":"Adding audio (server)…","Vérification des vidéos…":"Checking videos…",
+"Passer":"Skip","Suivant":"Next","C'est parti 🚀":"Let's go 🚀",
+"Bienvenue dans le studio 👋":"Welcome to the studio 👋",
+"Ton clip se monte ici : aperçu au centre, timeline en bas, et tous les outils sous le pouce. Petit tour en 20 secondes.":"Your video comes together here: preview in the middle, timeline at the bottom, every tool under your thumb. Quick 20-second tour.",
+"🎵 Son — commence ici":"🎵 Sound — start here",
+"Dépose ton morceau : le BPM est détecté automatiquement et tu choisis l'extrait à monter.":"Drop your track: the BPM is detected automatically and you pick the extract to edit.",
+"🎬 Clips":"🎬 Clips",
+"Ajoute tes vidéos — elles se placent toutes seules sur la timeline, calées sur le beat.":"Add your videos — they land on the timeline by themselves, snapped to the beat.",
+"📝 Paroles":"📝 Lyrics",
+"L'IA écrit tes sous-titres synchronisés avec ta voix. Tu corriges un mot en un tap.":"AI writes your subtitles in sync with your vocals. Fix any word with one tap.",
+"🎨 Style":"🎨 Style",
+"Presets, polices, couleurs, effets VHS / glitch, mise en avant des sous-titres — ta patte visuelle.":"Presets, fonts, colors, VHS / glitch effects, subtitle highlights — your visual signature.",
+"La timeline":"The timeline",
+"Touche un plan pour le remplacer, le découper ou le supprimer. Le trait rouge suit la musique.":"Tap a shot to swap, split or delete it. The red line follows the music.",
+"⏺ Exporter":"⏺ Export",
+"Ta vidéo sort en MP4 prêt pour TikTok, Reels et Shorts. À toi de jouer 🚀":"Your video exports as an MP4 ready for TikTok, Reels and Shorts. Your turn 🚀"
 };
 const _ENRULES=[
  [/^Export studio (.+)$/, "Studio export $1"],
@@ -1553,7 +1568,7 @@ function route(){
   document.querySelectorAll('.edit-main>.col.open,#extractZone.open,#mobMore.open').forEach(c=>c.classList.remove('open'));
   $$('#mobBar button').forEach(b=>b.classList.remove('on'));
   _mobOpen=null;
-  if(p[0]==='edit'&&p[1]){ openEditor(p[1]); $('#pageEdit').classList.add('show'); }
+  if(p[0]==='edit'&&p[1]){ openEditor(p[1]); $('#pageEdit').classList.add('show'); maybeMobTutorial(); }
   else if(p[0]==='morceaux'){ renderMorceaux(); $('#pageMorceaux').classList.add('show'); }
   else if(p[0]==='serie'){ renderSerie(); $('#pageSerie').classList.add('show'); }
   else { renderHome(); $('#pageAccueil').classList.add('show'); }
@@ -4440,6 +4455,71 @@ async function checkPaidReturn(){
     await new Promise(rs=>setTimeout(rs,2000));
   }
 }
+/* ---------- Tutoriel mobile (premier montage) ---------- */
+const MOBTUTO_STEPS=[
+ {t:null,h:'Bienvenue dans le studio 👋',b:'Ton clip se monte ici : aperçu au centre, timeline en bas, et tous les outils sous le pouce. Petit tour en 20 secondes.'},
+ {t:'[data-testid=mob-tab-son]',h:'🎵 Son — commence ici',b:'Dépose ton morceau : le BPM est détecté automatiquement et tu choisis l\u2019extrait à monter.'},
+ {t:'[data-testid=mob-tab-clips]',h:'🎬 Clips',b:'Ajoute tes vidéos — elles se placent toutes seules sur la timeline, calées sur le beat.'},
+ {t:'[data-testid=mob-tab-paroles]',h:'📝 Paroles',b:'L\u2019IA écrit tes sous-titres synchronisés avec ta voix. Tu corriges un mot en un tap.'},
+ {t:'[data-testid=mob-tab-style]',h:'🎨 Style',b:'Presets, polices, couleurs, effets VHS / glitch, mise en avant des sous-titres — ta patte visuelle.'},
+ {t:'#trPlans',h:'La timeline',b:'Touche un plan pour le remplacer, le découper ou le supprimer. Le trait rouge suit la musique.'},
+ {t:'#exportBtn',h:'⏺ Exporter',b:'Ta vidéo sort en MP4 prêt pour TikTok, Reels et Shorts. À toi de jouer 🚀'},
+];
+function maybeMobTutorial(){
+  if(!window.matchMedia('(max-width:700px)').matches) return;
+  try{ if(localStorage.getItem('bc_mobtuto_done')) return; }catch(e){}
+  if(document.getElementById('mobTuto')) return;
+  setTimeout(()=>{
+    if(document.getElementById('onbOverlay')||document.getElementById('mobTuto')) return;
+    if(!document.body.classList.contains('mob-edit')) return;
+    showMobTutorial();
+  },700);
+}
+function showMobTutorial(){
+  let step=0;
+  const ov=document.createElement('div'); ov.id='mobTuto'; ov.setAttribute('data-testid','mob-tutorial-overlay');
+  ov.style.cssText='position:fixed;inset:0;z-index:300';
+  ov.innerHTML='<div id="mtDim" style="position:fixed;inset:0;background:rgba(8,10,14,.78)"></div>'+
+    '<div id="mtSpot" style="position:fixed;border-radius:14px;box-shadow:0 0 0 9999px rgba(8,10,14,.78),0 0 0 2px rgba(255,69,58,.9),0 0 24px rgba(255,45,85,.5);transition:left .28s,top .28s,width .28s,height .28s;display:none;pointer-events:none"></div>'+
+    '<div id="mtCard" data-testid="mob-tuto-card" style="position:fixed;left:16px;right:16px;background:#151A21;border:1px solid #232B36;border-radius:16px;padding:18px 16px;box-shadow:0 20px 60px rgba(0,0,0,.6)">'+
+      '<h3 id="mtH" style="font-size:16.5px;margin:0 0 6px"></h3>'+
+      '<p id="mtB" style="color:#8B95A3;font-size:13.5px;line-height:1.5;margin:0 0 14px"></p>'+
+      '<div style="display:flex;align-items:center;gap:8px">'+
+        '<div id="mtDots" style="display:flex;gap:5px;flex:1"></div>'+
+        '<button data-testid="mob-tuto-skip" id="mtSkip" style="background:none;border:none;color:#5A6472;font-size:12.5px;text-decoration:underline;min-height:40px;padding:0 6px">Passer</button>'+
+        '<button class="primary" data-testid="mob-tuto-next" id="mtNext" style="padding:10px 18px;border-radius:12px;font-size:14px"></button>'+
+      '</div></div>';
+  document.body.appendChild(ov);
+  const spot=ov.querySelector('#mtSpot'),card=ov.querySelector('#mtCard'),dim=ov.querySelector('#mtDim');
+  function done(ev){ try{localStorage.setItem('bc_mobtuto_done','1');}catch(e){} onbTel(ev,step+1); window.removeEventListener('resize',place); ov.remove(); }
+  function place(){
+    const s=MOBTUTO_STEPS[step];
+    const el=s.t?document.querySelector(s.t):null;
+    if(el){
+      const r=el.getBoundingClientRect(),p=6;
+      dim.style.display='none'; spot.style.display='block';
+      spot.style.left=(r.left-p)+'px'; spot.style.top=(r.top-p)+'px';
+      spot.style.width=(r.width+2*p)+'px'; spot.style.height=(r.height+2*p)+'px';
+      card.style.transform='none';
+      if(r.top<window.innerHeight/2){ card.style.top=(r.bottom+p+14)+'px'; card.style.bottom='auto'; }
+      else{ card.style.bottom=(window.innerHeight-r.top+p+14)+'px'; card.style.top='auto'; }
+    } else {
+      spot.style.display='none'; dim.style.display='block';
+      card.style.top='50%'; card.style.bottom='auto'; card.style.transform='translateY(-50%)';
+    }
+    ov.querySelector('#mtH').textContent=T(s.h);
+    ov.querySelector('#mtB').textContent=T(s.b);
+    ov.querySelector('#mtNext').textContent=T((step===MOBTUTO_STEPS.length-1)?'C\u2019est parti 🚀':'Suivant');
+    ov.querySelector('#mtSkip').textContent=T('Passer');
+    ov.querySelector('#mtDots').innerHTML=MOBTUTO_STEPS.map((_,i)=>'<span style="width:6px;height:6px;border-radius:50%;background:'+(i===step?'#FF453A':'#3A4450')+'"></span>').join('');
+  }
+  ov.querySelector('#mtNext').onclick=()=>{ step++; if(step>=MOBTUTO_STEPS.length) done('mobtuto_done'); else { onbTel('mobtuto_step_'+(step+1),step+1); place(); } };
+  ov.querySelector('#mtSkip').onclick=()=>done('mobtuto_skipped');
+  window.addEventListener('resize',place);
+  onbTel('mobtuto_start',1);
+  place();
+}
+
 /* ---------- Onboarding (5 écrans + activation) ---------- */
 const ONB_SCREENS=[
  {f:'persona',q:'Tu es plutôt...',opts:[['🎤 Artiste — je fais ma promo','artiste'],['🎹 Beatmaker/producteur — je mets en avant mes prods','beatmaker'],['📱 Manager/label — je gère plusieurs artistes','manager'],['🎬 Créateur de contenu — je fais des vidéos musique','createur']]},

@@ -573,5 +573,6 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 ## Backlog
 - P0 : Erreur Cloudflare intermittente au login ("response that Cloudflare could not parse") — NON DÉMARRÉ
 - P1 : Nettoyage systématique des fichiers orphelins GridFS
-- P2 : Mini-tutoriel (3 étapes) au premier lancement mobile
 - Suivi : lags/freeze lecture vidéo (télémétrie en prod, en attente de données)
+
+- ✅ **Tutoriel mobile studio** (30 juin 2026) : coach-marks 7 étapes au premier montage sur mobile (≤700px) — bienvenue, Son, Clips, Paroles, Style, timeline, Export. Spotlight sur les vrais éléments UI, points de progression, bouton Passer, FR/EN (map i18n), télémétrie (`mobtuto_start/step/done/skipped` via /api/telemetry/onboarding), flag `localStorage bc_mobtuto_done`.
