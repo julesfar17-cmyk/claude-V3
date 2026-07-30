@@ -581,3 +581,8 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ **Tutoriel desktop** : même tour guidé 7 étapes adapté PC (>700px) — cibles #stageWrap, #clipDrop, #tabP, #tabS, #trPlans, #exportBtn, carte 400px positionnée près de la cible. Même clé localStorage bc_mobtuto_done (1 affichage par appareil).
 - ✅ **Fenêtre « Maintenant, tes vidéos 🎬 »** après le flux onboarding : questionnaire → dépôt du son → tuto → modale onb-video-modal avec « ＋ Ajouter mes vidéos » (ouvre le sélecteur de clips), « 🔎 Banque de vidéos gratuites » (ouvre le panneau Clips + focus recherche Pexels), « Plus tard ». FR/EN, télémétrie onb_video_*. Fix : setTimeout(0) pour éviter que le clic de la modale referme le tiroir mobile (handler clic extérieur).
 - ⚠️ Rappel : ces nouveautés (tuto + fenêtre vidéos + bouton activation essai) ne sont PAS encore en production — redéploiement nécessaire.
+
+## Implémenté (30 juin 2026 — stats onboarding)
+- ✅ **GET /api/admin/onboarding-stats** : funnel tuto (démarrés/terminés/passés + taux via onboarding_logs mobtuto_*), questionnaire terminé/passé, distribution des réponses par question (users.onboarding.*).
+- ✅ **Admin > section « Onboarding & tutoriel »** (admin-onboarding-section) : 4 stats tuto + barres de répartition des 5 questions (labels FR jolis).
+- ✅ **3 écrans de stats motivantes** insérés dans le questionnaire d'onboarding (après persona, release_timing, current_method) : « un artiste poste 2×/semaine… », « 80 % des streams dans les 2 premières semaines », « montage à la main ~45 min vs BeatCut <2 min ». Compteur de questions inchangé (x/5), télémétrie onboarding_info_N.

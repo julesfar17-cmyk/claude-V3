@@ -2868,6 +2868,30 @@ async def admin_cancellations(user: dict = Depends(get_current_user)):
     return {"count": len(rows), "cancellations": rows}
 
 
+@api_router.get("/admin/onboarding-stats")
+async def admin_onboarding_stats(user: dict = Depends(get_current_user)):
+    """Stats onboarding : funnel du tutoriel studio + réponses au questionnaire."""
+    await require_admin(user)
+    tuto = {}
+    for key, ev in (("started", "mobtuto_start"), ("done", "mobtuto_done"), ("skipped", "mobtuto_skipped")):
+        tuto[key] = len(await db.onboarding_logs.distinct("user_id", {"event": ev}))
+    tuto["completion_pct"] = round(tuto["done"] / tuto["started"] * 100) if tuto["started"] else None
+    answers = {}
+    for field in ONBOARDING_FIELDS:
+        rows_f = await db.users.aggregate([
+            {"$match": {f"onboarding.{field}": {"$exists": True, "$ne": None}}},
+            {"$group": {"_id": f"$onboarding.{field}", "count": {"$sum": 1}}},
+        ]).to_list(50)
+        total = sum(r["count"] for r in rows_f)
+        answers[field] = {
+            "total": total,
+            "options": {r["_id"]: {"count": r["count"], "pct": round(r["count"] / total * 100)} for r in rows_f if r["_id"]},
+        }
+    form_done = await db.users.count_documents({"onboarding.done_at": {"$exists": True}})
+    form_skipped = await db.users.count_documents({"onboarding.skipped_at": {"$exists": True}})
+    return {"tuto": tuto, "form": {"done": form_done, "skipped": form_skipped}, "answers": answers}
+
+
 @api_router.get("/admin/users")
 async def admin_all_users(user: dict = Depends(get_current_user)):
     """Liste complète de tous les inscrits (email, plan, promo, date)."""

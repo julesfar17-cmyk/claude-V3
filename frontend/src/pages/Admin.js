@@ -19,6 +19,22 @@ const REASON_LABELS = {
   other: "🤷 Autre",
 };
 
+const ONB_QUESTIONS = {
+  persona: "Tu es plutôt...",
+  genre: "Ton style principal ?",
+  release_timing: "Tu sors un son quand ?",
+  current_method: "Tes vidéos de promo aujourd'hui ?",
+  source: "Comment ils nous ont trouvés ?",
+};
+const ONB_ANSWER_LABELS = {
+  artiste: "🎤 Artiste", beatmaker: "🎹 Beatmaker/prod", manager: "📱 Manager/label", createur: "🎬 Créateur de contenu",
+  rap_drill: "Rap / Drill", plugg_hyperpop: "Plugg / Cloud / Hyperpop", afro_shatta: "Afro / Shatta",
+  pop_chanson: "Pop / Chanson", electro_club: "Électro / Club", autre: "Autre",
+  cette_semaine: "🔥 Cette semaine", ce_mois: "📅 Ce mois-ci", plusieurs: "🎧 Plusieurs en préparation", pas_de_date: "💭 Pas de date",
+  capcut: "✂️ CapCut / à la main", pochette: "🖼 Pochette fixe", rarement: "🤷 Poste rarement", debute: "🚀 Débute",
+  tiktok: "TikTok", bouche_a_oreille: "Bouche à oreille", instagram: "Instagram", communautes: "Discord / Facebook", google: "Google",
+};
+
 export default function Admin() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
@@ -31,19 +47,22 @@ export default function Admin() {
   const [reconcileResult, setReconcileResult] = useState(null);
   const [webhook, setWebhook] = useState(null);
   const [cancellations, setCancellations] = useState(null);
+  const [onbStats, setOnbStats] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [{ data }, { data: usersData }, { data: wh }, { data: cancels }] = await Promise.all([
+      const [{ data }, { data: usersData }, { data: wh }, { data: cancels }, { data: onb }] = await Promise.all([
         api.get("/admin/stats"),
         api.get("/admin/users"),
         api.get("/admin/payments/webhook"),
         api.get("/admin/cancellations"),
+        api.get("/admin/onboarding-stats"),
       ]);
       setStats(data);
       setAllUsers(usersData);
       setWebhook(wh);
       setCancellations(cancels);
+      setOnbStats(onb);
     } catch (e) {
       toast.error(formatApiErrorDetail(e.response?.data?.detail));
     } finally {
@@ -286,6 +305,51 @@ export default function Admin() {
                       </div>
                     </div>
                   )}
+                </>
+              )}
+            </section>
+
+            <section className="bg-card border border-border p-6 sm:p-8 mb-8" data-testid="admin-onboarding-section">
+              <h2 className="font-display text-lg font-bold mb-2">Onboarding & tutoriel</h2>
+              <p className="text-xs text-muted-foreground mb-4">
+                Funnel du tutoriel studio (mobile + PC) et réponses au questionnaire d'inscription.
+              </p>
+              {onbStats && (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" data-testid="admin-tuto-stats">
+                    <Stat label="Tuto démarrés" value={fmt(onbStats.tuto.started)} />
+                    <Stat label="Tuto terminés" value={`${fmt(onbStats.tuto.done)}${onbStats.tuto.completion_pct != null ? ` (${onbStats.tuto.completion_pct} %)` : ""}`} accent />
+                    <Stat label="Tuto passés (skip)" value={fmt(onbStats.tuto.skipped)} />
+                    <Stat label="Questionnaire terminé / passé" value={`${fmt(onbStats.form.done)} / ${fmt(onbStats.form.skipped)}`} />
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-x-10 gap-y-6">
+                    {Object.entries(onbStats.answers || {}).map(([field, a]) => (
+                      <div key={field} data-testid={`admin-onb-question-${field}`}>
+                        <p className="font-osd text-[11px] tracking-wider text-muted-foreground mb-2">
+                          {ONB_QUESTIONS[field] || field} <span className="text-foreground">({a.total})</span>
+                        </p>
+                        {!a.total ? (
+                          <p className="text-sm text-muted-foreground">Aucune réponse pour l'instant.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {Object.entries(a.options)
+                              .sort((x, y) => y[1].count - x[1].count)
+                              .map(([opt, r]) => (
+                                <div key={opt}>
+                                  <div className="flex items-center justify-between text-sm mb-1">
+                                    <span>{ONB_ANSWER_LABELS[opt] || opt}</span>
+                                    <span className="font-osd text-[#d9ffd0]">{r.pct} % ({r.count})</span>
+                                  </div>
+                                  <div className="h-2 bg-secondary overflow-hidden">
+                                    <div className="h-full bg-[#d9ffd0]" style={{ width: `${r.pct}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </>
               )}
             </section>
