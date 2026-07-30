@@ -576,3 +576,8 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Suivi : lags/freeze lecture vidéo (télémétrie en prod, en attente de données)
 
 - ✅ **Tutoriel mobile studio** (30 juin 2026) : coach-marks 7 étapes au premier montage sur mobile (≤700px) — bienvenue, Son, Clips, Paroles, Style, timeline, Export. Spotlight sur les vrais éléments UI, points de progression, bouton Passer, FR/EN (map i18n), télémétrie (`mobtuto_start/step/done/skipped` via /api/telemetry/onboarding), flag `localStorage bc_mobtuto_done`.
+
+## Implémenté (30 juin 2026 — suite)
+- ✅ **Tutoriel desktop** : même tour guidé 7 étapes adapté PC (>700px) — cibles #stageWrap, #clipDrop, #tabP, #tabS, #trPlans, #exportBtn, carte 400px positionnée près de la cible. Même clé localStorage bc_mobtuto_done (1 affichage par appareil).
+- ✅ **Fenêtre « Maintenant, tes vidéos 🎬 »** après le flux onboarding : questionnaire → dépôt du son → tuto → modale onb-video-modal avec « ＋ Ajouter mes vidéos » (ouvre le sélecteur de clips), « 🔎 Banque de vidéos gratuites » (ouvre le panneau Clips + focus recherche Pexels), « Plus tard ». FR/EN, télémétrie onb_video_*. Fix : setTimeout(0) pour éviter que le clic de la modale referme le tiroir mobile (handler clic extérieur).
+- ⚠️ Rappel : ces nouveautés (tuto + fenêtre vidéos + bouton activation essai) ne sont PAS encore en production — redéploiement nécessaire.

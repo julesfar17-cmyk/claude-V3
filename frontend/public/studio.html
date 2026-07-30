@@ -1410,7 +1410,18 @@ const EN={
 "La timeline":"The timeline",
 "Touche un plan pour le remplacer, le découper ou le supprimer. Le trait rouge suit la musique.":"Tap a shot to swap, split or delete it. The red line follows the music.",
 "⏺ Exporter":"⏺ Export",
-"Ta vidéo sort en MP4 prêt pour TikTok, Reels et Shorts. À toi de jouer 🚀":"Your video exports as an MP4 ready for TikTok, Reels and Shorts. Your turn 🚀"
+"Ta vidéo sort en MP4 prêt pour TikTok, Reels et Shorts. À toi de jouer 🚀":"Your video exports as an MP4 ready for TikTok, Reels and Shorts. Your turn 🚀",
+"Clips à gauche, aperçu au centre, paroles & style à droite, timeline en bas. Petit tour en 20 secondes.":"Clips on the left, preview in the middle, lyrics & style on the right, timeline at the bottom. Quick 20-second tour.",
+"🎵 Ton morceau":"🎵 Your track",
+"Dépose ton son au centre : le BPM est détecté automatiquement et tu règles l'extrait juste en dessous.":"Drop your track in the middle: the BPM is detected automatically and you adjust the extract right below.",
+"Ajoute tes vidéos ici — elles se placent toutes seules sur la timeline, calées sur le beat.":"Add your videos here — they land on the timeline by themselves, snapped to the beat.",
+"L'IA écrit tes sous-titres synchronisés avec ta voix. Double-clique un mot pour le corriger.":"AI writes your subtitles in sync with your vocals. Double-click a word to fix it.",
+"Clique un plan pour le découper ou le verrouiller · glisse un clip dessus pour le remplacer. Le trait rouge suit la musique.":"Click a shot to split or lock it · drag a clip onto it to swap it. The red line follows the music.",
+"Maintenant, tes vidéos 🎬":"Now, your videos 🎬",
+"Ajoute tes propres clips, ou pioche dans notre banque de vidéos gratuites — ils se caleront tout seuls sur le beat.":"Add your own clips, or pick from our free video library — they'll snap to the beat by themselves.",
+"＋ Ajouter mes vidéos":"＋ Add my videos",
+"🔎 Banque de vidéos gratuites":"🔎 Free video library",
+"Plus tard":"Later"
 };
 const _ENRULES=[
  [/^Export studio (.+)$/, "Studio export $1"],
@@ -4465,17 +4476,27 @@ const MOBTUTO_STEPS=[
  {t:'#trPlans',h:'La timeline',b:'Touche un plan pour le remplacer, le découper ou le supprimer. Le trait rouge suit la musique.'},
  {t:'#exportBtn',h:'⏺ Exporter',b:'Ta vidéo sort en MP4 prêt pour TikTok, Reels et Shorts. À toi de jouer 🚀'},
 ];
+const DESKTUTO_STEPS=[
+ {t:null,h:'Bienvenue dans le studio 👋',b:'Clips à gauche, aperçu au centre, paroles & style à droite, timeline en bas. Petit tour en 20 secondes.'},
+ {t:'#stageWrap',h:'🎵 Ton morceau',b:'Dépose ton son au centre : le BPM est détecté automatiquement et tu règles l\u2019extrait juste en dessous.'},
+ {t:'#clipDrop',h:'🎬 Clips',b:'Ajoute tes vidéos ici — elles se placent toutes seules sur la timeline, calées sur le beat.'},
+ {t:'#tabP',h:'📝 Paroles',b:'L\u2019IA écrit tes sous-titres synchronisés avec ta voix. Double-clique un mot pour le corriger.'},
+ {t:'#tabS',h:'🎨 Style',b:'Presets, polices, couleurs, effets VHS / glitch, mise en avant des sous-titres — ta patte visuelle.'},
+ {t:'#trPlans',h:'La timeline',b:'Clique un plan pour le découper ou le verrouiller · glisse un clip dessus pour le remplacer. Le trait rouge suit la musique.'},
+ {t:'#exportBtn',h:'⏺ Exporter',b:'Ta vidéo sort en MP4 prêt pour TikTok, Reels et Shorts. À toi de jouer 🚀'},
+];
 function maybeMobTutorial(){
-  if(!window.matchMedia('(max-width:700px)').matches) return;
-  try{ if(localStorage.getItem('bc_mobtuto_done')) return; }catch(e){}
+  try{ if(localStorage.getItem('bc_mobtuto_done')){
+    if(window._onbFreshFlow){ window._onbFreshFlow=false; setTimeout(showOnbVideoPrompt,900); }
+    return; } }catch(e){}
   if(document.getElementById('mobTuto')) return;
   setTimeout(()=>{
     if(document.getElementById('onbOverlay')||document.getElementById('mobTuto')) return;
     if(!document.body.classList.contains('mob-edit')) return;
-    showMobTutorial();
+    showMobTutorial(window.matchMedia('(max-width:700px)').matches?MOBTUTO_STEPS:DESKTUTO_STEPS);
   },700);
 }
-function showMobTutorial(){
+function showMobTutorial(STEPS){
   let step=0;
   const ov=document.createElement('div'); ov.id='mobTuto'; ov.setAttribute('data-testid','mob-tutorial-overlay');
   ov.style.cssText='position:fixed;inset:0;z-index:300';
@@ -4491,33 +4512,58 @@ function showMobTutorial(){
       '</div></div>';
   document.body.appendChild(ov);
   const spot=ov.querySelector('#mtSpot'),card=ov.querySelector('#mtCard'),dim=ov.querySelector('#mtDim');
-  function done(ev){ try{localStorage.setItem('bc_mobtuto_done','1');}catch(e){} onbTel(ev,step+1); window.removeEventListener('resize',place); ov.remove(); }
+  function done(ev){ try{localStorage.setItem('bc_mobtuto_done','1');}catch(e){} onbTel(ev,step+1); window.removeEventListener('resize',place); ov.remove();
+    if(window._onbFreshFlow){ window._onbFreshFlow=false; setTimeout(showOnbVideoPrompt,350); } }
   function place(){
-    const s=MOBTUTO_STEPS[step];
+    const s=STEPS[step];
     const el=s.t?document.querySelector(s.t):null;
+    const isDesk=window.innerWidth>700;
+    if(isDesk){ card.style.width='min(400px,90vw)'; card.style.right='auto'; }
+    else{ card.style.width='auto'; card.style.left='16px'; card.style.right='16px'; }
     if(el){
       const r=el.getBoundingClientRect(),p=6;
       dim.style.display='none'; spot.style.display='block';
       spot.style.left=(r.left-p)+'px'; spot.style.top=(r.top-p)+'px';
       spot.style.width=(r.width+2*p)+'px'; spot.style.height=(r.height+2*p)+'px';
       card.style.transform='none';
+      if(isDesk) card.style.left=Math.max(16,Math.min(r.left,window.innerWidth-432))+'px';
       if(r.top<window.innerHeight/2){ card.style.top=(r.bottom+p+14)+'px'; card.style.bottom='auto'; }
       else{ card.style.bottom=(window.innerHeight-r.top+p+14)+'px'; card.style.top='auto'; }
     } else {
       spot.style.display='none'; dim.style.display='block';
-      card.style.top='50%'; card.style.bottom='auto'; card.style.transform='translateY(-50%)';
+      card.style.top='50%'; card.style.bottom='auto';
+      if(isDesk){ card.style.left='50%'; card.style.transform='translate(-50%,-50%)'; }
+      else card.style.transform='translateY(-50%)';
     }
     ov.querySelector('#mtH').textContent=T(s.h);
     ov.querySelector('#mtB').textContent=T(s.b);
-    ov.querySelector('#mtNext').textContent=T((step===MOBTUTO_STEPS.length-1)?'C\u2019est parti 🚀':'Suivant');
+    ov.querySelector('#mtNext').textContent=T((step===STEPS.length-1)?'C\u2019est parti 🚀':'Suivant');
     ov.querySelector('#mtSkip').textContent=T('Passer');
-    ov.querySelector('#mtDots').innerHTML=MOBTUTO_STEPS.map((_,i)=>'<span style="width:6px;height:6px;border-radius:50%;background:'+(i===step?'#FF453A':'#3A4450')+'"></span>').join('');
+    ov.querySelector('#mtDots').innerHTML=STEPS.map((_,i)=>'<span style="width:6px;height:6px;border-radius:50%;background:'+(i===step?'#FF453A':'#3A4450')+'"></span>').join('');
   }
-  ov.querySelector('#mtNext').onclick=()=>{ step++; if(step>=MOBTUTO_STEPS.length) done('mobtuto_done'); else { onbTel('mobtuto_step_'+(step+1),step+1); place(); } };
+  ov.querySelector('#mtNext').onclick=()=>{ step++; if(step>=STEPS.length) done('mobtuto_done'); else { onbTel('mobtuto_step_'+(step+1),step+1); place(); } };
   ov.querySelector('#mtSkip').onclick=()=>done('mobtuto_skipped');
   window.addEventListener('resize',place);
   onbTel('mobtuto_start',1);
   place();
+}
+
+/* ---------- Fenêtre « Ajoute ta vidéo » (après le tuto, flux onboarding) ---------- */
+function showOnbVideoPrompt(){
+  const d=_bcModal('onb-video-modal',
+    '<div style="background:#12161D;border:1px solid #232B36;border-radius:16px;max-width:420px;width:100%;padding:26px 22px">'+
+    '<h2 style="font-size:19px;margin:0 0 8px">'+T('Maintenant, tes vidéos 🎬')+'</h2>'+
+    '<p style="color:#8B95A3;font-size:14px;margin:0 0 18px">'+T('Ajoute tes propres clips, ou pioche dans notre banque de vidéos gratuites — ils se caleront tout seuls sur le beat.')+'</p>'+
+    '<button class="primary" data-testid="onb-video-add" style="width:100%;padding:13px">'+T('＋ Ajouter mes vidéos')+'</button>'+
+    '<button class="ghost" data-testid="onb-video-bank" style="width:100%;padding:12px;margin-top:8px">'+T('🔎 Banque de vidéos gratuites')+'</button>'+
+    '<div style="text-align:center;margin-top:12px"><button data-testid="onb-video-later" style="background:none;border:none;color:#8B95A3;font-size:12.5px;cursor:pointer;text-decoration:underline">'+T('Plus tard')+'</button></div>'+
+    '</div>');
+  const mob=()=>window.matchMedia('(max-width:700px)').matches;
+  d.querySelector('[data-testid=onb-video-add]').onclick=()=>{ onbTel('onb_video_add',1); d.remove(); setTimeout(()=>{ if(mob()) mobSheet('clips'); $('#clipInput').click(); },0); };
+  d.querySelector('[data-testid=onb-video-bank]').onclick=()=>{ onbTel('onb_video_bank',1); d.remove(); setTimeout(()=>{ if(mob()) mobSheet('clips');
+    const s=$('#bankSearch'); if(s){ s.scrollIntoView({block:'center'}); setTimeout(()=>s.focus(),300); } },0); };
+  d.querySelector('[data-testid=onb-video-later]').onclick=()=>{ onbTel('onb_video_later',1); d.remove(); };
+  onbTel('onb_video_prompt',1);
 }
 
 /* ---------- Onboarding (5 écrans + activation) ---------- */
@@ -4575,6 +4621,7 @@ function showOnboarding(){
   async function onbStart(file){
     await onbPost({done:true}); onbTel('onboarding_done'); onbTel('onboarding_first_drop');
     API.onboardingDone=true; d.remove();
+    window._onbFreshFlow=true;
     const first=!(DB.morceaux&&DB.morceaux.length);
     newMorceau();
     setTimeout(()=>{
