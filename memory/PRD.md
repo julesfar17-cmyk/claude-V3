@@ -600,3 +600,8 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 ## Fix cuts BPM élevé (30 juin 2026)
 - ✅ buildPlans() (studio.html ~2035) : suppression du `step = bpm>=140 ? 2 : 1` — les coupes auto se font désormais sur CHAQUE temps quel que soit le BPM. Vérifié sur la fixture Recette 150BPM : 76 cuts à 0,4 s (avant : 38 cuts à 0,8 s).
 - Note : les morceaux déjà sauvegardés conservent leurs anciennes coupes tant que l'extrait/BPM n'est pas modifié (les cuts sont persistés) ; toute régénération applique la nouvelle règle.
+
+## Fix mise en avant des mots (30 juin 2026)
+- ✅ isEmph() (studio.html ~3305) : la grille des mesures est désormais ancrée sur le DÉBUT DE L'EXTRAIT (mesure 1, temps 1 perçu = beat le plus proche de ext.start) au lieu de beats[0] du morceau entier. Fenêtre inchangée : mots dont le start ∈ [4e temps, 1 de la mesure d'après), toutes les 1/2/4 mesures (style.emphEvery).
+- Libellé UI + EN mis à jour : « du 4e temps au 1 de la mesure d'après ».
+- Vérifié sur fixture Recette 150BPM : 'cent' (3,25 beats) et 'bpm' (3,5) emphatisés, 'recette'/'cinquante' non.

@@ -806,7 +806,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
             <label class="fx-emph-head">
               <input type="checkbox" id="xEmph" data-testid="emphasis-toggle" style="width:auto">
               <span>Mot mis en avant</span>
-              <em>sur le dernier temps de la mesure</em>
+              <em>du 4e temps au 1 de la mesure d'après</em>
             </label>
             <div class="fx-emph-body" id="emphBody">
               <div class="field"><label>Fréquence</label>
@@ -1381,7 +1381,7 @@ const EN={
 "Sur la timeline : Maj-clic / Ctrl-clic pour sélectionner plusieurs mots, puis glisse-les en groupe, ⧉ copie, 📋 colle au curseur ou 🗑 supprime (touche Suppr).":"On the timeline: Shift-click / Ctrl-click to select several words, then drag them as a group, ⧉ copy, 📋 paste at cursor or 🗑 delete (Del key).",
 "Styles":"Styles","Texte":"Text","Effets":"Effects","Animation":"Animation","Police":"Font","Bricolage — moderne":"Bricolage — modern","Anton — impact condensé":"Anton — condensed impact","Archivo Black — massif":"Archivo Black — massive","Impact — classique":"Impact — classic","Inter — sobre":"Inter — clean","Special Elite — machine à écrire":"Special Elite — typewriter","Marker — feutre":"Marker — felt pen","Caveat — manuscrit":"Caveat — handwritten","VT323 — écran rétro":"VT323 — retro screen","Monoton — néon":"Monoton — neon","Fraktur — gothique":"Fraktur — gothic","Rubik Glitch — glitché":"Rubik Glitch — glitched",
 "Affichage":"Display","Mot seul":"Single word","Phrase":"Sentence","Étalé":"Spread","Taille":"Size","Épaisseur":"Weight","Fin":"Thin","Normal":"Normal","Gras":"Bold","Casse":"Case","MAJ":"UPPER","min":"lower","Couleur du texte":"Text color","Position":"Position","Haut":"Top","Centre":"Center","Bas":"Bottom","Mot en cours coloré (karaoké)":"Current word colored (karaoke)","Contour":"Outline","Lueur (néon)":"Glow (neon)","Ombre portée":"Drop shadow","Espacement des lettres":"Letter spacing","Inclinaison":"Slant","Lignes d'écran rétro (CRT)":"Retro screen lines (CRT)","Fond derrière le texte":"Background behind text",
-"Effets vidéo — au rythme des coupures":"Video effects — on every cut","⚡ Flash blanc sur les coupures":"⚡ White flash on cuts","🔍 Zoom punch":"🔍 Punch zoom","💥 Secousse légère":"💥 Light shake","📼 VHS (lignes d'écran)":"📼 VHS (screen lines)","🎞 Grain de pellicule":"🎞 Film grain","Apparition des mots":"Word entrance","Aucune":"None","Pop":"Pop","Fondu":"Fade","Glissé":"Slide","Zoom":"Zoom","Secousse":"Shake","Le mot reste affiché jusqu'au suivant":"Each word stays until the next one","💾 Enregistrer comme mon style":"💾 Save as my style","Mot mis en avant":"Highlighted word","sur le dernier temps de la mesure":"on the last beat of the bar","Fréquence":"Frequency","1 mesure":"1 bar","2 mesures":"2 bars","4 mesures":"4 bars","Taille du mot":"Word size","Même police":"Same font",
+"Effets vidéo — au rythme des coupures":"Video effects — on every cut","⚡ Flash blanc sur les coupures":"⚡ White flash on cuts","🔍 Zoom punch":"🔍 Punch zoom","💥 Secousse légère":"💥 Light shake","📼 VHS (lignes d'écran)":"📼 VHS (screen lines)","🎞 Grain de pellicule":"🎞 Film grain","Apparition des mots":"Word entrance","Aucune":"None","Pop":"Pop","Fondu":"Fade","Glissé":"Slide","Zoom":"Zoom","Secousse":"Shake","Le mot reste affiché jusqu'au suivant":"Each word stays until the next one","💾 Enregistrer comme mon style":"💾 Save as my style","Mot mis en avant":"Highlighted word","du 4e temps au 1 de la mesure d'après":"from beat 4 to the next bar's downbeat","Fréquence":"Frequency","1 mesure":"1 bar","2 mesures":"2 bars","4 mesures":"4 bars","Taille du mot":"Word size","Même police":"Same font",
 "Timeline":"Timeline","✂ Couper ici":"✂ Cut here","🧲 Beat : ON":"🧲 Beat: ON","🧲 Beat : OFF":"🧲 Beat: OFF","🎲 Mélanger":"🎲 Shuffle","⧉ Copier":"⧉ Copy","🗑 Supprimer":"🗑 Delete","📋 Coller au curseur":"📋 Paste at cursor","Adapter":"Fit","Clic sur un plan = coupes & verrou · glisser un clip dessus = le changer":"Click a shot = cuts & lock · drag a clip onto it = swap it","Plans":"Shots","Accueil":"Home","Morceaux":"Songs","Série":"Series","Compte":"Account","Ce plan":"This shot","Remplacer le clip":"Swap clip","Autre plan":"Another shot","Découper en 2":"Split in 2","Supprimer":"Delete","🔒 Verrouiller ce plan":"🔒 Lock this shot",
 "Choisis un morceau, tes styles de sous-titres préférés et un nombre de vidéos : BeatCut prépare plusieurs versions réelles. Tu gardes les meilleures, tu exportes, c'est posté.":"Pick a track, your favorite subtitle styles and a number of videos: BeatCut builds several real versions. Keep the best, export, post.",
 "Préparer":"Set up","Choisir les meilleures":"Pick the best","Nombre de vidéos":"Number of videos","Styles de sous-titres — choisis-en un ou plusieurs (tes styles ★ inclus)":"Subtitle styles — pick one or more (your ★ styles included)","Préparer les vidéos →":"Prepare videos →",
@@ -3301,14 +3301,18 @@ function drawLyricBlock(c,t,W,H){
   }
   const w=M.words[idx];
   const base=(H*0.056)*style.size;
-  // ⭐ Mise en avant : les mots dits sur le DERNIER temps du cycle de mesures (1/2/4), calé sur la grille de beats
+  // ⭐ Mise en avant : les mots dits entre le 4e temps et le 1 de la mesure d'après,
+  // toutes les 1/2/4 mesures — grille ancrée sur le début de l'extrait (mesure 1, temps 1)
   const isEmph=(wi)=>{
     const w2=M.words[wi];
     if(!style.emph||!w2) return false;
     const b=(bpm||M.bpm)||120, beatDur=60/b, cyc=(style.emphEvery||2)*4*beatDur;
-    const s0=(typeof beats!=='undefined'&&beats.length)?beats[0]:((ext&&ext.start)||0);
+    let s0=(ext&&ext.start)||0;
+    if(typeof beats!=='undefined'&&beats.length){
+      s0=beats[0]+Math.round((s0-beats[0])/beatDur)*beatDur;   // beat le plus proche du début d'extrait
+    }
     const pos=((w2.start-s0)%cyc+cyc)%cyc;
-    return pos>=cyc-beatDur-0.02;
+    return pos>=cyc-beatDur-0.02;                              // fenêtre = [4e temps, 1 de la mesure d'après)
   };
   const emphW=(style.mode||'word')==='word'&&isEmph(idx);
   const age=Math.max(0,t-w.start);
