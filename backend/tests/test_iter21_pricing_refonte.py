@@ -23,12 +23,8 @@ if not BASE_URL:
 
 API = f"{BASE_URL}/api"
 
-DEMO_EMAIL = "demo@beatcut.fr"
-DEMO_PASSWORD = "Demo1234!"
-FREE_EMAIL = "qa_free_ui@test.local"
-FREE_PASSWORD = "Testing1234!"
-VIP_EMAIL = "julesfar17@gmail.com"
-VIP_PASSWORD = "Carnageproduction1704*"
+from creds import (DEMO_EMAIL, DEMO_PASSWORD, FREE_EMAIL, FREE_PASSWORD,
+                   VIP_EMAIL, VIP_PASSWORD)  # noqa: E402 — jamais de secrets en dur
 
 
 def _login(email: str, password: str) -> requests.Session:

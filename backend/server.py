@@ -921,37 +921,40 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
         {"session_id": session_id, "processed": {"$ne": True}},
         {"$set": {"processed": True, "payment_status": "paid", "status": "complete", "updated_at": iso(now_utc())}},
     )
-    if res.modified_count:
-        tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-        if tx and tx.get("user_id"):
-            plan = tx.get("plan", "monthly")
-            await activate_subscription(tx["user_id"], customer_id, subscription_id, plan=plan)
-            trial_started = False
-            if subscription_id:
-                try:
-                    s = await asyncio.to_thread(
-                        lambda: stripe.Subscription.retrieve(subscription_id, expand=["default_payment_method"]))
-                    if s.get("status") == "trialing":
-                        if await _guard_trial_fingerprint(tx["user_id"], tx.get("email"), s):
-                            return
-                        trial_started = True
-                    await _apply_stripe_sub_state(tx["user_id"], s)
-                except Exception:
-                    logger.exception("Sync post-activation impossible pour %s", subscription_id)
-            if tx.get("affiliate_code"):
-                await db.affiliate_codes.update_one(
-                    {"code": tx["affiliate_code"]},
-                    {"$inc": {"use_count": 1},
-                     "$push": {"uses": {"user_id": tx["user_id"], "email": tx.get("email"),
-                                        "plan": plan, "date": iso(now_utc())}}})
-            user = await db.users.find_one({"user_id": tx["user_id"]}, {"_id": 0})
-            if user:
-                end = (user.get("subscription") or {}).get("current_period_end")
-                if trial_started:
-                    await send_email(user["email"], "Ton essai Pro a commencé ✦ BEATCUT", trial_started_email_html(end))
-                else:
-                    label = PLAN_LABELS.get(plan, "PRO")
-                    await send_email(user["email"], f"Bienvenue en {label} ✦ BEATCUT", sub_confirmed_email_html(end))
+    if not res.modified_count:
+        return
+    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not tx or not tx.get("user_id"):
+        return
+    plan = tx.get("plan", "monthly")
+    await activate_subscription(tx["user_id"], customer_id, subscription_id, plan=plan)
+    trial_started = False
+    if subscription_id:
+        try:
+            s = await asyncio.to_thread(
+                lambda: stripe.Subscription.retrieve(subscription_id, expand=["default_payment_method"]))
+            if s.get("status") == "trialing":
+                if await _guard_trial_fingerprint(tx["user_id"], tx.get("email"), s):
+                    return
+                trial_started = True
+            await _apply_stripe_sub_state(tx["user_id"], s)
+        except Exception:
+            logger.exception("Sync post-activation impossible pour %s", subscription_id)
+    if tx.get("affiliate_code"):
+        await db.affiliate_codes.update_one(
+            {"code": tx["affiliate_code"]},
+            {"$inc": {"use_count": 1},
+             "$push": {"uses": {"user_id": tx["user_id"], "email": tx.get("email"),
+                                "plan": plan, "date": iso(now_utc())}}})
+    user = await db.users.find_one({"user_id": tx["user_id"]}, {"_id": 0})
+    if not user:
+        return
+    end = (user.get("subscription") or {}).get("current_period_end")
+    if trial_started:
+        await send_email(user["email"], "Ton essai Pro a commencé ✦ BEATCUT", trial_started_email_html(end))
+    else:
+        label = PLAN_LABELS.get(plan, "PRO")
+        await send_email(user["email"], f"Bienvenue en {label} ✦ BEATCUT", sub_confirmed_email_html(end))
 
 
 async def _guard_trial_fingerprint(user_id: str, email: str, s) -> bool:
@@ -1029,14 +1032,8 @@ async def _apply_affiliate_discount(params: dict, plan: str, promo_code: str) ->
     return aff_code
 
 
-@api_router.post("/payments/checkout")
-async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depends(get_current_user)):
-    if (user.get("email") or "").lower() in PRO_WHITELIST:
-        raise HTTPException(status_code=400, detail="Compte VIP — déjà PRO")
-    origin = data.origin_url.rstrip("/")
-    sub = user.get("subscription") or {}
-    plan = data.plan if data.plan in (*NEW_PLANS, "monthly", "yearly", "basic") else "pro_monthly"
-    pricing = _plan_pricing(plan)
+def _build_checkout_params(user: dict, plan: str, pricing: dict, origin: str, return_path: str) -> dict:
+    """Construit les paramètres de session Stripe Checkout (URLs, client, métadonnées)."""
     params = dict(
         mode="subscription",
         payment_method_types=["card"],
@@ -1054,22 +1051,39 @@ async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depen
         metadata={"user_id": user["user_id"], "email": user["email"], "product": f"beatcut_{plan}"},
         subscription_data={"metadata": {"user_id": user["user_id"], "plan": plan}},
     )
-    rp = (data.return_path or "").strip()
+    rp = (return_path or "").strip()
     if rp.startswith("/") and not rp.startswith("//"):
         sep = "&" if "?" in rp else "?"
         params["success_url"] = f"{origin}{rp}{sep}session_id={{CHECKOUT_SESSION_ID}}"
         params["cancel_url"] = f"{origin}{rp}"
-    with_trial = False
-    if plan == "pro_monthly" and not sub.get("stripe_subscription_id"):
-        # Essai 7 jours : un seul par email ET par carte (empreinte vérifiée après le checkout)
-        already = user.get("trial_used") or await db.trial_fingerprints.find_one({"email": user["email"]})
-        if not already:
-            params["subscription_data"]["trial_period_days"] = TRIAL_DAYS
-            with_trial = True
+    sub = user.get("subscription") or {}
     if sub.get("stripe_customer_id"):
         params["customer"] = sub["stripe_customer_id"]
     else:
         params["customer_email"] = user["email"]
+    return params
+
+
+async def _maybe_add_trial(params: dict, user: dict, plan: str) -> bool:
+    """Essai 7 jours : un seul par email ET par carte (empreinte vérifiée après le checkout)."""
+    sub = user.get("subscription") or {}
+    if plan != "pro_monthly" or sub.get("stripe_subscription_id"):
+        return False
+    already = user.get("trial_used") or await db.trial_fingerprints.find_one({"email": user["email"]})
+    if already:
+        return False
+    params["subscription_data"]["trial_period_days"] = TRIAL_DAYS
+    return True
+
+
+@api_router.post("/payments/checkout")
+async def create_checkout(data: CheckoutIn, request: Request, user: dict = Depends(get_current_user)):
+    if (user.get("email") or "").lower() in PRO_WHITELIST:
+        raise HTTPException(status_code=400, detail="Compte VIP — déjà PRO")
+    plan = data.plan if data.plan in (*NEW_PLANS, "monthly", "yearly", "basic") else "pro_monthly"
+    pricing = _plan_pricing(plan)
+    params = _build_checkout_params(user, plan, pricing, data.origin_url.rstrip("/"), data.return_path)
+    with_trial = await _maybe_add_trial(params, user, plan)
     aff_code = await _apply_affiliate_discount(params, plan, data.promo_code)
     try:
         session = await asyncio.to_thread(lambda: stripe.checkout.Session.create(**params))
@@ -1135,6 +1149,45 @@ async def get_webhook_secret() -> str:
     return _WEBHOOK_SECRET_CACHE
 
 
+async def _wh_checkout_completed(obj):
+    if obj.get("payment_status") == "paid":
+        await _claim_and_activate(obj["id"], obj.get("customer"), obj.get("subscription"))
+
+
+async def _wh_trial_will_end(obj):
+    """J-3 avant la fin d'essai : email de rappel (une seule fois)."""
+    sub_id = obj.get("id")
+    u = await db.users.find_one({"subscription.stripe_subscription_id": sub_id},
+                                {"_id": 0, "user_id": 1, "email": 1, "subscription": 1})
+    if not u or (u.get("subscription") or {}).get("trial_reminder_sent"):
+        return
+    te = obj.get("trial_end")
+    end_iso = iso(datetime.fromtimestamp(te, tz=timezone.utc)) if te else (u.get("subscription") or {}).get("current_period_end")
+    await send_email(u["email"], "Ton essai Pro se termine bientôt — BEATCUT", trial_reminder_email_html(end_iso))
+    await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"subscription.trial_reminder_sent": True}})
+
+
+async def _wh_subscription_sync(etype, obj):
+    """Synchronise l'état local à chaque mise à jour / suppression / paiement d'abonnement."""
+    sub_id = obj.get("id") if etype.startswith("customer.subscription") else obj.get("subscription")
+    if not sub_id:
+        return
+    u = await db.users.find_one({"subscription.stripe_subscription_id": sub_id}, {"_id": 0, "user_id": 1})
+    if not u:
+        return
+    try:
+        s = obj if etype.startswith("customer.subscription") else await asyncio.to_thread(stripe.Subscription.retrieve, sub_id)
+        await _apply_stripe_sub_state(u["user_id"], s)
+    except Exception:
+        logger.exception("Webhook : sync abonnement %s impossible", sub_id)
+
+
+_WEBHOOK_HANDLERS = {
+    "checkout.session.completed": _wh_checkout_completed,
+    "customer.subscription.trial_will_end": _wh_trial_will_end,
+}
+
+
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     secret = await get_webhook_secret()
@@ -1148,28 +1201,11 @@ async def stripe_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Webhook invalide")
     etype = event["type"]
     obj = event["data"]["object"]
-    if etype == "checkout.session.completed":
-        if obj.get("payment_status") == "paid":
-            await _claim_and_activate(obj["id"], obj.get("customer"), obj.get("subscription"))
-    elif etype == "customer.subscription.trial_will_end":
-        sub_id = obj.get("id")
-        u = await db.users.find_one({"subscription.stripe_subscription_id": sub_id},
-                                    {"_id": 0, "user_id": 1, "email": 1, "subscription": 1})
-        if u and not (u.get("subscription") or {}).get("trial_reminder_sent"):
-            te = obj.get("trial_end")
-            end_iso = iso(datetime.fromtimestamp(te, tz=timezone.utc)) if te else (u.get("subscription") or {}).get("current_period_end")
-            await send_email(u["email"], "Ton essai Pro se termine bientôt — BEATCUT", trial_reminder_email_html(end_iso))
-            await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"subscription.trial_reminder_sent": True}})
+    handler = _WEBHOOK_HANDLERS.get(etype)
+    if handler:
+        await handler(obj)
     elif etype in ("customer.subscription.updated", "customer.subscription.deleted", "invoice.paid"):
-        sub_id = obj.get("id") if etype.startswith("customer.subscription") else obj.get("subscription")
-        if sub_id:
-            u = await db.users.find_one({"subscription.stripe_subscription_id": sub_id}, {"_id": 0, "user_id": 1})
-            if u:
-                try:
-                    s = obj if etype.startswith("customer.subscription") else await asyncio.to_thread(stripe.Subscription.retrieve, sub_id)
-                    await _apply_stripe_sub_state(u["user_id"], s)
-                except Exception:
-                    logger.exception("Webhook : sync abonnement %s impossible", sub_id)
+        await _wh_subscription_sync(etype, obj)
     return {"received": True}
 
 

@@ -13,8 +13,9 @@ def _read_frontend_env():
     return None
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or _read_frontend_env()).rstrip("/")
-DEMO = {"email": "demo@beatcut.fr", "password": "Demo1234!"}
-ADMIN = {"email": "julesfar17@gmail.com", "password": "Carnageproduction1704*"}
+from creds import DEMO_EMAIL, DEMO_PASSWORD, VIP_EMAIL, VIP_PASSWORD  # noqa: E402
+DEMO = {"email": DEMO_EMAIL, "password": DEMO_PASSWORD}
+ADMIN = {"email": VIP_EMAIL, "password": VIP_PASSWORD}
 
 TEST_MP4 = "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4"
 

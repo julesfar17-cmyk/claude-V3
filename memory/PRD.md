@@ -586,3 +586,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ **GET /api/admin/onboarding-stats** : funnel tuto (démarrés/terminés/passés + taux via onboarding_logs mobtuto_*), questionnaire terminé/passé, distribution des réponses par question (users.onboarding.*).
 - ✅ **Admin > section « Onboarding & tutoriel »** (admin-onboarding-section) : 4 stats tuto + barres de répartition des 5 questions (labels FR jolis).
 - ✅ **3 écrans de stats motivantes** insérés dans le questionnaire d'onboarding (après persona, release_timing, current_method) : « un artiste poste 2×/semaine… », « 80 % des streams dans les 2 premières semaines », « montage à la main ~45 min vs BeatCut <2 min ». Compteur de questions inchangé (x/5), télémétrie onboarding_info_N.
+
+## Revue de code appliquée (30 juin 2026)
+- FAUX POSITIF : les 4 « exec() » signalés = asyncio.create_subprocess_exec (listes d'arguments, pas de shell) — sûrs, aucun changement.
+- FAUX POSITIF : « variables indéfinies » — pyflakes clean sur server.py.
+- ✅ Secrets retirés des tests : test_iter21_pricing_refonte.py et test_import_link_iter18.py importent désormais creds.py (backend/.env : TEST_FREE_EMAIL/TEST_FREE_PASSWORD ajoutés). Les mots de passe jetables de comptes TEST_ créés à la volée (backend_test.py) sont des fixtures, pas des secrets.
+- ✅ Refactor stripe_webhook : handlers par type d'événement (_wh_checkout_completed, _wh_trial_will_end, _wh_subscription_sync) + dispatch _WEBHOOK_HANDLERS.
+- ✅ Refactor create_checkout : _build_checkout_params + _maybe_add_trial extraits.
+- ✅ Refactor _claim_and_activate : guard clauses / early returns (nesting 6 → 2).
+- Non fait (choix délibéré, risque > bénéfice sur du code paiement LIVE fonctionnel) : redesign sub_info/admin_preview_report, state machine média, classe PromoValidator.
+- Régression : 48/48 tests pytest PASS (iter21 + basic_plan + affiliate_iter11).
