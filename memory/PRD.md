@@ -612,5 +612,10 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - Testé : régression UA (Safari mac/iOS → true ; Chrome/Edge/Firefox → false), endpoint /api/export/finalize validé E2E (mp4 sortant = h264 + aac).
 - ⚠️ À REDÉPLOYER pour beat-cut.com.
 
-## Tâche INTERROMPUE (en attente)
-- Mise en avant des mots par CLIC manuel (l'utilisateur clique les mots à emphatiser) + panneau de style d'emphase aussi complet que le style du texte (police, taille, couleur, épaisseur, casse, contour, lueur, ombre, inclinaison, fond). Le mode automatique 4e temps ne convient pas à l'utilisateur.
+## Mise en avant par CLIC manuel (2 août 2026) — FAIT
+- ✅ isEmph() = w.emph (flag par mot, persisté dans M.words) — le mode automatique beat a été retiré.
+- ✅ Panneau Style → Effets → « Mots mis en avant » : sélecteur de mots cliquables (#xEmphWords, chips .ew, data-testid emph-word-N) + réglages complets avec héritage « = » : Taille (1–2,5), Couleur (swatches), Police (liste complète = celle du texte), Épaisseur, Casse, Contour, Fond derrière le mot, Lueur, Ombre, Inclinaison (segs xEmph*, valeurs '' = comme le texte).
+- ✅ drawWordAt() applique les overrides (font/weight/case/outline/box/glow/shadow/rot par mot, rotation locale save/restore).
+- ✅ FIX PERSISTANCE IMPORTANT : openEditor fait maintenant M.style=style (même référence) — avant, les réglages de style modifiés après chargement d'un projet AVEC préset n'étaient jamais sauvegardés (style et M.style étaient 2 objets distincts).
+- Testé E2E : clic mots, réglages, rendu canvas sans erreur, persistance après reload (mots + réglages + UI restaurée).
+- ⚠️ À REDÉPLOYER pour beat-cut.com.
