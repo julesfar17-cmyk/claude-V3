@@ -605,3 +605,12 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ isEmph() (studio.html ~3305) : la grille des mesures est désormais ancrée sur le DÉBUT DE L'EXTRAIT (mesure 1, temps 1 perçu = beat le plus proche de ext.start) au lieu de beats[0] du morceau entier. Fenêtre inchangée : mots dont le start ∈ [4e temps, 1 de la mesure d'après), toutes les 1/2/4 mesures (style.emphEvery).
 - Libellé UI + EN mis à jour : « du 4e temps au 1 de la mesure d'après ».
 - Vérifié sur fixture Recette 150BPM : 'cent' (3,25 beats) et 'bpm' (3,5) emphatisés, 'recette'/'cinquante' non.
+
+## Fix export Safari macOS (2 août 2026)
+- ✅ Vidéos muettes sur Mac/Safari : ajout SAFARI_UA (WebKit desktop, hors Chrome/Edge/Firefox) → offlineSupported() force le mode 'hybrid' : le son est TOUJOURS assemblé par le serveur (/api/export/finalize, -c:v copy), jamais via l'AudioEncoder WebKit (pistes AAC muettes constatées).
+- ✅ Téléchargements qui échouent sur Safari : dlGo() — l'ancre n'est plus retirée de façon synchrone (Safari annule le téléchargement) → retrait différé 2 s, rel=noopener, fallback window.open.
+- Testé : régression UA (Safari mac/iOS → true ; Chrome/Edge/Firefox → false), endpoint /api/export/finalize validé E2E (mp4 sortant = h264 + aac).
+- ⚠️ À REDÉPLOYER pour beat-cut.com.
+
+## Tâche INTERROMPUE (en attente)
+- Mise en avant des mots par CLIC manuel (l'utilisateur clique les mots à emphatiser) + panneau de style d'emphase aussi complet que le style du texte (police, taille, couleur, épaisseur, casse, contour, lueur, ombre, inclinaison, fond). Le mode automatique 4e temps ne convient pas à l'utilisateur.

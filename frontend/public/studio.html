@@ -1354,8 +1354,11 @@ function renderDownloadModal(open){
 }
 function dlGo(i){
   const e=_dlQueue[i]; if(!e) return;
-  const a=document.createElement('a'); a.href=e.url; a.download=e.fname;
-  document.body.append(a); a.click(); a.remove();
+  const a=document.createElement('a'); a.href=e.url; a.download=e.fname; a.rel='noopener';
+  document.body.append(a);
+  try{ a.click(); }catch(err){ try{ window.open(e.url,'_blank'); }catch(e2){} }
+  // Safari annule le téléchargement si l'ancre (ou l'URL) disparaît trop tôt → retrait différé
+  setTimeout(()=>{ try{ a.remove(); }catch(err){} },2000);
   _dlRegister(e); renderDownloadModal(false);
   toast('Téléchargement lancé ✓');
 }
@@ -3781,6 +3784,9 @@ const _AVC_TRY=['avc1.640033','avc1.640028','avc1.4d4028','avc1.42e01f'];
 /* Mobile (iPhone/iPad/Android) : l'encodeur AAC du navigateur est peu fiable (WebKit produit
    des pistes muettes même quand il se dit capable) → le SON EST TOUJOURS ASSEMBLÉ PAR LE SERVEUR. */
 const MOBILE_UA=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Mac/.test(navigator.userAgent));
+/* Safari macOS : même moteur WebKit, mêmes pistes AAC muettes constatées en production
+   → on force AUSSI l'assemblage du son par le serveur (jamais d'AudioEncoder WebKit). */
+const SAFARI_UA=/Safari\//.test(navigator.userAgent)&&!/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/i.test(navigator.userAgent);
 async function offlineSupported(){
   try{
     if(!window.VideoEncoder||!window.Mp4Muxer||!window.VideoFrame) return false;
@@ -3791,7 +3797,7 @@ async function offlineSupported(){
       try{ const r=await VideoEncoder.isConfigSupported({codec:c,width:f[0],height:f[1],bitrate:12000000,framerate:30}); if(r.supported){ _avcCodec=c; break; } }catch(e){}
     }
     if(!_avcCodec) return false;
-    if(!MOBILE_UA && window.AudioEncoder&&window.AudioData){
+    if(!MOBILE_UA && !SAFARI_UA && window.AudioEncoder&&window.AudioData){
       try{
         const a=await AudioEncoder.isConfigSupported({codec:'mp4a.40.2',sampleRate:buffer.sampleRate,numberOfChannels:nch,bitrate:192000});
         // isConfigSupported MENT sur certains navigateurs (WebKit iOS) : on teste un VRAI encodage
