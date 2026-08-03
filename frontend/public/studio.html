@@ -2436,17 +2436,28 @@ function makeThumbAtTag(clip, time, index, done){
   v.playsInline=true; v.setAttribute('playsinline','');
   const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
   const ctx=cvs.getContext('2d');
-  v.addEventListener('seeked',()=>{
+  let fin=false;
+  const finish=()=>{ if(fin) return; fin=true; try{ v.src=''; }catch(e){} done&&done(); };
+  const draw=()=>{
     try{
-      const s=Math.max(cvs.width/v.videoWidth, cvs.height/v.videoHeight);
-      ctx.drawImage(v,(cvs.width-v.videoWidth*s)/2,(cvs.height-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
-      clip.thumbs[index]=cvs.toDataURL('image/jpeg',0.7);
-      if(clip._timgs) delete clip._timgs[index];
+      if(v.videoWidth>0){
+        const s=Math.max(cvs.width/v.videoWidth, cvs.height/v.videoHeight);
+        ctx.drawImage(v,(cvs.width-v.videoWidth*s)/2,(cvs.height-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
+        clip.thumbs[index]=cvs.toDataURL('image/jpeg',0.7);
+        if(clip._timgs) delete clip._timgs[index];
+      }
     }catch(e){}
-    done&&done();
+    finish();
+  };
+  v.addEventListener('seeked',()=>{
+    // Safari : la frame n'est réellement présentée qu'à la vsync suivante → rVFC quand dispo
+    if(v.requestVideoFrameCallback) v.requestVideoFrameCallback(()=>draw());
+    else requestAnimationFrame(()=>setTimeout(draw,40));
   },{once:true});
+  v.addEventListener('error',finish,{once:true});
+  setTimeout(finish,6000);   // seek bloqué → on n'attend pas indéfiniment
   v.addEventListener('loadedmetadata',()=>{
-    const go=()=>{ try{ v.currentTime=Math.min(time,(v.duration||1)-0.1); }catch(e){} };
+    const go=()=>{ try{ v.currentTime=Math.min(time,(v.duration||1)-0.1); }catch(e){ finish(); } };
     const p=v.play();
     if(p&&p.then) p.then(()=>{ v.pause(); go(); }).catch(go);
     else go();
@@ -2510,30 +2521,57 @@ async function _wcMakeThumbsNow(clip, indices, gen){
     }
   }
   p.destroy();
+  // Safari/WebKit : le décodeur WebCodecs peut caler sur certains fichiers → les vignettes
+  // manquantes sont complétées via <video> (sinon des cases noires subsistent)
+  const missing=list.filter(i=>clip.seeks[i]!=null&&!clip.thumbs[i]);
+  if(missing.length&&clip._thumbGen===gen){
+    let k=0;
+    const next=()=>{
+      if(k>=missing.length||clip._thumbGen!==gen){ renderClips(); drawTimeline(); return; }
+      const idx=missing[k++];
+      makeThumbAtTag(clip, clip.seeks[idx], idx, next);
+    };
+    next();
+  }
 }
 function makeThumbsTag(clip, done){
-  // capture une vignette par sous-plan (timeline, choix, et secours plein écran → taille généreuse)
+  // capture une vignette par sous-plan — robuste Safari : rVFC + timeout anti-blocage
   const v=document.createElement('video'); v.src=clip.url; v.muted=true; v.preload='auto';
   v.playsInline=true; v.setAttribute('playsinline','');
   const cvs=document.createElement('canvas'); cvs.width=360; cvs.height=480;
   const ctx=cvs.getContext('2d');
-  let i=0;
-  const grab=()=>{
-    if(i>=clip.seeks.length){ done&&done(); return; }
-    v.currentTime=Math.min(clip.seeks[i], (v.duration||1)-0.1);
-  };
-  v.addEventListener('seeked',()=>{
+  let i=0, timer=0, waiting=false;
+  const draw=()=>{
     try{
-      const s=Math.max(cvs.width/v.videoWidth, cvs.height/v.videoHeight);
-      ctx.drawImage(v,(cvs.width-v.videoWidth*s)/2,(cvs.height-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
-      clip.thumbs[i]=cvs.toDataURL('image/jpeg',0.7);
+      if(v.videoWidth>0){
+        const s=Math.max(cvs.width/v.videoWidth, cvs.height/v.videoHeight);
+        ctx.drawImage(v,(cvs.width-v.videoWidth*s)/2,(cvs.height-v.videoHeight*s)/2,v.videoWidth*s,v.videoHeight*s);
+        clip.thumbs[i]=cvs.toDataURL('image/jpeg',0.7);
+        renderClips();   // feedback immédiat, comme le chemin WebCodecs
+      }
     }catch(e){}
     i++; grab();
-  });
+  };
+  const onSeeked=()=>{
+    if(!waiting) return; waiting=false; clearTimeout(timer);
+    if(v.requestVideoFrameCallback) v.requestVideoFrameCallback(()=>draw());
+    else requestAnimationFrame(()=>setTimeout(draw,40));
+  };
+  const grab=()=>{
+    if(i>=clip.seeks.length){ v.removeEventListener('seeked',onSeeked); try{ v.src=''; }catch(e){} done&&done(); return; }
+    waiting=true;
+    clearTimeout(timer);
+    timer=setTimeout(()=>{ if(!waiting) return; waiting=false; i++; grab(); },5000);   // seek bloqué → suivant
+    const t=Math.min(clip.seeks[i], (v.duration||1)-0.1);
+    if(Math.abs((v.currentTime||0)-t)<0.01){ onSeeked(); return; }   // même temps → 'seeked' ne tirera pas
+    try{ v.currentTime=t; }catch(e){ waiting=false; clearTimeout(timer); i++; grab(); }
+  };
+  v.addEventListener('seeked',onSeeked);
+  v.addEventListener('error',()=>{ clearTimeout(timer); done&&done(); },{once:true});
   // iOS Safari : une frame n'est dessinable qu'après un play() (muet + playsinline = autorisé)
   v.addEventListener('loadedmetadata',()=>{
     const p=v.play();
-    if(p&&p.then) p.then(()=>{ v.pause(); grab(); }).catch(grab);
+    if(p&&p.then) p.then(()=>{ v.pause(); grab(); }).catch(()=>grab());
     else grab();
   },{once:true});
   v.load();

@@ -619,3 +619,12 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ FIX PERSISTANCE IMPORTANT : openEditor fait maintenant M.style=style (même référence) — avant, les réglages de style modifiés après chargement d'un projet AVEC préset n'étaient jamais sauvegardés (style et M.style étaient 2 objets distincts).
 - Testé E2E : clic mots, réglages, rendu canvas sans erreur, persistance après reload (mots + réglages + UI restaurée).
 - ⚠️ À REDÉPLOYER pour beat-cut.com.
+
+## Fix vignettes manquantes Safari (3 août 2026)
+- Symptôme (photos utilisateur, Mac Safari) : quelques vignettes OK puis toutes noires/absentes (grille + plan et timeline).
+- Causes traitées dans studio.html :
+  1) makeThumbsTag/makeThumbAtTag capturaient sur 'seeked' — sur WebKit la frame n'est présentée qu'à la vsync suivante → noir. Désormais capture via requestVideoFrameCallback (fallback rAF+40ms).
+  2) Chaîne séquentielle sans timeout : un seek silencieux bloquait TOUTES les vignettes suivantes → timeout 5-6 s par vignette + guard « même currentTime » (seeked ne tire pas) + gestion error.
+  3) _wcMakeThumbsNow : après la passe WebCodecs, les index encore vides sont complétés via <video> (filet WebKit quand le décodeur cale).
+  4) Rendu progressif (renderClips à chaque vignette) aussi sur le chemin <video>.
+- Vérif : syntaxe JS OK (node --check), page sans erreur console. ⚠️ Environnement headless sans codecs H.264 → test décodage réel impossible ici : l'utilisateur doit REDÉPLOYER puis vérifier sur son Mac.
