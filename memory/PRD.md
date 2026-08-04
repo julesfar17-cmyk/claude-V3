@@ -628,3 +628,9 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
   3) _wcMakeThumbsNow : après la passe WebCodecs, les index encore vides sont complétés via <video> (filet WebKit quand le décodeur cale).
   4) Rendu progressif (renderClips à chaque vignette) aussi sur le chemin <video>.
 - Vérif : syntaxe JS OK (node --check), page sans erreur console. ⚠️ Environnement headless sans codecs H.264 → test décodage réel impossible ici : l'utilisateur doit REDÉPLOYER puis vérifier sur son Mac.
+
+## Fix Cloudflare 520 login (3 août 2026)
+- Cause identifiée : course keep-alive — uvicorn ferme les connexions inactives à 5 s (défaut) alors que Cloudflare/l'ingress les réutilisent plus longtemps → requête sur connexion en fermeture → réponse tronquée « could not parse » intermittente (souvent au login après inactivité).
+- ✅ server.py : _bump_uvicorn_keepalive() patch les protocoles h11/httptools d'uvicorn → timeout_keep_alive 120 s (indépendant de la ligne de commande, s'applique aussi en prod au redéploiement). Vérifié par socket brut : connexion maintenue >15 s (avant : fermée à ~5 s).
+- ✅ frontend/src/lib/api.js : retry automatique unique (800 ms) sur erreurs de transport (pas de réponse, 502/504/520-527) pour les GET et les routes /auth/* — filet si un proxy produit encore un raté.
+- ⚠️ À REDÉPLOYER pour effet sur beat-cut.com.

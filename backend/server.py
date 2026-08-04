@@ -29,6 +29,33 @@ from fastapi import UploadFile, File, Form
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
+def _bump_uvicorn_keepalive() -> None:
+    """Fix Cloudflare 520 « could not parse » intermittent : Cloudflare/l'ingress réutilisent
+    les connexions bien plus longtemps que les 5 s de keep-alive par défaut d'uvicorn — une
+    requête envoyée sur une connexion en cours de fermeture reçoit une réponse tronquée.
+    On aligne le keep-alive origine à 120 s (> délai de réutilisation des proxys)."""
+    def bump(cls):
+        orig = cls.__init__
+
+        def patched(self, *args, **kwargs):
+            orig(self, *args, **kwargs)
+            if getattr(self, "timeout_keep_alive", 0) < 120:
+                self.timeout_keep_alive = 120
+        cls.__init__ = patched
+    try:
+        from uvicorn.protocols.http import h11_impl
+        bump(h11_impl.H11Protocol)
+    except Exception:
+        pass
+    try:
+        from uvicorn.protocols.http import httptools_impl
+        bump(httptools_impl.HttpToolsProtocol)
+    except Exception:
+        pass
+
+
+_bump_uvicorn_keepalive()
+
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
