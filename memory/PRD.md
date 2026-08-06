@@ -641,3 +641,10 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ _media_cleanup_loop() : au démarrage (+120 s) puis toutes les 24 h. Premier passage réel : 39 orphelins / 211,6 Mo libérés en preview.
 - ✅ Endpoints POST/GET /api/admin/media/cleanup + section Admin « Stockage (GridFS) » (admin-media-cleanup-button / -result).
 - Testé : 6 fixtures (orphelin vieux → supprimé ; orphelin récent, réf clipRefs, réf audioMediaId, réf backup, réf watermark → tous préservés) + UI admin OK.
+
+## Codes promo x nouveaux abonnements (6 août 2026)
+- ✅ /api/promo/apply réécrit : le code donne un ACCÈS PRO TEMPORAIRE via user.promo_pro_until (+N jours, cumulable), SANS toucher subscription (un Essentiel garde son plan, sa date et ses 9,99 €). Avant : le code étendait current_period_end du plan existant (un Essentiel gagnait des jours d'Essentiel, pas de Pro).
+- ✅ sub_info() : si promo_pro_until > now → tier forcé à 'pro' (sauf studio, rank free<basic/essentiel<pro<studio), champs promo/promo_until exposés ; user 100% free → status/plan 'promo', fin = promo_until.
+- ✅ Quota/stockage suivent le tier → illimité pendant la promo, retour auto au plan payé à l'expiration.
+- ✅ Dashboard : bannière 🎁 (promo-access-banner) « accès PRO offert jusqu'au X — ton abonnement continue normalement » ; bouton Se désabonner masqué pour les purs promo (status 'promo').
+- Testé curl+UI : essentiel→pro (plan/période intacts, quota illimité), free→pro 30 j, réutilisation refusée (400).

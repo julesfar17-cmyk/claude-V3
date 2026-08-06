@@ -514,14 +514,24 @@ export default function Dashboard() {
                     Exports illimités, séries de vidéos, tous les styles — tout est débloqué. Merci de soutenir BEATCUT ✦
                   </p>
                 )}
-                <button
-                  onClick={openCancelFlow}
-                  disabled={busy}
-                  data-testid="unsubscribe-button"
-                  className="mt-7 w-full border border-border text-muted-foreground px-6 py-3 text-sm hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
-                >
-                  {isTrial ? "Annuler mon essai" : "Se désabonner"}
-                </button>
+                {sub.promo && (
+                  <div className="mt-4 border border-[#d9ffd0]/40 bg-[#d9ffd0]/5 px-4 py-3 text-sm" data-testid="promo-access-banner">
+                    🎁 Code promo : accès PRO offert jusqu'au <b>{fmtDate(sub.promo_until)}</b>
+                    {sub.plan && sub.plan !== "promo" && sub.plan !== "pro_monthly" && sub.plan !== "pro_yearly"
+                      ? " — ton abonnement actuel continue normalement, rien ne change sur ta facturation."
+                      : ""}
+                  </div>
+                )}
+                {sub.status !== "promo" && (
+                  <button
+                    onClick={openCancelFlow}
+                    disabled={busy}
+                    data-testid="unsubscribe-button"
+                    className="mt-7 w-full border border-border text-muted-foreground px-6 py-3 text-sm hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+                  >
+                    {isTrial ? "Annuler mon essai" : "Se désabonner"}
+                  </button>
+                )}
               </>
             )}
 

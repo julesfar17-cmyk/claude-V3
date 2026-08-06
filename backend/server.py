@@ -307,7 +307,7 @@ def sub_info(user: dict) -> dict:
     plan = sub.get("plan") or "monthly"
     tier = PLAN_TIERS.get(plan, "pro") if active else "free"
     trialing = bool(active and status == "trialing")
-    return {
+    info = {
         "is_pro": bool(active),
         "tier": tier,
         "plan": plan if active else None,
@@ -318,6 +318,20 @@ def sub_info(user: dict) -> dict:
         "trial_end": end.isoformat() if trialing else None,
         "trial_start": sub.get("started_at") if trialing else None,
     }
+    # Code promo : accès PRO temporaire PAR-DESSUS l'abonnement (la facturation continue normalement)
+    promo_until = parse_dt(user.get("promo_pro_until"))
+    if promo_until and promo_until > now_utc():
+        info["promo"] = True
+        info["promo_until"] = promo_until.isoformat()
+        rank = {"free": 0, "basic": 1, "pro": 2, "studio": 3}
+        if rank.get(info["tier"], 0) < 2:
+            info["tier"] = "pro"
+            info["is_pro"] = True
+            if not active:
+                info["status"] = "promo"
+                info["plan"] = "promo"
+                info["current_period_end"] = promo_until.isoformat()
+    return info
 
 
 def public_user(user: dict) -> dict:
@@ -1955,28 +1969,22 @@ async def promo_apply(data: PromoApplyIn, user: dict = Depends(get_current_user)
     if user["user_id"] in (promo.get("used_by") or []):
         raise HTTPException(status_code=400, detail="Code déjà utilisé sur ce compte")
     days = int(promo.get("bonus_days") or 30)
-    sub = user.get("subscription") or {}
-    end = parse_dt(sub.get("current_period_end")) or now_utc()
-    if end < now_utc():
-        end = now_utc()
-    new_end = end + timedelta(days=days)
-    new_sub = {
-        **sub,
-        "status": sub.get("status") or "active",
-        "current_period_end": iso(new_end),
-        "promo_applied": code,
-    }
-    if not sub.get("started_at"):
-        new_sub["started_at"] = iso(now_utc())
+    # Accès PRO temporaire par-dessus l'abonnement existant : la facturation Stripe et le
+    # plan payé ne sont PAS touchés (un Essentiel continue de payer 9,99 € et garde son plan).
+    base = parse_dt(user.get("promo_pro_until")) or now_utc()
+    if base < now_utc():
+        base = now_utc()
+    new_until = base + timedelta(days=days)
     await db.users.update_one(
         {"user_id": user["user_id"]},
-        {"$set": {"subscription": new_sub}},
+        {"$set": {"promo_pro_until": iso(new_until), "promo_applied": code}},
     )
     await db.promo_codes.update_one(
         {"code": code},
         {"$inc": {"used_count": 1}, "$push": {"used_by": user["user_id"]}},
     )
-    return {"message": f"Code appliqué : +{days} jours offerts ✦", "current_period_end": iso(new_end)}
+    return {"message": f"Code appliqué : accès PRO offert pendant {days} jours ✦",
+            "promo_until": iso(new_until)}
 
 
 @api_router.get("/templates")
