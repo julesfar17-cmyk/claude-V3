@@ -45,6 +45,8 @@ export default function Admin() {
   const [newMaxUses, setNewMaxUses] = useState("");
   const [reconciling, setReconciling] = useState(false);
   const [reconcileResult, setReconcileResult] = useState(null);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState(null);
   const [webhook, setWebhook] = useState(null);
   const [cancellations, setCancellations] = useState(null);
   const [onbStats, setOnbStats] = useState(null);
@@ -82,6 +84,19 @@ export default function Admin() {
       toast.error(formatApiErrorDetail(e.response?.data?.detail));
     } finally {
       setReconciling(false);
+    }
+  };
+
+  const cleanupMedia = async () => {
+    setCleaning(true);
+    try {
+      const { data } = await api.post("/admin/media/cleanup");
+      setCleanupResult(data);
+      toast.success(data.deleted ? `${data.deleted} fichier(s) orphelin(s) supprimé(s) — ${(data.freed_bytes / 1e6).toFixed(1)} Mo libérés` : "Aucun orphelin — le stockage est propre ✓");
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail));
+    } finally {
+      setCleaning(false);
     }
   };
 
@@ -306,6 +321,29 @@ export default function Admin() {
                     </div>
                   )}
                 </>
+              )}
+            </section>
+
+            <section className="bg-card border border-border p-6 sm:p-8 mb-8" data-testid="admin-storage-section">
+              <h2 className="font-display text-lg font-bold mb-2">Stockage (GridFS)</h2>
+              <p className="text-xs text-muted-foreground mb-4 max-w-2xl">
+                Supprime les fichiers médias que plus aucun projet, sauvegarde ou watermark ne référence
+                (marge de sécurité : 24 h). Tourne aussi automatiquement une fois par jour.
+              </p>
+              <button
+                onClick={cleanupMedia}
+                disabled={cleaning}
+                data-testid="admin-media-cleanup-button"
+                className="border border-border px-4 py-2.5 text-xs font-osd tracking-wider hover:border-foreground transition-colors disabled:opacity-50"
+              >
+                {cleaning ? "Nettoyage en cours…" : "🧹 NETTOYER MAINTENANT"}
+              </button>
+              {cleanupResult && (
+                <p className="mt-3 text-sm" data-testid="admin-media-cleanup-result">
+                  {cleanupResult.scanned} fichiers scannés · {cleanupResult.referenced} référencés ·{" "}
+                  <span className="text-primary font-bold">{cleanupResult.deleted} orphelin(s) supprimé(s)</span>
+                  {" "}({(cleanupResult.freed_bytes / 1e6).toFixed(1)} Mo libérés)
+                </p>
               )}
             </section>
 

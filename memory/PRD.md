@@ -634,3 +634,10 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ server.py : _bump_uvicorn_keepalive() patch les protocoles h11/httptools d'uvicorn → timeout_keep_alive 120 s (indépendant de la ligne de commande, s'applique aussi en prod au redéploiement). Vérifié par socket brut : connexion maintenue >15 s (avant : fermée à ~5 s).
 - ✅ frontend/src/lib/api.js : retry automatique unique (800 ms) sur erreurs de transport (pas de réponse, 502/504/520-527) pour les GET et les routes /auth/* — filet si un proxy produit encore un raté.
 - ⚠️ À REDÉPLOYER pour effet sur beat-cut.com.
+
+## Nettoyage GridFS automatique (6 août 2026)
+- ✅ FIX CRITIQUE PRÉALABLE : _project_media_ids ne lisait que le format v1 (clips[].mediaId) alors que les projets v2 stockent audioMediaId + clipRefs[].mediaId → corrigé (les 2 formats). Sans ça, le nettoyage aurait supprimé les fichiers des utilisateurs ET la suppression de projet ne purgait rien.
+- ✅ _cleanup_orphan_media() : référence = tous les projets + project_backups + watermarks users ; marge 24 h sur uploadDate ; rapport stocké dans db.config (media_cleanup_last).
+- ✅ _media_cleanup_loop() : au démarrage (+120 s) puis toutes les 24 h. Premier passage réel : 39 orphelins / 211,6 Mo libérés en preview.
+- ✅ Endpoints POST/GET /api/admin/media/cleanup + section Admin « Stockage (GridFS) » (admin-media-cleanup-button / -result).
+- Testé : 6 fixtures (orphelin vieux → supprimé ; orphelin récent, réf clipRefs, réf audioMediaId, réf backup, réf watermark → tous préservés) + UI admin OK.

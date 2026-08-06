@@ -2547,18 +2547,82 @@ async def export_finalize(video: UploadFile = File(...), audio: UploadFile = Fil
 
 
 def _project_media_ids(state: dict) -> set:
+    """Tous les media_id GridFS référencés par un état de projet (formats v1 ET v2)."""
     ids = set()
-    audio = (state or {}).get("audio") or {}
+    st = state or {}
+    audio = st.get("audio") or {}
     if audio.get("mediaId"):
-        ids.add(audio["mediaId"])
-    for c in (state or {}).get("clips") or []:
-        if c.get("mediaId"):
-            ids.add(c["mediaId"])
+        ids.add(str(audio["mediaId"]))
+    if st.get("audioMediaId"):
+        ids.add(str(st["audioMediaId"]))
+    for c in list(st.get("clips") or []) + list(st.get("clipRefs") or []):
+        if isinstance(c, dict) and c.get("mediaId"):
+            ids.add(str(c["mediaId"]))
     return ids
 
 
 def _refs_count(st) -> int:
     return len([c for c in ((st or {}).get("clipRefs") or []) if c.get("mediaId") or c.get("pexelsUrl")])
+
+
+async def _cleanup_orphan_media() -> dict:
+    """Supprime de GridFS les fichiers que plus rien ne référence (projets, sauvegardes,
+    watermarks). Marge de 24 h pour les uploads pas encore rattachés à un projet."""
+    referenced = set()
+    async for p in db.projects.find({}, {"_id": 0, "state": 1}):
+        referenced |= _project_media_ids(p.get("state") or {})
+    async for b in db.project_backups.find({}, {"_id": 0, "state": 1}):
+        referenced |= _project_media_ids(b.get("state") or {})
+    async for u in db.users.find({"watermark_media_id": {"$exists": True}}, {"_id": 0, "watermark_media_id": 1}):
+        if u.get("watermark_media_id"):
+            referenced.add(str(u["watermark_media_id"]))
+    cutoff = now_utc() - timedelta(hours=24)
+    scanned = deleted = freed = 0
+    async for f in db["media.files"].find({}, {"_id": 1, "length": 1, "uploadDate": 1}):
+        scanned += 1
+        if str(f["_id"]) in referenced:
+            continue
+        up = f.get("uploadDate")
+        if up is not None:
+            if up.tzinfo is None:
+                up = up.replace(tzinfo=timezone.utc)
+            if up > cutoff:
+                continue
+        try:
+            await media_fs.delete(f["_id"])
+            deleted += 1
+            freed += int(f.get("length") or 0)
+        except Exception:
+            pass
+    report = {"scanned": scanned, "deleted": deleted, "freed_bytes": freed,
+              "referenced": len(referenced), "at": iso(now_utc())}
+    await db.config.update_one({"_id": "media_cleanup_last"}, {"$set": report}, upsert=True)
+    logger.info("Nettoyage GridFS : %s orphelins supprimés, %.1f Mo libérés (%s fichiers scannés)",
+                deleted, freed / 1e6, scanned)
+    return report
+
+
+async def _media_cleanup_loop():
+    await asyncio.sleep(120)
+    while True:
+        try:
+            await _cleanup_orphan_media()
+        except Exception:
+            logger.exception("Nettoyage GridFS impossible")
+        await asyncio.sleep(24 * 3600)
+
+
+@api_router.post("/admin/media/cleanup")
+async def admin_media_cleanup(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    return await _cleanup_orphan_media()
+
+
+@api_router.get("/admin/media/cleanup")
+async def admin_media_cleanup_last(user: dict = Depends(get_current_user)):
+    await require_admin(user)
+    doc = await db.config.find_one({"_id": "media_cleanup_last"}, {"_id": 0})
+    return doc or {"scanned": 0, "deleted": 0, "freed_bytes": 0, "referenced": 0, "at": None}
 
 
 async def _backup_project(doc, reason="auto"):
@@ -3249,6 +3313,7 @@ async def startup():
             })
     asyncio.create_task(_reengage_loop())
     asyncio.create_task(_payments_watchdog())
+    asyncio.create_task(_media_cleanup_loop())
 
 
 app.include_router(api_router)
