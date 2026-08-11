@@ -54,7 +54,7 @@ class TestAuth:
         email = f"test_{uuid.uuid4().hex[:8]}@example.com"
         s = requests.Session()
         r = s.post(f"{BASE_URL}/api/auth/register",
-                   json={"name": "Test U", "email": email, "password": "Passw0rd!"})
+                   json={"name": "Test U", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["email"] == email.lower()
@@ -68,7 +68,7 @@ class TestAuth:
     def test_register_duplicate_rejected(self):
         s = requests.Session()
         r = s.post(f"{BASE_URL}/api/auth/register",
-                   json={"name": "Dup", "email": DEMO_EMAIL, "password": "whatever"})
+                   json={"name": "Dup", "email": DEMO_EMAIL, "password": "whatever", "cgv_accepted": True})
         assert r.status_code == 400
 
     def test_demo_login_and_me(self, demo_session):
@@ -224,7 +224,7 @@ class TestSubscription:
         email = f"TEST_nosub_{uuid.uuid4().hex[:6]}@example.com"
         s = requests.Session()
         s.post(f"{BASE_URL}/api/auth/register",
-               json={"name": "NoSub", "email": email, "password": "Passw0rd!"})
+               json={"name": "NoSub", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
         r = s.post(f"{BASE_URL}/api/subscription/cancel")
         assert r.status_code == 400
 
@@ -249,7 +249,7 @@ class TestForgotReset:
         new_password = "NewPass456!"
         s = requests.Session()
         r = s.post(f"{BASE_URL}/api/auth/register",
-                   json={"name": "Reset U", "email": email, "password": old_password})
+                   json={"name": "Reset U", "email": email, "password": old_password, "cgv_accepted": True})
         assert r.status_code == 200
 
         # Request reset
@@ -322,7 +322,7 @@ class TestReactivate:
         email = f"TEST_react_{uuid.uuid4().hex[:6]}@example.com"
         s = requests.Session()
         s.post(f"{BASE_URL}/api/auth/register",
-               json={"name": "ReactU", "email": email, "password": "Passw0rd!"})
+               json={"name": "ReactU", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
         from datetime import datetime, timezone, timedelta
         now = datetime.now(timezone.utc)
         mongo_db.users.update_one({"email": email}, {"$set": {"subscription": {

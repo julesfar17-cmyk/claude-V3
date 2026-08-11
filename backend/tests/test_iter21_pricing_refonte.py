@@ -216,7 +216,7 @@ class TestOnboarding:
         password = "Onboarding1234!"
         s = requests.Session()
         r = s.post(f"{API}/auth/register", json={
-            "name": "Test Onboarding", "email": email, "password": password,
+            "name": "Test Onboarding", "email": email, "password": password, "cgv_accepted": True,
         }, timeout=20)
         assert r.status_code == 200, f"register: {r.status_code} {r.text[:200]}"
         # /auth/me → onboarding_done False

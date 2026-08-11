@@ -28,8 +28,8 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const register = async (name, email, password, refCode = null) => {
-    const payload = { name, email, password };
+  const register = async (name, email, password, refCode = null, cgvAccepted = false) => {
+    const payload = { name, email, password, cgv_accepted: cgvAccepted };
     if (refCode) payload.ref_code = refCode;
     const { data } = await api.post("/auth/register", payload);
     setUser(data);

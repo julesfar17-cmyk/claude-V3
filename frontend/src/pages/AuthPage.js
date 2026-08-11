@@ -22,16 +22,21 @@ export default function AuthPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [cgvOk, setCgvOk] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    if (isRegister && !cgvOk) {
+      setError("Tu dois accepter les Conditions générales de vente pour créer un compte.");
+      return;
+    }
     setLoading(true);
     try {
       if (isRegister) {
-        await register(name, email, password, refCode || null);
+        await register(name, email, password, refCode || null, cgvOk);
         toast.success("Compte créé — bienvenue sur BEATCUT !");
       } else {
         await login(email, password);
@@ -80,6 +85,12 @@ export default function AuthPage() {
               </svg>
               Continuer avec Google
             </button>
+            {isRegister && (
+              <p className="mt-2 text-[11px] text-muted-foreground text-center" data-testid="cgv-google-notice">
+                En continuant avec Google, tu acceptes les{" "}
+                <Link to="/cgv" target="_blank" rel="noopener" className="underline underline-offset-2">CGV</Link>.
+              </p>
+            )}
 
             <div className="flex items-center gap-3 my-6 text-xs text-muted-foreground">
               <span className="flex-1 h-px bg-border" /> ou par email <span className="flex-1 h-px bg-border" />
@@ -126,6 +137,28 @@ export default function AuthPage() {
                     Mot de passe oublié ?
                   </Link>
                 </div>
+              )}
+              {isRegister && (
+                <label className="flex items-start gap-2.5 text-xs text-muted-foreground cursor-pointer select-none" data-testid="cgv-accept-label">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={cgvOk}
+                    onChange={(e) => setCgvOk(e.target.checked)}
+                    data-testid="cgv-accept-checkbox"
+                    className="mt-0.5 accent-[#FF453A]"
+                  />
+                  <span>
+                    J'ai lu et j'accepte les{" "}
+                    <Link to="/cgv" target="_blank" rel="noopener" className="text-foreground underline underline-offset-4" data-testid="cgv-link">
+                      Conditions générales de vente
+                    </Link>{" "}
+                    et la{" "}
+                    <Link to="/confidentialite" target="_blank" rel="noopener" className="text-foreground underline underline-offset-4">
+                      Politique de confidentialité
+                    </Link>.
+                  </span>
+                </label>
               )}
               {error && (
                 <p className="text-sm text-primary" data-testid="auth-error-message">

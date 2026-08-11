@@ -128,7 +128,7 @@ def demo2_session():
     email = f"TEST_media_scope_{int(time.time())}@test.fr"
     s = requests.Session()
     r = s.post(f"{BASE_URL}/api/auth/register",
-               json={"name": "Scope", "email": email, "password": "Passw0rd!"},
+               json={"name": "Scope", "email": email, "password": "Passw0rd!", "cgv_accepted": True},
                timeout=15)
     assert r.status_code in (200, 201), f"register: {r.status_code} {r.text}"
     yield s

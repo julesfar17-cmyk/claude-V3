@@ -558,6 +558,7 @@ class RegisterIn(BaseModel):
     email: str = Field(min_length=5, max_length=120)
     password: str = Field(min_length=6, max_length=128)
     ref_code: str | None = None
+    cgv_accepted: bool = False
 
 
 class LoginIn(BaseModel):
@@ -609,6 +610,8 @@ async def register(data: RegisterIn, response: Response):
     email = data.email.strip().lower()
     if "@" not in email or "." not in email:
         raise HTTPException(status_code=400, detail="Adresse email invalide")
+    if not data.cgv_accepted:
+        raise HTTPException(status_code=400, detail="Tu dois accepter les Conditions générales de vente pour créer un compte")
     existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="Un compte existe déjà avec cet email")
@@ -629,6 +632,7 @@ async def register(data: RegisterIn, response: Response):
         "ref_code": f"REF{uuid.uuid4().hex[:6].upper()}",
         "referred_by": referred_by,
         "onboarding_done": False,
+        "cgv_accepted_at": iso(now_utc()),
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(user)
@@ -3052,6 +3056,77 @@ async def admin_all_users(user: dict = Depends(get_current_user)):
             "onboarding": u.get("onboarding") or {},
         })
     return {"count": len(users), "users": users}
+
+
+@api_router.get("/admin/customer")
+async def admin_customer_detail(email: str, user: dict = Depends(get_current_user)):
+    """Fiche client : compte, abonnement (état local + Stripe) et historique de paiements."""
+    await require_admin(user)
+    target = await db.users.find_one({"email": email.strip().lower()})
+    if not target:
+        raise HTTPException(status_code=404, detail="Aucun client avec cet email")
+    info = sub_info(target)
+    sub = target.get("subscription") or {}
+    stripe_state = None
+    if sub.get("stripe_subscription_id"):
+        try:
+            s = await asyncio.to_thread(stripe.Subscription.retrieve, sub["stripe_subscription_id"])
+            stripe_state = {"status": s.get("status"), "cancel_at_period_end": bool(s.get("cancel_at_period_end"))}
+        except Exception:
+            stripe_state = {"status": "introuvable", "cancel_at_period_end": False}
+    payments = await db.payment_transactions.find(
+        {"user_id": target["user_id"]},
+        {"_id": 0, "session_id": 1, "plan": 1, "amount": 1, "currency": 1,
+         "payment_status": 1, "with_trial": 1, "affiliate_code": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(50)
+    return {
+        "email": target["email"],
+        "name": target.get("name"),
+        "user_id": target["user_id"],
+        "provider": target.get("auth_provider"),
+        "created_at": target.get("created_at"),
+        "subscription": info,
+        "stripe_subscription_id": sub.get("stripe_subscription_id"),
+        "stripe_customer_id": sub.get("stripe_customer_id"),
+        "stripe_state": stripe_state,
+        "promo_applied": target.get("promo_applied") or sub.get("promo_applied"),
+        "promo_pro_until": target.get("promo_pro_until"),
+        "payments": payments,
+    }
+
+
+@api_router.post("/admin/customer/cancel")
+async def admin_customer_cancel(payload: dict, user: dict = Depends(get_current_user)):
+    """Annulation IMMÉDIATE par l'admin : stoppe l'abonnement Stripe (plus aucun prélèvement)
+    et coupe l'accès tout de suite."""
+    await require_admin(user)
+    target = await db.users.find_one({"email": (payload.get("email") or "").strip().lower()})
+    if not target:
+        raise HTTPException(status_code=404, detail="Aucun client avec cet email")
+    sub = target.get("subscription") or {}
+    stripe_canceled = False
+    if sub.get("stripe_subscription_id"):
+        try:
+            await asyncio.to_thread(stripe.Subscription.cancel, sub["stripe_subscription_id"])
+            stripe_canceled = True
+        except Exception as e:
+            if "No such subscription" not in str(e) and "canceled" not in str(e).lower():
+                raise HTTPException(status_code=502, detail=f"Annulation Stripe impossible : {e}")
+            stripe_canceled = True
+    if not sub and not target.get("promo_pro_until"):
+        raise HTTPException(status_code=400, detail="Ce client n'a aucun abonnement actif")
+    await db.users.update_one(
+        {"user_id": target["user_id"]},
+        {"$set": {
+            "subscription.status": "expired",
+            "subscription.current_period_end": iso(now_utc()),
+            "subscription.canceled_by_admin_at": iso(now_utc()),
+            "subscription.synced_at": iso(now_utc()),
+        }, "$unset": {"promo_pro_until": ""}},
+    )
+    logger.info("Admin %s a annulé l'abonnement de %s (stripe=%s)", user["email"], target["email"], stripe_canceled)
+    return {"message": f"Abonnement de {target['email']} annulé immédiatement — plus aucun prélèvement futur.",
+            "stripe_canceled": stripe_canceled}
 
 
 @api_router.post("/admin/promo")

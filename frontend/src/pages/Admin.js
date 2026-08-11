@@ -87,6 +87,40 @@ export default function Admin() {
     }
   };
 
+  const [custEmail, setCustEmail] = useState("");
+  const [cust, setCust] = useState(null);
+  const [custBusy, setCustBusy] = useState(false);
+  const [custArm, setCustArm] = useState(false);
+
+  const searchCustomer = async (e) => {
+    e && e.preventDefault();
+    if (!custEmail.trim()) return;
+    setCustBusy(true); setCustArm(false);
+    try {
+      const { data } = await api.get("/admin/customer", { params: { email: custEmail.trim() } });
+      setCust(data);
+    } catch (err) {
+      setCust(null);
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Client introuvable");
+    } finally {
+      setCustBusy(false);
+    }
+  };
+
+  const cancelCustomer = async () => {
+    setCustBusy(true);
+    try {
+      const { data } = await api.post("/admin/customer/cancel", { email: cust.email });
+      toast.success(data.message);
+      setCustArm(false);
+      await searchCustomer();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail));
+    } finally {
+      setCustBusy(false);
+    }
+  };
+
   const cleanupMedia = async () => {
     setCleaning(true);
     try {
@@ -321,6 +355,81 @@ export default function Admin() {
                     </div>
                   )}
                 </>
+              )}
+            </section>
+
+            <section className="bg-card border border-border p-6 sm:p-8 mb-8" data-testid="admin-customer-section">
+              <h2 className="font-display text-lg font-bold mb-4">Rechercher un client</h2>
+              <form onSubmit={searchCustomer} className="flex gap-3 flex-wrap">
+                <input
+                  type="email"
+                  value={custEmail}
+                  onChange={(e) => setCustEmail(e.target.value)}
+                  placeholder="email@client.com"
+                  data-testid="admin-customer-search-input"
+                  className="flex-1 min-w-[240px] bg-background border border-border px-4 py-2.5 text-sm focus:border-[#d9ffd0] focus:outline-none"
+                />
+                <button type="submit" disabled={custBusy} data-testid="admin-customer-search-button"
+                  className="border border-border px-5 py-2.5 text-xs font-osd tracking-wider hover:border-foreground transition-colors disabled:opacity-50">
+                  {custBusy ? "…" : "🔎 RECHERCHER"}
+                </button>
+              </form>
+              {cust && (
+                <div className="mt-6" data-testid="admin-customer-card">
+                  <div className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                    <p><span className="text-muted-foreground">Client :</span> <b>{cust.name}</b> — {cust.email}</p>
+                    <p><span className="text-muted-foreground">Inscrit le :</span> {cust.created_at ? new Date(cust.created_at).toLocaleDateString("fr-FR") : "—"} ({cust.provider})</p>
+                    <p data-testid="admin-customer-plan">
+                      <span className="text-muted-foreground">Abonnement :</span>{" "}
+                      <b>{cust.subscription?.plan || "aucun"}</b> · statut {cust.subscription?.status || "—"} · tier {cust.subscription?.tier}
+                      {cust.subscription?.trial ? " · EN ESSAI" : ""}
+                    </p>
+                    <p><span className="text-muted-foreground">Accès jusqu'au :</span> {cust.subscription?.current_period_end ? new Date(cust.subscription.current_period_end).toLocaleDateString("fr-FR") : "—"}</p>
+                    <p><span className="text-muted-foreground">Stripe :</span> {cust.stripe_subscription_id ? `${cust.stripe_state?.status || "?"}${cust.stripe_state?.cancel_at_period_end ? " (annulé fin de période)" : ""}` : "aucun abonnement Stripe"}</p>
+                    <p><span className="text-muted-foreground">Promo :</span> {cust.promo_applied ? `${cust.promo_applied}${cust.promo_pro_until ? ` → ${new Date(cust.promo_pro_until).toLocaleDateString("fr-FR")}` : ""}` : "—"}</p>
+                  </div>
+                  <p className="font-osd text-[11px] tracking-wider text-muted-foreground mt-5 mb-2">PAIEMENTS ({cust.payments.length})</p>
+                  {cust.payments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Aucun paiement.</p>
+                  ) : (
+                    <div className="max-h-[220px] overflow-y-auto border border-border" data-testid="admin-customer-payments">
+                      <table className="w-full text-xs">
+                        <thead><tr className="text-left text-muted-foreground">
+                          <th className="px-3 py-2">Date</th><th className="px-3 py-2">Plan</th><th className="px-3 py-2">Montant</th><th className="px-3 py-2">Statut</th>
+                        </tr></thead>
+                        <tbody>
+                          {cust.payments.map((p, i) => (
+                            <tr key={i} className="border-t border-border">
+                              <td className="px-3 py-2">{p.created_at ? new Date(p.created_at).toLocaleDateString("fr-FR") : "—"}</td>
+                              <td className="px-3 py-2">{p.plan}{p.with_trial ? " (essai)" : ""}{p.affiliate_code ? ` · code ${p.affiliate_code}` : ""}</td>
+                              <td className="px-3 py-2">{p.amount != null ? `${p.amount.toFixed(2)} €` : "—"}</td>
+                              <td className="px-3 py-2">{p.payment_status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {(cust.stripe_subscription_id || cust.subscription?.is_pro) && (
+                    <div className="mt-5">
+                      {!custArm ? (
+                        <button onClick={() => setCustArm(true)} data-testid="admin-cancel-customer-button"
+                          className="border border-primary text-primary px-4 py-2.5 text-xs font-osd tracking-wider hover:bg-primary hover:text-white transition-colors">
+                          🛑 ANNULER SON ABONNEMENT IMMÉDIATEMENT
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="text-sm text-primary">Confirmer ? Accès coupé tout de suite, plus aucun prélèvement futur.</span>
+                          <button onClick={cancelCustomer} disabled={custBusy} data-testid="admin-cancel-customer-confirm"
+                            className="bg-primary text-white px-4 py-2.5 text-xs font-bold disabled:opacity-50">
+                            {custBusy ? "…" : "OUI, ANNULER"}
+                          </button>
+                          <button onClick={() => setCustArm(false)} className="text-xs text-muted-foreground underline">Non</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </section>
 

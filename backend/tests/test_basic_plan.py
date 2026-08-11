@@ -90,7 +90,7 @@ def free_session(mongo_db):
     email = f"TEST_free_{uuid.uuid4().hex[:6]}@example.com"
     s = requests.Session()
     r = s.post(f"{BASE_URL}/api/auth/register",
-               json={"name": "FreeU", "email": email, "password": "Passw0rd!"})
+               json={"name": "FreeU", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
     assert r.status_code == 200, r.text
     yield s
     mongo_db.users.delete_one({"email": email})
@@ -135,7 +135,7 @@ class TestCheckoutBasic:
         email = f"TEST_ck_{uuid.uuid4().hex[:6]}@example.com"
         s = requests.Session()
         r = s.post(f"{BASE_URL}/api/auth/register",
-                   json={"name": "ChkU", "email": email, "password": "Passw0rd!"})
+                   json={"name": "ChkU", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
         assert r.status_code == 200
 
         r = s.post(f"{BASE_URL}/api/payments/checkout",
@@ -199,7 +199,7 @@ class TestExportRegister:
         email = f"TEST_freeexp_{_uuid.uuid4().hex[:6]}@example.com"
         s = requests.Session()
         r = s.post(f"{BASE_URL}/api/auth/register",
-                   json={"name": "FreeExp", "email": email, "password": "Passw0rd!"})
+                   json={"name": "FreeExp", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
         assert r.status_code == 200
         try:
             q0 = s.get(f"{BASE_URL}/api/export/quota").json()
@@ -293,7 +293,7 @@ class TestRegression:
         email = f"TEST_reg_{uuid.uuid4().hex[:6]}@example.com"
         s = requests.Session()
         r = s.post(f"{BASE_URL}/api/auth/register",
-                   json={"name": "RegU", "email": email, "password": "Passw0rd!"})
+                   json={"name": "RegU", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
         assert r.status_code == 200
         # login again
         s2 = requests.Session()

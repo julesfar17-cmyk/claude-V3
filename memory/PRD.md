@@ -648,3 +648,10 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Quota/stockage suivent le tier → illimité pendant la promo, retour auto au plan payé à l'expiration.
 - ✅ Dashboard : bannière 🎁 (promo-access-banner) « accès PRO offert jusqu'au X — ton abonnement continue normalement » ; bouton Se désabonner masqué pour les purs promo (status 'promo').
 - Testé curl+UI : essentiel→pro (plan/période intacts, quota illimité), free→pro 30 j, réutilisation refusée (400).
+
+## Admin fiche client + CGV obligatoires (11 août 2026)
+- ✅ GET /api/admin/customer?email= : fiche complète (compte, sub_info, ids + état Stripe live, promo, 50 derniers paiements). POST /api/admin/customer/cancel : annulation IMMÉDIATE (stripe.Subscription.cancel + statut local expired + fin=now + promo purgée) — plus aucun prélèvement. Faux/anciens sub Stripe tolérés.
+- ✅ Admin UI section « Rechercher un client » (admin-customer-*) : recherche email, fiche, table paiements, bouton 🛑 annuler avec confirmation 2 temps.
+- ✅ Inscription : case CGV OBLIGATOIRE (front + backend 400 sans cgv_accepted), cgv_accepted_at horodaté en DB, liens CGV/Confidentialité (nouvel onglet), mention d'acceptation sous le bouton Google.
+- ✅ CGV renforcées : §2 acceptation par case à cocher horodatée, §9 données personnelles (RGPD), §10 modification des CGV (préavis 30 j), §11 médiation de la consommation (L611-1 + plateforme ODR), §12 droit applicable & juridiction.
+- ✅ 13 payloads register des suites pytest mis à jour (cgv_accepted). Régression : 37/37 PASS.

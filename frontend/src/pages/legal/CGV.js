@@ -11,11 +11,16 @@ export default function CGV() {
         </p>
       </section>
       <section>
-        <h2>2. Objet</h2>
+        <h2>2. Objet et acceptation</h2>
         <p>
           BeatCut est un studio vidéo en ligne qui transforme un morceau de musique en vidéos courtes calées sur le
-          beat (détection du tempo, montage automatique, sous-titres). Les présentes CGV régissent toute souscription
-          à un abonnement payant.
+          beat (détection du tempo, montage automatique, sous-titres). Les présentes CGV régissent l'utilisation du
+          service et toute souscription à un abonnement payant.
+        </p>
+        <p>
+          L'acceptation des CGV est matérialisée par une case à cocher lors de la création du compte : elle vaut
+          consentement exprès et ne peut être partielle. La date d'acceptation est horodatée et conservée. Sans
+          acceptation, aucun compte ne peut être créé. Les CGV sont consultables à tout moment sur cette page.
         </p>
       </section>
       <section>
@@ -72,10 +77,43 @@ export default function CGV() {
         </p>
       </section>
       <section>
-        <h2>9. Droit applicable</h2>
+        <h2>9. Données personnelles</h2>
         <p>
-          Les présentes CGV sont soumises au droit français. En cas de litige, une solution amiable sera recherchée en
-          priorité via <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+          Les données personnelles sont traitées conformément au RGPD et à la loi Informatique et Libertés. Les
+          modalités (finalités, durées de conservation, droits d'accès, de rectification, d'effacement et de
+          portabilité) sont détaillées dans la <a href="/confidentialite">Politique de confidentialité</a>. Pour
+          exercer tes droits : <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+        </p>
+      </section>
+      <section>
+        <h2>10. Modification des CGV</h2>
+        <p>
+          BeatCut peut faire évoluer les présentes CGV. En cas de modification substantielle (prix, droits, durée),
+          les abonnés en cours sont informés par email au moins 30 jours avant l'entrée en vigueur et peuvent résilier
+          sans frais avant cette date. La poursuite de l'utilisation du service après l'entrée en vigueur vaut
+          acceptation des nouvelles conditions.
+        </p>
+      </section>
+      <section>
+        <h2>11. Médiation de la consommation</h2>
+        <p>
+          Conformément aux articles L611-1 et suivants du Code de la consommation, tout consommateur a le droit de
+          recourir gratuitement à un médiateur de la consommation en vue de la résolution amiable d'un litige,
+          après avoir d'abord adressé une réclamation écrite à{" "}
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> restée sans réponse satisfaisante sous 60 jours.
+          Tu peux également utiliser la plateforme européenne de règlement en ligne des litiges :{" "}
+          <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener noreferrer">
+            ec.europa.eu/consumers/odr
+          </a>.
+        </p>
+      </section>
+      <section>
+        <h2>12. Droit applicable et juridiction</h2>
+        <p>
+          Les présentes CGV sont soumises au droit français. En cas de litige, une solution amiable sera recherchée
+          en priorité via <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. À défaut, les tribunaux français
+          seront compétents ; le consommateur peut saisir, à son choix, la juridiction de son lieu de résidence ou
+          celle du siège de l'éditeur.
         </p>
       </section>
     </LegalLayout>

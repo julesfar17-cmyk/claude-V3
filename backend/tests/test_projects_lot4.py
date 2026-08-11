@@ -80,7 +80,7 @@ def free_session(mongo_db):
     email = f"TEST_free_{uuid.uuid4().hex[:6]}@example.com"
     s = requests.Session()
     r = s.post(f"{BASE_URL}/api/auth/register",
-               json={"name": "FreeLot4", "email": email, "password": "Passw0rd!"})
+               json={"name": "FreeLot4", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
     assert r.status_code == 200, r.text
     s.email = email  # attach for cleanup
     yield s
@@ -102,7 +102,7 @@ def free_session_2(mongo_db):
     email = f"TEST_free2_{uuid.uuid4().hex[:6]}@example.com"
     s = requests.Session()
     r = s.post(f"{BASE_URL}/api/auth/register",
-               json={"name": "FreeLot4b", "email": email, "password": "Passw0rd!"})
+               json={"name": "FreeLot4b", "email": email, "password": "Passw0rd!", "cgv_accepted": True})
     assert r.status_code == 200, r.text
     s.email = email
     yield s
