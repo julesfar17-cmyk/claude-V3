@@ -3161,6 +3161,102 @@ async def admin_customer_refund(payload: dict, user: dict = Depends(get_current_
             "amount": amount, "charge_id": charge["id"]}
 
 
+# ---------------------------------------------------------------------------
+# App mobile : analyse BPM serveur + rendu vidéo final serveur
+# ---------------------------------------------------------------------------
+from mobile_render import analyze_bpm, build_ass, build_render_cmd  # noqa: E402
+
+
+@api_router.post("/audio/analyze")
+async def audio_analyze(audio: UploadFile = File(...), duration: float | None = Form(None),
+                        user: dict = Depends(get_current_user)):
+    """Détection BPM + grille de beats côté serveur (pour l'app mobile)."""
+    data = await audio.read()
+    if len(data) > 60 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Fichier trop lourd (60 Mo max)")
+    tmp = tempfile.NamedTemporaryFile(suffix=os.path.splitext(audio.filename or "a.mp3")[1], delete=False)
+    tmp.write(data); tmp.close()
+    try:
+        return await asyncio.to_thread(analyze_bpm, tmp.name, duration)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        os.unlink(tmp.name)
+
+
+async def _run_render(job_id: str, user_id: str, state: dict):
+    work = tempfile.mkdtemp(prefix="render_")
+    try:
+        ext = state.get("ext") or {}
+        ext_start = float(ext.get("start") or 0)
+        dur = min(float(ext.get("dur") or 30), 90.0)
+        audio_id = state.get("audioMediaId")
+        clip_ids = [c.get("mediaId") for c in (state.get("clipRefs") or []) if c.get("mediaId")][:10]
+        if not audio_id or not clip_ids:
+            raise ValueError("audioMediaId et au moins un clip (clipRefs[].mediaId) sont requis")
+        files = {}
+        for i, mid in enumerate([audio_id] + clip_ids):
+            path = os.path.join(work, f"m{i}.bin")
+            with open(path, "wb") as f:
+                stream = await media_fs.open_download_stream(ObjectId(mid))
+                f.write(await stream.read())
+            files[mid] = path
+        cuts = sorted({round(float(t.get("time") if isinstance(t, dict) else t), 3)
+                       for t in (state.get("cuts") or [])
+                       if ext_start < float(t.get("time") if isinstance(t, dict) else t) < ext_start + dur})
+        boundaries = [0.0] + [t - ext_start for t in cuts] + [dur]
+        ass_path = os.path.join(work, "subs.ass")
+        build_ass(state.get("words") or [], ext_start, dur, state.get("style") or {}, ass_path)
+        out_path = os.path.join(work, "out.mp4")
+        cmd = build_render_cmd([files[m] for m in clip_ids], files[audio_id],
+                               ext_start, dur, boundaries, ass_path, out_path)
+        await db.render_jobs.update_one({"job_id": job_id}, {"$set": {"status": "rendering"}})
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL,
+                                                    stderr=asyncio.subprocess.PIPE)
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=600)
+        except asyncio.TimeoutError:
+            proc.kill()
+            raise ValueError("Rendu trop long (10 min max)")
+        if proc.returncode != 0 or not os.path.exists(out_path):
+            raise ValueError(f"ffmpeg: {(err or b'')[-300:].decode(errors='ignore')}")
+        with open(out_path, "rb") as f:
+            mid = await media_fs.upload_from_stream(
+                f"render_{job_id}.mp4", f,
+                metadata={"user_id": user_id, "content_type": "video/mp4", "kind": "render"})
+        await db.export_logs.insert_one({"user_id": user_id, "created_at": iso(now_utc()), "source": "mobile_render"})
+        await db.render_jobs.update_one({"job_id": job_id},
+                                        {"$set": {"status": "done", "media_id": str(mid), "finished_at": iso(now_utc())}})
+    except Exception as e:
+        logger.exception("Rendu mobile %s échoué", job_id)
+        await db.render_jobs.update_one({"job_id": job_id}, {"$set": {"status": "error", "error": str(e)[:300]}})
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+@api_router.post("/export/render")
+async def export_render(state: dict, user: dict = Depends(get_current_user)):
+    """Rendu MP4 final côté serveur à partir du state d'un projet (pour l'app mobile)."""
+    info = sub_info(user)
+    if info["tier"] == "free":
+        raise HTTPException(status_code=403, detail="Export réservé aux abonnés — passe en Basic ou Pro")
+    job_id = uuid.uuid4().hex[:16]
+    await db.render_jobs.insert_one({"job_id": job_id, "user_id": user["user_id"],
+                                     "status": "queued", "created_at": iso(now_utc())})
+    asyncio.create_task(_run_render(job_id, user["user_id"], state))
+    return {"job_id": job_id, "status": "queued"}
+
+
+@api_router.get("/export/render/{job_id}")
+async def export_render_status(job_id: str, user: dict = Depends(get_current_user)):
+    job = await db.render_jobs.find_one({"job_id": job_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job introuvable")
+    if job.get("media_id"):
+        job["url"] = f"/api/media/{job['media_id']}"
+    return job
+
+
 @api_router.post("/admin/promo")
 async def admin_create_promo(payload: dict, user: dict = Depends(get_current_user)):
     await require_admin(user)

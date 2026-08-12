@@ -655,3 +655,10 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Inscription : case CGV OBLIGATOIRE (front + backend 400 sans cgv_accepted), cgv_accepted_at horodaté en DB, liens CGV/Confidentialité (nouvel onglet), mention d'acceptation sous le bouton Google.
 - ✅ CGV renforcées : §2 acceptation par case à cocher horodatée, §9 données personnelles (RGPD), §10 modification des CGV (préavis 30 j), §11 médiation de la consommation (L611-1 + plateforme ODR), §12 droit applicable & juridiction.
 - ✅ 13 payloads register des suites pytest mis à jour (cgv_accepted). Régression : 37/37 PASS.
+
+## Briques serveur pour l'app mobile (12 août 2026)
+- ✅ /app/backend/mobile_render.py : analyze_bpm (flux d'énergie + autocorr + prior 125 BPM anti-octave, phase optimisée), build_ass (sous-titres mode mot + emph), build_render_cmd (segments trim/concat 1080x1920 + ass + aac).
+- ✅ POST /api/audio/analyze (60 Mo max) — testé : wav 120 BPM → bpm 120.0, 40 beats.
+- ✅ POST /api/export/render (job asynchrone, db.render_jobs, gate tier free=403, dur cap 90 s, 120 segments max, timeout 10 min, sortie GridFS + export_logs) + GET /api/export/render/{job_id}. Testé E2E : job done en 5 s, MP4 h264 1080x1920 + AAC 8 s, sous-titres OK, mot emph rouge/gros OK, alternance clips sur beats OK.
+- ✅ /app/memory/MOBILE_APP_BRIEF.md mis à jour (endpoints marqués disponibles) — à donner au Mobile Agent dans un NOUVEAU projet.
+- requirements.txt regénéré (pip freeze).

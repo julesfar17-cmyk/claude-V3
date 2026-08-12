@@ -32,10 +32,13 @@ Endpoints clés :
 ## Spécificités techniques mobile (important)
 - Le studio web utilise WebCodecs (inexistant en RN). Pour le natif :
   - Lecture/preview : expo-av / expo-video + overlay des sous-titres en composants RN (pas de canvas).
-  - Analyse BPM : soit portage JS de la détection (le web la fait en JS sur PCM décodé), soit endpoint
-    serveur à ajouter (POST /audio/analyze → bpm + beats[]). PRÉFÉRER le serveur sur mobile.
-  - Export final : rendu côté SERVEUR recommandé (le backend a déjà ffmpeg + Mux) : envoyer le state
-    du projet, le serveur assemble le MP4 (nouvel endpoint /export/render à créer côté backend web).
+  - Analyse BPM : ✅ DÉJÀ DISPONIBLE — POST /api/audio/analyze (multipart audio + duration optionnelle)
+    → {bpm, first_beat, period, beats[]}. Prior anti-erreur d'octave centré 125 BPM.
+  - Export final : ✅ DÉJÀ DISPONIBLE — POST /api/export/render (JSON state du projet :
+    audioMediaId, clipRefs[].mediaId, ext{start,dur≤90}, cuts[], words[] avec emph, style)
+    → {job_id} ; puis GET /api/export/render/{job_id} → {status: queued|rendering|done|error, url}.
+    Sortie : MP4 1080x1920 30fps h264+AAC, clips alternés coupés sur les beats, sous-titres mode mot
+    (MAJ, contour, mots emph plus gros/colorés). Réservé aux abonnés (403 si tier free).
   - Vignettes : expo-video-thumbnails.
 - Tous les prix : Essentiel 9,99 €/mois, Pro 19,99 €/mois (essai 7 j), Pro Annuel 149 €, Studio 499 €/an.
   ⚠️ Apple/Google : les achats d'abonnement in-app peuvent exiger IAP — pour commencer, ouvrir Stripe
