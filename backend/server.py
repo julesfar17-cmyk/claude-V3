@@ -3129,6 +3129,38 @@ async def admin_customer_cancel(payload: dict, user: dict = Depends(get_current_
             "stripe_canceled": stripe_canceled}
 
 
+@api_router.post("/admin/customer/refund")
+async def admin_customer_refund(payload: dict, user: dict = Depends(get_current_user)):
+    """Rembourse intégralement le DERNIER paiement Stripe réussi du client."""
+    await require_admin(user)
+    target = await db.users.find_one({"email": (payload.get("email") or "").strip().lower()})
+    if not target:
+        raise HTTPException(status_code=404, detail="Aucun client avec cet email")
+    cid = (target.get("subscription") or {}).get("stripe_customer_id")
+    if not cid:
+        raise HTTPException(status_code=400, detail="Ce client n'a aucun paiement Stripe")
+    try:
+        charges = await asyncio.to_thread(lambda: stripe.Charge.list(customer=cid, limit=10))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Stripe injoignable : {e}")
+    charge = next((c for c in charges.get("data", []) if c.get("paid") and not c.get("refunded")), None)
+    if not charge:
+        raise HTTPException(status_code=400, detail="Aucun paiement remboursable (déjà remboursé ou aucun débit)")
+    try:
+        refund = await asyncio.to_thread(lambda: stripe.Refund.create(charge=charge["id"]))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Remboursement Stripe impossible : {e}")
+    amount = (charge.get("amount") or 0) / 100.0
+    await db.refunds.insert_one({
+        "email": target["email"], "user_id": target["user_id"], "charge_id": charge["id"],
+        "refund_id": refund["id"], "amount": amount, "currency": charge.get("currency"),
+        "by": user["email"], "at": iso(now_utc()),
+    })
+    logger.info("Admin %s a remboursé %.2f€ à %s (charge %s)", user["email"], amount, target["email"], charge["id"])
+    return {"message": f"{amount:.2f} € remboursés à {target['email']} — le client reverra la somme sous 5 à 10 jours.",
+            "amount": amount, "charge_id": charge["id"]}
+
+
 @api_router.post("/admin/promo")
 async def admin_create_promo(payload: dict, user: dict = Depends(get_current_user)):
     await require_admin(user)

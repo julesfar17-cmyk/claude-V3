@@ -91,11 +91,12 @@ export default function Admin() {
   const [cust, setCust] = useState(null);
   const [custBusy, setCustBusy] = useState(false);
   const [custArm, setCustArm] = useState(false);
+  const [refundArm, setRefundArm] = useState(false);
 
   const searchCustomer = async (e) => {
     e && e.preventDefault();
     if (!custEmail.trim()) return;
-    setCustBusy(true); setCustArm(false);
+    setCustBusy(true); setCustArm(false); setRefundArm(false);
     try {
       const { data } = await api.get("/admin/customer", { params: { email: custEmail.trim() } });
       setCust(data);
@@ -113,6 +114,20 @@ export default function Admin() {
       const { data } = await api.post("/admin/customer/cancel", { email: cust.email });
       toast.success(data.message);
       setCustArm(false);
+      await searchCustomer();
+    } catch (err) {
+      toast.error(formatApiErrorDetail(err.response?.data?.detail));
+    } finally {
+      setCustBusy(false);
+    }
+  };
+
+  const refundCustomer = async () => {
+    setCustBusy(true);
+    try {
+      const { data } = await api.post("/admin/customer/refund", { email: cust.email });
+      toast.success(data.message);
+      setRefundArm(false);
       await searchCustomer();
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail));
@@ -410,13 +425,34 @@ export default function Admin() {
                       </table>
                     </div>
                   )}
-                  {(cust.stripe_subscription_id || cust.subscription?.is_pro) && (
-                    <div className="mt-5">
-                      {!custArm ? (
-                        <button onClick={() => setCustArm(true)} data-testid="admin-cancel-customer-button"
-                          className="border border-primary text-primary px-4 py-2.5 text-xs font-osd tracking-wider hover:bg-primary hover:text-white transition-colors">
-                          🛑 ANNULER SON ABONNEMENT IMMÉDIATEMENT
-                        </button>
+                  {(cust.stripe_subscription_id || cust.subscription?.is_pro || cust.stripe_customer_id) && (
+                    <div className="mt-5 flex flex-col gap-3">
+                      {cust.stripe_customer_id && (
+                        !refundArm ? (
+                          <div>
+                            <button onClick={() => setRefundArm(true)} data-testid="admin-refund-customer-button"
+                              className="border border-border px-4 py-2.5 text-xs font-osd tracking-wider hover:border-foreground transition-colors">
+                              💶 REMBOURSER LE DERNIER PAIEMENT
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-sm">Rembourser intégralement son dernier paiement Stripe ?</span>
+                            <button onClick={refundCustomer} disabled={custBusy} data-testid="admin-refund-customer-confirm"
+                              className="bg-foreground text-background px-4 py-2.5 text-xs font-bold disabled:opacity-50">
+                              {custBusy ? "…" : "OUI, REMBOURSER"}
+                            </button>
+                            <button onClick={() => setRefundArm(false)} className="text-xs text-muted-foreground underline">Non</button>
+                          </div>
+                        )
+                      )}
+                      {(cust.stripe_subscription_id || cust.subscription?.is_pro) && (!custArm ? (
+                        <div>
+                          <button onClick={() => setCustArm(true)} data-testid="admin-cancel-customer-button"
+                            className="border border-primary text-primary px-4 py-2.5 text-xs font-osd tracking-wider hover:bg-primary hover:text-white transition-colors">
+                            🛑 ANNULER SON ABONNEMENT IMMÉDIATEMENT
+                          </button>
+                        </div>
                       ) : (
                         <div className="flex items-center gap-3 flex-wrap">
                           <span className="text-sm text-primary">Confirmer ? Accès coupé tout de suite, plus aucun prélèvement futur.</span>
@@ -426,7 +462,7 @@ export default function Admin() {
                           </button>
                           <button onClick={() => setCustArm(false)} className="text-xs text-muted-foreground underline">Non</button>
                         </div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </div>
