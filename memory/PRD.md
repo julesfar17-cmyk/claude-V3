@@ -676,3 +676,9 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Dashboard : ?activate=1 ouvre automatiquement la modal d'activation immédiate si l'utilisateur est en essai.
 - ✅ _guard_trial_fingerprint stocke trial_days + trial_started_at au démarrage de chaque essai. /api/admin/stats expose trial_cohorts {d7,d3} (started/converted/rate) — les essais historiques sans trial_days comptent en 7 j. Admin : Stat « Conversion essais 7 j vs 3 j ».
 - Testé : aperçu email 2 boutons OK, modal auto sur ?activate=1 OK (demo simulé trialing puis restauré), trial_cohorts d7 1/0 correct.
+
+## Fluidité de l'aperçu éditeur (17 août 2026) — bug récurrent (5e signalement)
+- Causes identifiées : (1) ctx.filter saturation appliqué à CHAQUE frame (rendu logiciel très lent) ; (2) imageSmoothingQuality 'high' par frame ; (3) décodeur WebCodecs pompé uniquement dans la rAF → famine quand le thread principal charge.
+- ✅ Correctifs studio.html : filtre saturation déplacé en CSS GPU sur #preview pendant la lecture (ctx.filter conservé à l'arrêt + export → rendu final identique) ; smoothing 'medium' en lecture ; pompe wcPump (setInterval 20 ms) démarrée dans play(), stoppée dans stopAll() ; pause propre sur visibilitychange (onglet masqué).
+- ✅ Télémétrie low_fps : fenêtre 5 s, TEL.push si <20 fps (fps, sat, nb plans, largeur codec, buffered) → données prod pour la suite.
+- Testé par testing_agent (iteration_23.json) : 100 % PASS (wcPump start/stop, bascule CSS filter lecture/pause, rAF vivante, scrub, loop, modale export, 0 erreur JS). ⚠️ Validation FPS réelle impossible en headless (pas de codecs H.264) → la télémétrie low_fps tranchera en production. À REDÉPLOYER.

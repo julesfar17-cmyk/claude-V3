@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only validation of the BeatCut editor playback mechanics after the FPS/wcPump/CSS-saturate patches in /app/frontend/public/studio.html. Logged in via demo@beatcut.fr, navigated to /studio.html, invoked go('edit/032e4762018d45') and exercised play/pause, CSS saturate filter toggle, timeline scrub, loopBtn, and export modal open. All expected mechanics behaved correctly with zero ReferenceError/TypeError.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_23.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "studio.html is a very large monolithic public HTML file (>3500 lines) mixing markup, state, playback loop and export logic. Splitting decode/render/timeline/export into ES modules would drastically improve maintainability, but this is out of scope for this bug fix.",
+    "wcPump interval is 20ms (50Hz) — appropriate for decoding cadence, but consider clearing it also on visibilitychange to avoid background CPU when tab hidden."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100%"},
+  "test_credentials": "demo@beatcut.fr / Demo1234! (single-session)",
+  "seed_data_creation": "None (used existing project 032e4762018d45 'Recette 150BPM')",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login via React /login page first, THEN navigate to /studio.html — the SPA globals (go, M, togglePlay, wcPump, playing, _fpsN) are only defined once studio.html is loaded. localStorage flag bc_mobtuto_done=1 skips the mobile tutorial. Codec H.264 warnings + a few 401s on /me endpoints are expected in headless env and can be ignored.",
+  "detailed_validation": {
+    "editor_load": "OK — hasPlayBtn=true, hasPreview=true, M/globals defined, route=#/edit/032e4762018d45",
+    "play_start": "OK — playing=true, wcPump non-null, playBtn text became ⏸",
+    "raf_loop": "OK — _fpsN grew from 55 to 137 over ~1.5s (raf running)",
+    "css_saturate_during_play": "OK — preview.style.filter = 'saturate(1.42) contrast(1.06) brightness(1.02)' when M.fx.sat=true during playback",
+    "pause": "OK — playing=false, wcPump === null (interval cleared), preview.style.filter === '' (CSS filter removed at stop), playBtn text ▶",
+    "scrub_at_stop": "OK — 3 clicks on #tlScroll at 20/50/80% executed without exception",
+    "loop_button": "OK — #loopBtn clicked, stopAll() clean, no error",
+    "export_modal": "OK — #exportBtn opens modal, Escape closes without crash",
+    "console_errors": "Only 4x 401 network errors on background /me polling (pre-existing, unrelated to this patch). 0 ReferenceError, 0 TypeError, 0 pageerror.",
+    "regression": "None detected."
+  }
+}

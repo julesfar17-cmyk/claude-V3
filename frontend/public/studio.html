@@ -3303,6 +3303,8 @@ async function wcExportSeek(pl, t){
 }
 
 let offlineRender=false;
+let wcPump=null, _fpsN=0, _fpsT0=0, _fpsSent=false;
+document.addEventListener('visibilitychange',()=>{ if(document.hidden&&playing){ startOff=curTime(); stopAll(); try{drawPlayhead(startOff);}catch(e){} } });
 function syncLivePlan(t){
   const plans=(M&&M.plans)||[];
   if(!plans.length) return;
@@ -3365,10 +3367,15 @@ async function play(from){
   srcNode.start(0, from, ext.start+ext.dur-from);
   srcNode.onended=()=>{ if(playing&&!looping) stopAll(); };
   startedAt=audioCtx.currentTime; startOff=from; playing=true; looping=false;
+  // pompe de décodage indépendante de la rAF : le décodeur ne meurt plus de faim quand le thread est chargé
+  if(wcPump) clearInterval(wcPump);
+  wcPump=setInterval(()=>{ if(!playing){clearInterval(wcPump);wcPump=null;return;} try{ if(wcA)wcA.fill(); if(wcB)wcB.fill(); }catch(e){} },20);
+  _fpsN=0; _fpsT0=performance.now(); _fpsSent=false;
   $('#playBtn').textContent='⏸'; raf();
 }
 function stopAll(){
   if(srcNode){ srcNode.onended=null; try{srcNode.stop()}catch(e){} srcNode=null; }
+  if(wcPump){ clearInterval(wcPump); wcPump=null; }
   playing=false; looping=false;
   wcReset();
   $('#playBtn').textContent='▶'; $('#loopBtn').textContent='▶ Écouter l\u2019extrait';
@@ -3377,6 +3384,18 @@ function raf(){
   const t=curTime();
   if(playing) syncLivePlan(t);
   drawPreview(t); drawPlayhead(t);
+  // télémétrie FPS : fenêtre de 5 s, envoyée une fois par lecture si <20 img/s
+  if(playing){
+    _fpsN++;
+    const el=performance.now()-_fpsT0;
+    if(el>=5000){
+      const fps=Math.round(_fpsN*1000/el);
+      if(fps<20&&!_fpsSent){ _fpsSent=true;
+        TEL.push('low_fps',{fps, sat:!!((M&&M.fx)||{}).sat, plans:(M&&M.plans||[]).length,
+          w:wcA&&wcA.clip?wcA.clip.config&&wcA.clip.config.codedWidth:null, buffered:wcA?wcA.buffered():null}); }
+      _fpsN=0; _fpsT0=performance.now();
+    }
+  }
   if(playing&&tlZoom>1){ const sc=$('#tlScroll'), x=(t-ext.start)*PXS();
     if(x<sc.scrollLeft+40||x>sc.scrollLeft+sc.clientWidth-80) sc.scrollLeft=Math.max(0,x-sc.clientWidth/3); }
   $('#tcNow').textContent=fmt(Math.max(0,t-ext.start)); $('#tcEnd').textContent=fmt(ext.dur);
@@ -3528,7 +3547,7 @@ function getNoise(){
 }
 function drawPreview(t, cvOverride){
   const cv=cvOverride||$('#preview'); if(!cvOverride && cv.style.display==='none')return;  const c=cv.getContext('2d'), W=cv.width,H=cv.height;
-  c.imageSmoothingEnabled=true; c.imageSmoothingQuality='high';
+  c.imageSmoothingEnabled=true; c.imageSmoothingQuality=playing?'medium':'high';
   const plans=(M&&M.plans)||[];
   const pi=plans.findIndex(p=>t>=p.start&&t<p.end);
   const plan=pi>=0? plans[pi] : null;
@@ -3549,7 +3568,11 @@ function drawPreview(t, cvOverride){
   if(sc!==1||dx||dy||rot){ c.translate(W/2+dx,H/2+dy); if(rot)c.rotate(rot); c.scale(sc,sc); c.translate(-W/2,-H/2); }
   let drewMedia=false;
   const canFilter=(typeof c.filter==='string');
-  if(fx.sat&&canFilter) c.filter='saturate(1.42) contrast(1.06) brightness(1.02)';
+  // Saturation : ctx.filter est TRÈS lent (rendu logiciel) → pendant la lecture on l'applique en CSS
+  // sur l'élément canvas (composité GPU, quasi gratuit) ; ctx.filter reste pour l'export et l'arrêt.
+  const satCss=fx.sat&&playing&&!cvOverride;
+  if(!cvOverride){ const want=satCss?'saturate(1.42) contrast(1.06) brightness(1.02)':''; if(cv.style.filter!==want) cv.style.filter=want; }
+  if(fx.sat&&canFilter&&!satCss) c.filter='saturate(1.42) contrast(1.06) brightness(1.02)';
   if(plan&&plan.clip!==null&&clips[plan.clip]){
     const cl=clips[plan.clip];
     const target=(plan.seek||0)+(t-plan.start);
