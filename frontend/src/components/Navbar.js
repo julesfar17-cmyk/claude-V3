@@ -154,7 +154,7 @@ export default function Navbar({ landing = false }) {
                 className="bg-primary text-white text-sm font-bold px-5 py-3 text-center"
                 data-testid="nav-mobile-register"
               >
-                Essayer 7 jours offerts
+                Essayer 3 jours offerts
               </Link>
             </>
           )}

@@ -77,11 +77,11 @@ BASIC_PRICE_CENTS = 699
 BASIC_MONTHLY_EXPORTS = 10
 # --- Nouvelle grille tarifaire (juin 2026) ---
 ESSENTIEL_PRICE_CENTS = 999      # Essentiel — 9,99 €/mois, 15 exports/mois
-PRO2_PRICE_CENTS = 1999          # Pro — 19,99 €/mois, essai 7 jours
+PRO2_PRICE_CENTS = 1999          # Pro — 19,99 €/mois, essai 3 jours
 PRO2_YEAR_CENTS = 14900          # Pro annuel — 149 €/an
 STUDIO_YEAR_CENTS = 49900        # Studio — 499 €/an
 ESSENTIEL_MONTHLY_EXPORTS = 15
-TRIAL_DAYS = 7
+TRIAL_DAYS = 3
 TRIAL_EXPORT_CAP = 15            # plafond anti-abus pendant l'essai (invisible marketing)
 NEW_PLANS = ("essentiel", "pro_monthly", "pro_yearly", "studio")
 ANNUAL_PLANS = ("yearly", "pro_yearly", "studio")
@@ -143,12 +143,19 @@ def _fmt_date_fr(iso_str) -> str:
         return ""
 
 
-def _email_html(title: str, body: str, cta_label: str = None, cta_url: str = None) -> str:
+def _email_html(title: str, body: str, cta_label: str = None, cta_url: str = None,
+                cta2_label: str = None, cta2_url: str = None) -> str:
     button = (
         f'<tr><td style="padding:24px 0 8px"><a href="{cta_url}" '
         f'style="background:#ff3b30;color:#ffffff;text-decoration:none;font-weight:bold;'
         f'padding:14px 28px;display:inline-block">{cta_label}</a></td></tr>'
     ) if cta_url else ""
+    if cta2_url:
+        button += (
+            f'<tr><td style="padding:4px 0 8px"><a href="{cta2_url}" '
+            f'style="background:transparent;color:#ece6da;text-decoration:none;font-weight:bold;'
+            f'border:1px solid #4a4454;padding:13px 28px;display:inline-block">{cta2_label}</a></td></tr>'
+        )
     return f"""<table width="100%" cellpadding="0" cellspacing="0" style="background:#121016;padding:32px 16px;font-family:Arial,Helvetica,sans-serif">
 <tr><td align="center"><table width="520" cellpadding="0" cellspacing="0" style="background:#1a1720;border:1px solid #2a2631;padding:36px">
 <tr><td style="font-size:20px;font-weight:bold;color:#ece6da;padding-bottom:6px">BEAT<span style="color:#ff3b30">CUT</span></td></tr>
@@ -193,7 +200,7 @@ def sub_confirmed_email_html(period_end) -> str:
 def trial_started_email_html(trial_end) -> str:
     return _email_html(
         "Ton essai Pro a commencé 🎉",
-        f"Tu as 7 jours d'accès Pro complet : exports illimités, séries de vidéos, tous les styles. "
+        f"Tu as 3 jours d'accès Pro complet : exports illimités, séries de vidéos, tous les styles. "
         f"Ton abonnement Pro (19,99 €/mois) démarre automatiquement le {_fmt_date_fr(trial_end)}. "
         f"Tu peux annuler à tout moment avant cette date, en 2 clics, depuis ton compte — rien ne sera débité.",
         "Gérer mon abonnement", "https://beat-cut.com/dashboard",
@@ -202,10 +209,12 @@ def trial_started_email_html(trial_end) -> str:
 
 def trial_reminder_email_html(trial_end) -> str:
     return _email_html(
-        "Ton essai se termine bientôt",
+        "Ton essai se termine demain",
         f"Ton essai Pro se termine le {_fmt_date_fr(trial_end)}. "
         f"Ton abonnement Pro (19,99 €/mois) démarre automatiquement à cette date. "
-        f"Si tu veux continuer, tu n'as rien à faire. Sinon, annule en 2 clics avant le débit — rien ne sera prélevé.",
+        f"Si tu veux continuer, tu n'as rien à faire. Sinon, annule en 2 clics avant le débit — rien ne sera prélevé. "
+        f"Déjà convaincu ? Active ton abonnement maintenant et débloque l'illimité tout de suite.",
+        "⚡ Passer en illimité maintenant", "https://beat-cut.com/dashboard?activate=1",
         "Gérer ou annuler", "https://beat-cut.com/dashboard",
     )
 
@@ -1027,7 +1036,9 @@ async def _guard_trial_fingerprint(user_id: str, email: str, s) -> bool:
             {"fingerprint": fp},
             {"$setOnInsert": {"fingerprint": fp, "user_id": user_id, "email": email, "used_at": iso(now_utc())}},
             upsert=True)
-    await db.users.update_one({"user_id": user_id}, {"$set": {"trial_used": True}})
+    await db.users.update_one({"user_id": user_id},
+                              {"$set": {"trial_used": True, "trial_days": TRIAL_DAYS,
+                                        "trial_started_at": iso(now_utc())}})
     return False
 
 
@@ -1110,7 +1121,7 @@ def _build_checkout_params(user: dict, plan: str, pricing: dict, origin: str, re
 
 
 async def _maybe_add_trial(params: dict, user: dict, plan: str) -> bool:
-    """Essai 7 jours : un seul par email ET par carte (empreinte vérifiée après le checkout)."""
+    """Essai 3 jours : un seul par email ET par carte (empreinte vérifiée après le checkout)."""
     sub = user.get("subscription") or {}
     if plan != "pro_monthly" or sub.get("stripe_subscription_id"):
         return False
@@ -1200,16 +1211,43 @@ async def _wh_checkout_completed(obj):
 
 
 async def _wh_trial_will_end(obj):
-    """J-3 avant la fin d'essai : email de rappel (une seule fois)."""
+    """Stripe envoie cet événement 3 jours avant la fin — trop tôt pour un essai de 3 jours.
+    On n'envoie ici que si la fin est réellement dans moins de 36 h ; sinon _trial_reminder_loop
+    (rappel J-1) s'en charge."""
     sub_id = obj.get("id")
     u = await db.users.find_one({"subscription.stripe_subscription_id": sub_id},
                                 {"_id": 0, "user_id": 1, "email": 1, "subscription": 1})
     if not u or (u.get("subscription") or {}).get("trial_reminder_sent"):
         return
     te = obj.get("trial_end")
-    end_iso = iso(datetime.fromtimestamp(te, tz=timezone.utc)) if te else (u.get("subscription") or {}).get("current_period_end")
-    await send_email(u["email"], "Ton essai Pro se termine bientôt — BEATCUT", trial_reminder_email_html(end_iso))
+    end_dt = datetime.fromtimestamp(te, tz=timezone.utc) if te else parse_dt((u.get("subscription") or {}).get("current_period_end"))
+    if not end_dt or end_dt - now_utc() > timedelta(hours=36):
+        return
+    await send_email(u["email"], "Ton essai Pro se termine bientôt — BEATCUT", trial_reminder_email_html(iso(end_dt)))
     await db.users.update_one({"user_id": u["user_id"]}, {"$set": {"subscription.trial_reminder_sent": True}})
+
+
+async def _trial_reminder_loop():
+    """Rappel J-1 : chaque heure, email aux essais qui se terminent dans moins de 24 h."""
+    await asyncio.sleep(180)
+    while True:
+        try:
+            now = now_utc()
+            async for u in db.users.find(
+                {"subscription.status": "trialing", "subscription.trial_reminder_sent": {"$ne": True}},
+                {"_id": 0, "user_id": 1, "email": 1, "subscription": 1},
+            ):
+                end = parse_dt((u.get("subscription") or {}).get("current_period_end"))
+                if not end or not (timedelta(0) < end - now <= timedelta(hours=24)):
+                    continue
+                await send_email(u["email"], "Ton essai Pro se termine demain — BEATCUT",
+                                 trial_reminder_email_html(iso(end)))
+                await db.users.update_one({"user_id": u["user_id"]},
+                                          {"$set": {"subscription.trial_reminder_sent": True}})
+                logger.info("Rappel J-1 d'essai envoyé à %s", u["email"])
+        except Exception:
+            logger.exception("Boucle rappel essai en erreur")
+        await asyncio.sleep(3600)
 
 
 async def _wh_subscription_sync(etype, obj):
@@ -1709,7 +1747,7 @@ async def register_export(user: dict = Depends(get_current_user)):
     if tier == "free":
         raise HTTPException(status_code=402, detail={
             "code": "paywall",
-            "message": "Ta vidéo est prête. Débloque-la avec 7 jours offerts.",
+            "message": "Ta vidéo est prête. Débloque-la avec 3 jours offerts.",
         })
     if info.get("trial"):
         since = (user.get("subscription") or {}).get("started_at") or _month_start_iso()
@@ -2286,7 +2324,7 @@ async def _store_media(user: dict, content: bytes, filename: str, content_type: 
         })
         if nvids >= 5:
             raise HTTPException(status_code=403,
-                                detail="5 clips maximum sans abonnement — débloque tout avec ton essai Pro (7 jours offerts).")
+                                detail="5 clips maximum sans abonnement — débloque tout avec ton essai Pro (3 jours offerts).")
     media_id = await media_fs.upload_from_stream(
         filename or "media",
         content,
@@ -2913,13 +2951,20 @@ async def admin_stats(user: dict = Depends(get_current_user)):
     for key in ("essentiel", "pro_monthly", "pro_yearly", "studio", "basic", "yearly"):
         plans[key] = await db.users.count_documents({**real_paid_filter, "subscription.plan": key})
     plans["monthly"] = max(0, real_paid - sum(plans.values()))  # legacy PRO mensuel (plan par défaut)
-    # Essai gratuit 7 jours : en cours / démarrés / convertis en payant réel
+    # Essai gratuit 3 jours : en cours / démarrés / convertis en payant réel
     trial_users = await db.users.count_documents({
         "subscription.status": "trialing",
         "subscription.current_period_end": {"$gt": iso(now_utc())},
     })
     trial_started = await db.users.count_documents({"trial_used": True})
     trial_converted = await db.users.count_documents({**real_paid_filter, "trial_used": True})
+    # Cohortes par durée d'essai : les essais historiques (sans trial_days) étaient à 7 jours
+    trial_cohorts = {}
+    for label, flt in (("d7", {"trial_days": {"$ne": 3}}), ("d3", {"trial_days": 3})):
+        started = await db.users.count_documents({"trial_used": True, **flt})
+        converted = await db.users.count_documents({**real_paid_filter, "trial_used": True, **flt})
+        trial_cohorts[label] = {"started": started, "converted": converted,
+                                "rate": round(converted / started * 100) if started else None}
     trial_conversion_rate = round(trial_converted / trial_started * 100) if trial_started else None
     # MRR : uniquement les payants réels — annuels comptés au prorata mensuel
     mrr = round(
@@ -2969,6 +3014,7 @@ async def admin_stats(user: dict = Depends(get_current_user)):
         "trial_started": trial_started,
         "trial_converted": trial_converted,
         "trial_conversion_rate": trial_conversion_rate,
+        "trial_cohorts": trial_cohorts,
         "mrr": mrr,
         **stripe_stats,
         "separations_this_month": sep_count,
@@ -3525,6 +3571,7 @@ async def startup():
     asyncio.create_task(_reengage_loop())
     asyncio.create_task(_payments_watchdog())
     asyncio.create_task(_media_cleanup_loop())
+    asyncio.create_task(_trial_reminder_loop())
 
 
 app.include_router(api_router)

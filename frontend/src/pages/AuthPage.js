@@ -194,7 +194,7 @@ export default function AuthPage() {
             </p>
           </div>
           <p className="mt-5 font-osd text-[11px] text-muted-foreground text-center tracking-wider">
-            🎁 7 JOURS D'ESSAI OFFERTS SUR LE PLAN PRO • ANNULABLE EN 2 CLICS
+            🎁 3 JOURS D'ESSAI OFFERTS SUR LE PLAN PRO • ANNULABLE EN 2 CLICS
           </p>
         </div>
       </div>

@@ -234,6 +234,10 @@ export default function Dashboard() {
   };
 
   const [activateOpen, setActivateOpen] = useState(false);
+  const activateParam = params.get("activate");
+  useEffect(() => {
+    if (activateParam === "1" && sub.trial) setActivateOpen(true);
+  }, [activateParam, sub.trial]);
   const activateNow = async () => {
     setBusy(true);
     try {
@@ -335,7 +339,7 @@ export default function Dashboard() {
                 }`}
                 data-testid="plan-badge"
               >
-                {isVip ? "VIP ✦" : isTrial ? "ESSAI PRO — 7 JOURS" : canceled ? (isBasic ? "BASIC — ANNULÉ" : isEssentiel ? "ESSENTIEL — ANNULÉ" : "PRO — ANNULÉ") : isBasic ? "BASIC" : isEssentiel ? "ESSENTIEL" : isStudio ? "STUDIO ✦" : "PRO ✦"}
+                {isVip ? "VIP ✦" : isTrial ? "ESSAI PRO — 3 JOURS" : canceled ? (isBasic ? "BASIC — ANNULÉ" : isEssentiel ? "ESSENTIEL — ANNULÉ" : "PRO — ANNULÉ") : isBasic ? "BASIC" : isEssentiel ? "ESSENTIEL" : isStudio ? "STUDIO ✦" : "PRO ✦"}
               </span>
             ) : (
                 <span className="font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 bg-secondary text-muted-foreground" data-testid="plan-badge">
@@ -361,7 +365,7 @@ export default function Dashboard() {
               <>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   Ton studio est prêt : montage complet, aperçu et sauvegarde inclus. Choisis ton plan pour
-                  exporter tes vidéos — <b className="text-foreground">7 jours d'essai offerts</b> sur le plan Pro,
+                  exporter tes vidéos — <b className="text-foreground">3 jours d'essai offerts</b> sur le plan Pro,
                   annulable en 2 clics avant le débit.
                 </p>
                 <div className="grid gap-3 mt-6">
@@ -372,10 +376,10 @@ export default function Dashboard() {
                     className="relative inline-flex items-center justify-between gap-2 bg-primary text-white font-bold px-5 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
                   >
                     <span className="absolute -top-2.5 right-2 bg-white text-primary font-osd text-[9px] tracking-wider px-2 py-0.5">
-                      7 JOURS OFFERTS
+                      3 JOURS OFFERTS
                     </span>
                     {promoBadge("pro_monthly")}
-                    <span className="inline-flex items-center gap-2"><Crown size={16} /> PRO — essai 7 jours</span>
+                    <span className="inline-flex items-center gap-2"><Crown size={16} /> PRO — essai 3 jours</span>
                     <span className="font-display" data-testid="price-pro-monthly">
                       {affPrice("pro_monthly") ? (
                         <><s className="opacity-60 mr-1.5">19,99 €</s>{fmtEUR(affPrice("pro_monthly").after_cents)} €/mois</>
@@ -426,7 +430,7 @@ export default function Dashboard() {
                   </a>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground text-center">
-                  Sans engagement (mensuel) · 🎁 7 jours offerts avec rappel par email avant le débit · Paiement sécurisé Stripe.
+                  Sans engagement (mensuel) · 🎁 3 jours offerts avec rappel par email avant le débit · Paiement sécurisé Stripe.
                 </p>
               </>
             )}
@@ -449,7 +453,7 @@ export default function Dashboard() {
                 </div>
                 {isTrial && (
                   <div className="mt-4 border border-primary/40 bg-primary/5 px-4 py-3 font-osd text-xs tracking-wider text-primary" data-testid="trial-day-banner">
-                    ESSAI PRO — J{Math.min(7, Math.max(1, 7 - Math.max(0, Math.ceil((new Date(sub.current_period_end) - Date.now()) / 86400000)) + 1))}/7
+                    ESSAI PRO — J{Math.min(3, Math.max(1, 3 - Math.max(0, Math.ceil((new Date(sub.current_period_end) - Date.now()) / 86400000)) + 1))}/3
                   </div>
                 )}
                 {isTrial && (

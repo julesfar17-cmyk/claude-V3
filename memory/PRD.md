@@ -662,3 +662,17 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ POST /api/export/render (job asynchrone, db.render_jobs, gate tier free=403, dur cap 90 s, 120 segments max, timeout 10 min, sortie GridFS + export_logs) + GET /api/export/render/{job_id}. Testé E2E : job done en 5 s, MP4 h264 1080x1920 + AAC 8 s, sous-titres OK, mot emph rouge/gros OK, alternance clips sur beats OK.
 - ✅ /app/memory/MOBILE_APP_BRIEF.md mis à jour (endpoints marqués disponibles) — à donner au Mobile Agent dans un NOUVEAU projet.
 - requirements.txt regénéré (pip freeze).
+
+## Essai 7j → 3j + rappel J-1 fiable (13 août 2026)
+- ✅ TRIAL_DAYS = 3 ; tous les textes « 7 jours » mis à jour (server.py, Dashboard.js, CGV.js, AuthPage, Navbar, studio.html paywall + bannière J/3, landing.html x10).
+- ✅ _trial_reminder_loop (horaire, +180 s au boot) : essais se terminant sous 24 h → email « Ton essai Pro se termine demain » + flag trial_reminder_sent. Enregistrée au startup.
+- ✅ _wh_trial_will_end neutralisé sauf si fin < 36 h (Stripe envoie l'événement 3 j avant la fin = au DÉBUT d'un essai de 3 j → aurait envoyé le rappel trop tôt).
+- ✅ Email J-1 : titre « Ton essai se termine demain », rappel du prix 19,99 €, bouton « Gérer ou annuler » → /dashboard. Aperçu partagé à l'utilisateur.
+- Régression : 37/37 pytest PASS. ⚠️ À REDÉPLOYER.
+- Note : les essais Stripe déjà en cours (créés à 7 j) gardent leur durée d'origine ; seuls les nouveaux checkouts partent sur 3 j.
+
+## Email J-1 bouton activation + stats cohortes essais (13 août 2026)
+- ✅ _email_html supporte 2 boutons (cta2). Email J-1 : bouton principal « ⚡ Passer en illimité maintenant » → /dashboard?activate=1, bouton secondaire « Gérer ou annuler ».
+- ✅ Dashboard : ?activate=1 ouvre automatiquement la modal d'activation immédiate si l'utilisateur est en essai.
+- ✅ _guard_trial_fingerprint stocke trial_days + trial_started_at au démarrage de chaque essai. /api/admin/stats expose trial_cohorts {d7,d3} (started/converted/rate) — les essais historiques sans trial_days comptent en 7 j. Admin : Stat « Conversion essais 7 j vs 3 j ».
+- Testé : aperçu email 2 boutons OK, modal auto sur ?activate=1 OK (demo simulé trialing puis restauré), trial_cohorts d7 1/0 correct.

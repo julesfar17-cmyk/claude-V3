@@ -1289,8 +1289,8 @@ function renderTrialBanner(){
     document.body.appendChild(b); }
   const end=API.trialEnd?new Date(API.trialEnd):null;
   const daysLeft=end?Math.max(0,Math.ceil((end-Date.now())/86400000)):0;
-  const day=Math.min(7,Math.max(1,7-daysLeft+1));
-  b.innerHTML='Essai Pro — J'+day+'/7 · <b style="color:#FF453A">Gérer</b>';
+  const day=Math.min(3,Math.max(1,3-daysLeft+1));
+  b.innerHTML='Essai Pro — J'+day+'/3 · <b style="color:#FF453A">Gérer</b>';
 }
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -4521,8 +4521,8 @@ function showPaywall(){
   const d=_bcModal('paywall-modal',
     '<div style="background:#12161D;border:1px solid #232B36;border-radius:16px;max-width:420px;width:100%;padding:26px 22px">'+
     '<h2 style="font-size:21px;margin:0 0 4px">Ta vidéo est prête.</h2>'+
-    '<p style="color:#8B95A3;font-size:14px;margin:0 0 18px">Débloque-la avec <b style="color:#fff">7 jours offerts</b>.</p>'+
-    '<button class="primary" data-testid="paywall-pro-trial" onclick="bcCheckout(\'pro_monthly\')" style="width:100%;padding:14px;font-size:15px">🎁 Essayer 7 jours offerts — Pro</button>'+
+    '<p style="color:#8B95A3;font-size:14px;margin:0 0 18px">Débloque-la avec <b style="color:#fff">3 jours offerts</b>.</p>'+
+    '<button class="primary" data-testid="paywall-pro-trial" onclick="bcCheckout(\'pro_monthly\')" style="width:100%;padding:14px;font-size:15px">🎁 Essayer 3 jours offerts — Pro</button>'+
     '<div style="text-align:center;color:#8B95A3;font-size:11.5px;margin:6px 0 14px">Puis 19,99 €/mois · annulable en 2 clics pendant l\u2019essai</div>'+
     '<button class="ghost" data-testid="paywall-essentiel" onclick="bcCheckout(\'essentiel\')" style="width:100%;padding:11px;margin-bottom:8px">Essentiel — 9,99 €/mois <span style="color:#8B95A3">(15 exports/mois)</span></button>'+
     '<button class="ghost" data-testid="paywall-pro-yearly" onclick="bcCheckout(\'pro_yearly\')" style="width:100%;padding:11px;margin-bottom:8px">Pro Annuel — 12,42 €/mois <span style="color:#8B95A3">(149 €/an · −38 %)</span></button>'+

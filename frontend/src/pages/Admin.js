@@ -209,11 +209,15 @@ export default function Admin() {
               <Stat label="ENCAISSÉ CE MOIS" value={stats.revenue_this_month != null ? `${stats.revenue_this_month.toFixed(2)} €` : "—"} accent />
               <Stat label="ENCAISSÉ TOTAL" value={stats.revenue_total != null ? `${stats.revenue_total.toFixed(2)} €` : "—"} accent />
               <Stat label="Abonnés actifs (payants réels)" value={stats.stripe_active_subs != null ? fmt(stats.stripe_active_subs) : fmt(stats.real_paid_users)} accent />
-              <Stat label="En essai gratuit (7 j)" value={stats.stripe_trialing_subs != null ? fmt(stats.stripe_trialing_subs) : fmt(stats.trial_users || 0)} accent />
+              <Stat label="En essai gratuit" value={stats.stripe_trialing_subs != null ? fmt(stats.stripe_trialing_subs) : fmt(stats.trial_users || 0)} accent />
               <Stat
                 label="Convertis depuis l'essai"
                 value={`${fmt(stats.trial_converted || 0)}${stats.trial_conversion_rate != null ? ` (${stats.trial_conversion_rate} %)` : ""}`}
                 accent
+              />
+              <Stat
+                label="Conversion essais 7 j vs 3 j"
+                value={`${stats.trial_cohorts?.d7?.rate != null ? `${stats.trial_cohorts.d7.rate} %` : "—"} (${fmt(stats.trial_cohorts?.d7?.converted || 0)}/${fmt(stats.trial_cohorts?.d7?.started || 0)}) · ${stats.trial_cohorts?.d3?.rate != null ? `${stats.trial_cohorts.d3.rate} %` : "—"} (${fmt(stats.trial_cohorts?.d3?.converted || 0)}/${fmt(stats.trial_cohorts?.d3?.started || 0)})`}
               />
               <Stat label="Payants réels (Stripe)" value={fmt(stats.real_paid_users)} />
               <Stat label="Actifs via promo / offert" value={fmt(stats.promo_active_users)} />
