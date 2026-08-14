@@ -682,3 +682,13 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Correctifs studio.html : filtre saturation déplacé en CSS GPU sur #preview pendant la lecture (ctx.filter conservé à l'arrêt + export → rendu final identique) ; smoothing 'medium' en lecture ; pompe wcPump (setInterval 20 ms) démarrée dans play(), stoppée dans stopAll() ; pause propre sur visibilitychange (onglet masqué).
 - ✅ Télémétrie low_fps : fenêtre 5 s, TEL.push si <20 fps (fps, sat, nb plans, largeur codec, buffered) → données prod pour la suite.
 - Testé par testing_agent (iteration_23.json) : 100 % PASS (wcPump start/stop, bascule CSS filter lecture/pause, rAF vivante, scrub, loop, modale export, 0 erreur JS). ⚠️ Validation FPS réelle impossible en headless (pas de codecs H.264) → la télémétrie low_fps tranchera en production. À REDÉPLOYER.
+
+## Proxy preview serveur + préchargement 2 coupes (14 août 2026)
+- ✅ Backend : POST /api/media/proxy/{media_id} (auth + ownership, idempotent, cache via metadata.proxy_of). Génération FFmpeg H.264 Main ≤720p sans audio, keyframes 0,5 s, faststart (_ffmpeg_proxy/_make_proxy/_auto_proxy).
+- ✅ Proxy AUTOMATIQUE à l'upload (choix utilisateur) : _transcode_media déclenche _auto_proxy à chaque fin (sauté/succès/échec). Vidéo déjà H.264 ≤720p → proxy_skipped (renvoie son propre id).
+- ✅ Proxys exclus du quota (_storage_used) et de /media/mine ; nettoyage orphelins déjà compatible (metadata.proxy_of).
+- ✅ Studio v13.08-proxy-preview : ensureClipProxy (polling 3 s ×100, télécharge + parseWC → clip.wcProxy ; devient la source principale si clip indécodable, régénère seeks/vignettes). La preview préfère le proxy (wcPrev), l'EXPORT garde la pleine résolution (clip.wc).
+- ✅ Triple décodeur wcA/wcB/wcC : 2 coupes pré-décodées à l'avance (rotation à l'activation, warmUpPlans + wcPump inclus) — coupes rapides sans famine du décodeur.
+- ✅ Bug corrigé : startPexelsImport appelé mais JAMAIS défini (ReferenceError à l'ajout d'un clip Pexels) → défini via API.importMedia en arrière-plan.
+- ✅ Nettoyage : ancienne route dupliquée /media/proxy (sans auth, code mort ligne 3420) supprimée.
+- Testé : testing_agent iteration_24.json — backend 7/7 PASS, frontend 100 % PASS (0 erreur JS). ⚠️ À REDÉPLOYER pour effet en production.

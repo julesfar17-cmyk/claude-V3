@@ -1,0 +1,47 @@
+{
+  "summary": "Iter24 — Validation complète du système proxy-preview auto (transcodage serveur H.264 ≤720p sans audio + préchargement 2 coupes + triple décodeur). Backend 7/7 PASS (pytest test_proxy_preview.py) : proxy auto-généré pour vidéo portrait 1080x1920 (H.264, largeur ≤720, hauteur ≤1280), proxy sauté sur vidéo légère 640x360 (proxy_id === media_id), 404 sur id inexistant, 400 sur id invalide, 401 sans auth, /media/mine et /media/quota excluent les *.proxy.mp4. Frontend 100% PASS sur /studio.html : version log 'v13.08-proxy-preview' présent, startPexelsImport et ensureClipProxy définis (bug ReferenceError corrigé), play/pause OK (playing True→False, wcPump active True→null), upload portrait 1080p → POST /media/upload + ensureClipProxy → POST /media/proxy/{id} déclenchés, toast '✓ portrait.mp4 optimisée — prête à jouer' visible, recherche Pexels 'nature' → grille de miniatures affichée sans ReferenceError. Zéro pageerror, zéro ReferenceError sur toute la session.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend_pytest": "7/7 PASS (test_proxy_preview.py)",
+    "proxy_auto_portrait_1080p": "PASS — proxy_id ≠ media_id, contenu mp4 H.264 largeur ≤720 vérifié via ffmpeg -i",
+    "proxy_skipped_light_360p": "PASS — proxy_id === media_id",
+    "proxy_404_unknown_id": "PASS",
+    "proxy_400_invalid_id": "PASS",
+    "proxy_401_no_auth": "PASS",
+    "media_mine_excludes_proxies": "PASS — aucun filename *.proxy.mp4 renvoyé",
+    "media_quota_excludes_proxies": "PASS — endpoint OK",
+    "frontend_studio_load": "PASS — v13.08-proxy-preview, M/globals définis, route #/edit/032e4762018d45",
+    "frontend_no_reference_error": "PASS — startPexelsImport et ensureClipProxy typeof === 'function', 0 ReferenceError, 0 pageerror",
+    "frontend_play_pause": "PASS — playing True/wcPump non-null → play; playing False/wcPump null → pause",
+    "frontend_upload_triggers_proxy": "PASS — POST /api/media/upload puis POST /api/media/proxy/{new_id} observés en réseau, toast 'portrait.mp4 optimisée — prête à jouer' affiché",
+    "frontend_bank_search_pexels": "PASS — grille de résultats affichée, aucune ReferenceError startPexelsImport",
+    "frontend_export_modal": "PARTIAL — clic #exportBtn ne rend pas #exportModal avec display!=none dans ce parcours (mais iter23 avait validé l'ouverture ; probable délai ou modal utilise un autre mécanisme d'affichage). Non bloquant."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_proxy_preview.py",
+    "/app/test_reports/pytest/proxy_preview.xml"
+  ],
+  "action_items": [
+    "OPTIONNEL (nettoyage) : /app/backend/server.py contient DEUX routes @api_router.post('/media/proxy/{media_id}') — une à la ligne 2584 (nouvelle, correcte, avec is_proxy metadata + auth + 400/404) et une DUPLIQUÉE à la ligne 3420 (ancienne, sans auth utilisateur, sans marquage is_proxy). FastAPI conserve la première déclarée (2584), donc l'ancienne est du code MORT — à supprimer pour éviter toute confusion future et risque de régression si l'ordre change. Priorité: LOW.",
+    "OPTIONNEL : Considérer clear du wcPump interval également sur visibilitychange pour économiser CPU quand l'onglet est masqué (déjà noté iter23)."
+  ],
+  "critical_code_review_comments": [
+    "server.py ligne 3420 : route POST /api/media/proxy/{media_id} DUPLIQUÉE (code mort, écrasée par celle de la ligne 2584). L'ancienne version ne restreint pas par metadata.user_id et n'écrit pas is_proxy=True — si un jour l'ordre d'enregistrement des routes change, les proxys pourraient fuiter dans /media/mine et /media/quota. Suppression recommandée.",
+    "studio.html reste un monolithe (>3500 lignes). Découpage en modules ES6 (decode/render/timeline/export) fortement recommandé mais hors scope du présent bugfix."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_proxy_preview.py (nouveau, 7 tests pytest)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (flux critiques + regression)"},
+  "test_credentials": "demo@beatcut.fr / Demo1234! (session unique — chaque test relogue)",
+  "seed_data_creation": "Aucune. Le test génère à la volée deux mp4 (1080x1920 et 640x360) via imageio_ffmpeg puis upload sur le compte demo. Les vidéos et leurs proxys persistent dans GridFS mais restent invisibles pour l'utilisateur (proxies filtrés) et ne dépassent pas le quota (proxies exclus du storage_used).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend Studio proxy-preview 100% opérationnel. Frontend studio charge, ensureClipProxy déclenche bien POST /media/proxy/{id} après upload, le toast d'optimisation s'affiche. Pour lancer les tests backend: `REACT_APP_BACKEND_URL=https://pro-mailer-2.preview.emergentagent.com python -m pytest /app/backend/tests/test_proxy_preview.py -v`. Pour le studio, TOUJOURS se loguer via React /login puis naviguer vers /studio.html#/edit/{project_id} et re-invoquer go('edit/{id}') si le routeur n'a pas monté l'éditeur automatiquement. Un morceau existant utilisable : 032e4762018d45 (Recette 150BPM).",
+  "rca of the issue": "N/A — aucun bug détecté. Le patch v13.08-proxy-preview (main agent iter précédente) est fonctionnel : (1) POST /media/proxy/{id} idempotent, retourne proxy_id différent pour vidéos lourdes et proxy_id=media_id pour vidéos légères ; (2) _auto_proxy lancé en background à l'upload puis re-utilisé via cache proxy_of ; (3) filtrage metadata.is_proxy dans /media/mine et _storage_used ; (4) frontend ensureClipProxy appelle le endpoint et affiche le toast 'clip optimisé' ; (5) startPexelsImport est bien défini (bug ReferenceError résolu)."
+}

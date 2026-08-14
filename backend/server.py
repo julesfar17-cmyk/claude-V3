@@ -2263,6 +2263,7 @@ async def _transcode_media(oid):
                                   "metadata.transcode_skipped": True}})
                     logger.info("Transcodage sauté %s : déjà H.264 %dx%d @ %.1f Mbps",
                                 oid, probe["w"], probe["h"], bitrate / 1e6)
+                    asyncio.create_task(_auto_proxy(oid))
                     return
             out = await _mux_transcode(raw)
             if not out:
@@ -2273,16 +2274,99 @@ async def _transcode_media(oid):
                 await media_fs.delete(oid)
                 await media_fs.upload_from_stream_with_id(oid, fname, out, metadata=new_meta)
                 logger.info("Transcodage OK %s : %d → %d octets", oid, len(raw), len(out))
+                asyncio.create_task(_auto_proxy(oid))
                 return
         except Exception:
             logger.exception("Transcodage échoué %s", oid)
         await db["media.files"].update_one(
             {"_id": oid},
             {"$set": {"metadata.processing": False, "metadata.transcode_failed": True}})
+        asyncio.create_task(_auto_proxy(oid))
+
+
+async def _ffmpeg_proxy(src_bytes: bytes, suffix: str):
+    """Proxy de preview : H.264 main ≤720p sans audio, keyframes toutes les 0,5 s (décodage WebCodecs fluide)."""
+    with tempfile.TemporaryDirectory() as td:
+        src = os.path.join(td, "in" + (suffix or ".mp4"))
+        dst = os.path.join(td, "out.mp4")
+        with open(src, "wb") as f:
+            f.write(src_bytes)
+        cmd = [FFMPEG_EXE, "-y", "-i", src,
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
+               "-profile:v", "main", "-level", "3.1", "-pix_fmt", "yuv420p",
+               "-vf", "scale=w='if(gt(iw,ih),-2,min(720,iw))':h='if(gt(iw,ih),min(720,ih),-2)',crop=trunc(iw/2)*2:trunc(ih/2)*2",
+               "-force_key_frames", "expr:gte(t,n_forced*0.5)",
+               "-an", "-movflags", "+faststart", dst]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        try:
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=600)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return None
+        if proc.returncode != 0 or not os.path.exists(dst) or os.path.getsize(dst) == 0:
+            logger.warning("FFmpeg proxy échec: %s", (err or b"")[-300:])
+            return None
+        with open(dst, "rb") as f:
+            return f.read()
+
+
+async def _make_proxy(oid):
+    """Génère (une fois) le proxy de preview d'un média et le range dans GridFS (metadata.proxy_of)."""
+    async with TRANSCODE_SEM:
+        doc = await db["media.files"].find_one({"_id": oid})
+        if not doc:
+            return
+        meta = doc.get("metadata") or {}
+        if await db["media.files"].find_one({"metadata.proxy_of": str(oid)}, {"_id": 1}):
+            await db["media.files"].update_one({"_id": oid}, {"$unset": {"metadata.proxy_processing": ""}})
+            return
+        try:
+            grid_out = await media_fs.open_download_stream(oid)
+            raw = await grid_out.read()
+            suffix = os.path.splitext(doc.get("filename") or "")[1]
+            probe = await _probe_video(raw, suffix)
+            # déjà léger (H.264 ≤720p) → le média lui-même sert de proxy
+            if probe and probe["codec"] == "h264" and min(probe["w"], probe["h"]) <= 720:
+                await db["media.files"].update_one(
+                    {"_id": oid},
+                    {"$set": {"metadata.proxy_skipped": True}, "$unset": {"metadata.proxy_processing": ""}})
+                return
+            out = await _ffmpeg_proxy(raw, suffix)
+            if out:
+                fname = os.path.splitext(doc.get("filename") or "media")[0] + ".proxy.mp4"
+                proxy_id = await media_fs.upload_from_stream(
+                    fname, out,
+                    metadata={"user_id": meta.get("user_id"), "proxy_of": str(oid), "is_proxy": True,
+                              "content_type": "video/mp4", "created_at": iso(now_utc())})
+                await db["media.files"].update_one(
+                    {"_id": oid},
+                    {"$set": {"metadata.proxy_id": str(proxy_id)}, "$unset": {"metadata.proxy_processing": ""}})
+                logger.info("Proxy preview OK %s → %s (%d → %d octets)", oid, proxy_id, len(raw), len(out))
+                return
+        except Exception:
+            logger.exception("Proxy preview échoué %s", oid)
+        await db["media.files"].update_one(
+            {"_id": oid},
+            {"$set": {"metadata.proxy_failed": True}, "$unset": {"metadata.proxy_processing": ""}})
+
+
+async def _auto_proxy(oid):
+    """Lance la génération du proxy si nécessaire (idempotent, jamais pendant l'optimisation principale)."""
+    claimed = await db["media.files"].find_one_and_update(
+        {"_id": oid, "metadata.is_proxy": {"$ne": True},
+         "metadata.processing": {"$ne": True},
+         "metadata.proxy_processing": {"$ne": True},
+         "metadata.proxy_skipped": {"$ne": True},
+         "metadata.proxy_failed": {"$ne": True},
+         "metadata.proxy_id": {"$exists": False}},
+        {"$set": {"metadata.proxy_processing": True}})
+    if claimed:
+        await _make_proxy(oid)
 
 async def _storage_used(user_id: str) -> int:
     pipeline = [
-        {"$match": {"metadata.user_id": user_id}},
+        {"$match": {"metadata.user_id": user_id, "metadata.is_proxy": {"$ne": True}}},
         {"$group": {"_id": None, "total": {"$sum": "$length"}}},
     ]
     rows = await db["media.files"].aggregate(pipeline).to_list(1)
@@ -2460,7 +2544,7 @@ async def media_import_link_status(job_id: str, user: dict = Depends(get_current
 async def media_mine(user: dict = Depends(get_current_user)):
     """Liste des médias de l'utilisateur (récupération de vidéos orphelines dans le studio)."""
     docs = await db["media.files"].find(
-        {"metadata.user_id": user["user_id"]},
+        {"metadata.user_id": user["user_id"], "metadata.is_proxy": {"$ne": True}},
         {"filename": 1, "length": 1, "uploadDate": 1, "metadata.content_type": 1, "metadata.transcoded": 1},
     ).sort("uploadDate", -1).to_list(1000)
     return {"media": [{
@@ -2495,6 +2579,34 @@ async def media_download(media_id: str, user: dict = Depends(get_current_user)):
         headers={"Content-Length": str(doc["length"]),
                  "Content-Disposition": f'inline; filename="{doc.get("filename","media")}"'},
     )
+
+
+@api_router.post("/media/proxy/{media_id}")
+async def media_proxy(media_id: str, user: dict = Depends(get_current_user)):
+    """Proxy de preview H.264 ≤720p : renvoie proxy_id si prêt, sinon lance la génération (idempotent)."""
+    try:
+        oid = ObjectId(media_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="ID média invalide")
+    doc = await db["media.files"].find_one({"_id": oid, "metadata.user_id": user["user_id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Média introuvable")
+    meta = doc.get("metadata") or {}
+    if meta.get("is_proxy"):
+        return {"proxy_id": media_id}
+    if not _is_video(meta.get("content_type") or "", doc.get("filename") or ""):
+        raise HTTPException(status_code=400, detail="Pas une vidéo")
+    if meta.get("proxy_id"):
+        return {"proxy_id": meta["proxy_id"]}
+    existing = await db["media.files"].find_one({"metadata.proxy_of": media_id}, {"_id": 1})
+    if existing:
+        return {"proxy_id": str(existing["_id"])}
+    if meta.get("proxy_skipped"):
+        return {"proxy_id": media_id}
+    if meta.get("proxy_failed"):
+        return {"status": "failed"}
+    asyncio.create_task(_auto_proxy(oid))
+    return {"status": "processing"}
 
 
 @api_router.get("/media/{media_id}/status")
@@ -2628,10 +2740,12 @@ async def _cleanup_orphan_media() -> dict:
             referenced.add(str(u["watermark_media_id"]))
     cutoff = now_utc() - timedelta(hours=24)
     scanned = deleted = freed = 0
-    async for f in db["media.files"].find({}, {"_id": 1, "length": 1, "uploadDate": 1}):
+    async for f in db["media.files"].find({}, {"_id": 1, "length": 1, "uploadDate": 1, "metadata.proxy_of": 1}):
         scanned += 1
         if str(f["_id"]) in referenced:
             continue
+        if (f.get("metadata") or {}).get("proxy_of") in referenced:
+            continue  # proxy de preview d'un média encore utilisé
         up = f.get("uploadDate")
         if up is not None:
             if up.tzinfo is None:
