@@ -199,9 +199,22 @@ def test_promo_apply_regression(admin_session, demo_session):
         assert r.status_code in (200, 400), r.text[:200]
         if r.status_code == 200:
             body = r.json()
-            assert "current_period_end" in body
+            # nouveau format : bonus Pro temporaire (promo_until) sans toucher au plan de base
+            assert "promo_until" in body or "current_period_end" in body
     finally:
         admin_session.delete(f"{BASE_URL}/api/admin/promo/{code}", timeout=15)
+        # Retire le bonus Pro appliqué au compte démo (sinon il polluerait les suites « demo = basic »)
+        try:
+            from pymongo import MongoClient
+            mongo_url = os.environ.get("MONGO_URL") or "mongodb://localhost:27017"
+            db_name = os.environ.get("DB_NAME") or "test_database"
+            cli = MongoClient(mongo_url)
+            cli[db_name].users.update_one(
+                {"email": DEMO_EMAIL},
+                {"$unset": {"promo_pro_until": "", "promo_applied": ""}})
+            cli.close()
+        except Exception:
+            pass
 
 
 # ----- Affiliate deletion at the end (mandatory cleanup) -----

@@ -87,10 +87,13 @@ class TestAuth:
         r = requests.get(f"{BASE_URL}/api/auth/me")
         assert r.status_code == 401
 
-    def test_logout_clears_session(self):
+    def test_logout_clears_session(self, mongo_db):
+        # utilisateur jetable : le mode session unique invaliderait la session démo partagée
+        email = f"TEST_logout_{uuid.uuid4().hex[:6]}@example.com"
         s = requests.Session()
-        s.post(f"{BASE_URL}/api/auth/login",
-               json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD})
+        r = s.post(f"{BASE_URL}/api/auth/register",
+                   json={"name": "Logout U", "email": email, "password": "LogoutPass1!", "cgv_accepted": True})
+        assert r.status_code == 200
         # Logout
         r = s.post(f"{BASE_URL}/api/auth/logout")
         assert r.status_code == 200
@@ -98,6 +101,7 @@ class TestAuth:
         s.cookies.clear()
         me = s.get(f"{BASE_URL}/api/auth/me")
         assert me.status_code == 401
+        mongo_db.users.delete_one({"email": email})
 
 
 # ---------------------------------------------------------------------------

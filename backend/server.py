@@ -29,33 +29,6 @@ from fastapi import UploadFile, File, Form
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
-def _bump_uvicorn_keepalive() -> None:
-    """Fix Cloudflare 520 « could not parse » intermittent : Cloudflare/l'ingress réutilisent
-    les connexions bien plus longtemps que les 5 s de keep-alive par défaut d'uvicorn — une
-    requête envoyée sur une connexion en cours de fermeture reçoit une réponse tronquée.
-    On aligne le keep-alive origine à 120 s (> délai de réutilisation des proxys)."""
-    def bump(cls):
-        orig = cls.__init__
-
-        def patched(self, *args, **kwargs):
-            orig(self, *args, **kwargs)
-            if getattr(self, "timeout_keep_alive", 0) < 120:
-                self.timeout_keep_alive = 120
-        cls.__init__ = patched
-    try:
-        from uvicorn.protocols.http import h11_impl
-        bump(h11_impl.H11Protocol)
-    except Exception:
-        pass
-    try:
-        from uvicorn.protocols.http import httptools_impl
-        bump(httptools_impl.HttpToolsProtocol)
-    except Exception:
-        pass
-
-
-_bump_uvicorn_keepalive()
-
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
@@ -2073,7 +2046,8 @@ import re as _re
 import imageio_ffmpeg
 
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
-TRANSCODE_SEM = asyncio.Semaphore(6)
+# 1 transcodage à la fois : chaque FFmpeg consomme CPU/RAM — la limite mémoire du pod prime (anti-OOM)
+TRANSCODE_SEM = asyncio.Semaphore(1)
 _VIDEO_EXT_RE = _re.compile(r"\.(mp4|mov|m4v|webm|avi|mkv|3gp|hevc)$", _re.I)
 
 
@@ -2083,32 +2057,46 @@ def _is_video(content_type: str, filename: str) -> bool:
     return bool(_VIDEO_EXT_RE.search(filename or ""))
 
 
-async def _ffmpeg_transcode(src_bytes: bytes, suffix: str):
-    """Retourne les octets MP4 optimisés, ou None si échec."""
-    with tempfile.TemporaryDirectory() as td:
-        src = os.path.join(td, "in" + (suffix or ".mp4"))
-        dst = os.path.join(td, "out.mp4")
-        with open(src, "wb") as f:
-            f.write(src_bytes)
-        cmd = [FFMPEG_EXE, "-y", "-i", src,
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-               "-profile:v", "high", "-pix_fmt", "yuv420p",
-               "-vf", "scale=w='min(1920,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
-               "-force_key_frames", "expr:gte(t,n_forced*0.5)",
-               "-c:a", "aac", "-b:a", "128k", "-ac", "2",
-               "-movflags", "+faststart", dst]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-        try:
-            _, err = await asyncio.wait_for(proc.communicate(), timeout=900)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return None
-        if proc.returncode != 0 or not os.path.exists(dst) or os.path.getsize(dst) == 0:
-            logger.warning("FFmpeg échec: %s", (err or b"")[-300:])
-            return None
-        with open(dst, "rb") as f:
-            return f.read()
+async def _grid_to_file(oid, path: str):
+    """Copie un fichier GridFS sur disque par morceaux (jamais le fichier entier en RAM)."""
+    grid_out = await media_fs.open_download_stream(oid)
+    with open(path, "wb") as f:
+        while True:
+            chunk = await grid_out.readchunk()
+            if not chunk:
+                break
+            f.write(chunk)
+
+
+async def _afile_iter(path: str, chunk: int = 1 << 20):
+    with open(path, "rb") as f:
+        while True:
+            b = f.read(chunk)
+            if not b:
+                return
+            yield b
+
+
+async def _ffmpeg_transcode(src: str, dst: str) -> bool:
+    """Transcode src → dst sur disque. True si succès."""
+    cmd = [FFMPEG_EXE, "-y", "-i", src, "-threads", "2",
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+           "-profile:v", "high", "-pix_fmt", "yuv420p",
+           "-vf", "scale=w='min(1920,iw)':h='min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+           "-force_key_frames", "expr:gte(t,n_forced*0.5)",
+           "-c:a", "aac", "-b:a", "128k", "-ac", "2",
+           "-movflags", "+faststart", dst]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    try:
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=900)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return False
+    if proc.returncode != 0 or not os.path.exists(dst) or os.path.getsize(dst) == 0:
+        logger.warning("FFmpeg échec: %s", (err or b"")[-300:])
+        return False
+    return True
 
 
 # --- Mux : transcodage externalisé (encodage "basic" gratuit, asset supprimé après) ---
@@ -2170,42 +2158,49 @@ async def _mux_wait_mp4(cx, asset_id: str) -> tuple:
     return None, None
 
 
-async def _mux_transcode(src_bytes: bytes):
-    """Upload vers Mux → asset H.264 1080p max → télécharge le MP4 → supprime l'asset.
-    Retourne les octets MP4, ou None si échec (repli FFmpeg local)."""
+async def _mux_transcode(src: str, dst: str) -> bool:
+    """Upload (flux disque) vers Mux → asset H.264 1080p max → télécharge le MP4 en flux vers dst.
+    True si succès, False sinon (repli FFmpeg local). Rien n'est chargé en RAM."""
     if not MUX_TOKEN_ID or not MUX_TOKEN_SECRET:
-        return None
+        return False
     asset_id = None
     auth = (MUX_TOKEN_ID, MUX_TOKEN_SECRET)
     try:
         async with httpx.AsyncClient(auth=auth, timeout=120) as cx:
             up = await _mux_create_upload(cx)
             if not up:
-                return None
-            # Envoi du fichier (client sans auth : l'URL d'upload est déjà signée)
+                return False
+            # Envoi du fichier en flux (client sans auth : l'URL d'upload est déjà signée)
             async with httpx.AsyncClient(timeout=300) as plain:
-                pr = await plain.put(up["url"], content=src_bytes,
-                                     headers={"Content-Type": "application/octet-stream"})
+                pr = await plain.put(up["url"], content=_afile_iter(src),
+                                     headers={"Content-Type": "application/octet-stream",
+                                              "Content-Length": str(os.path.getsize(src))})
                 if pr.status_code >= 300:
                     logger.warning("Mux upload PUT %s", pr.status_code)
-                    return None
+                    return False
             asset_id = await _mux_wait_asset_id(cx, up["id"])
             if not asset_id:
-                return None
+                return False
             playback_id, mp4_name = await _mux_wait_mp4(cx, asset_id)
             if not (mp4_name and playback_id):
                 logger.warning("Mux : rendition MP4 non prête (asset %s)", asset_id)
-                return None
+                return False
             async with httpx.AsyncClient(timeout=300, follow_redirects=True) as plain:
-                dl = await plain.get(f"https://stream.mux.com/{playback_id}/{mp4_name}")
-                if dl.status_code >= 300 or not dl.content:
-                    logger.warning("Mux download %s", dl.status_code)
-                    return None
-                logger.info("Transcodage Mux OK (asset %s) : %d → %d octets", asset_id, len(src_bytes), len(dl.content))
-                return dl.content
+                async with plain.stream("GET", f"https://stream.mux.com/{playback_id}/{mp4_name}") as dl:
+                    if dl.status_code >= 300:
+                        logger.warning("Mux download %s", dl.status_code)
+                        return False
+                    with open(dst, "wb") as f:
+                        async for chunk in dl.aiter_bytes(1 << 20):
+                            f.write(chunk)
+            if os.path.getsize(dst) == 0:
+                return False
+            logger.info("Transcodage Mux OK (asset %s) : %d → %d octets",
+                        asset_id, os.path.getsize(src), os.path.getsize(dst))
+            return True
     except Exception:
         logger.exception("Transcodage Mux échoué")
-        return None
+        return False
     finally:
         if asset_id:
             try:
@@ -2215,20 +2210,16 @@ async def _mux_transcode(src_bytes: bytes):
                 logger.warning("Suppression asset Mux %s impossible (à nettoyer)", asset_id)
 
 
-async def _probe_video(src_bytes: bytes, suffix: str):
+async def _probe_video(src: str):
     """Sonde rapide (ffmpeg -i) : codec vidéo, dimensions, durée. None si illisible."""
-    with tempfile.TemporaryDirectory() as td:
-        src = os.path.join(td, "in" + (suffix or ".mp4"))
-        with open(src, "wb") as f:
-            f.write(src_bytes)
-        proc = await asyncio.create_subprocess_exec(
-            FFMPEG_EXE, "-hide_banner", "-i", src,
-            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-        try:
-            _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return None
+    proc = await asyncio.create_subprocess_exec(
+        FFMPEG_EXE, "-hide_banner", "-i", src,
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    try:
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return None
     out = (err or b"").decode("utf-8", "ignore")
     m_v = _re.search(r"Video:\s*(\w+).*?(\d{2,5})x(\d{2,5})", out)
     m_d = _re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", out)
@@ -2242,40 +2233,44 @@ async def _probe_video(src_bytes: bytes, suffix: str):
 
 async def _transcode_media(oid):
     """Remplace le fichier GridFS par sa version optimisée (même _id conservé).
-    Transcodage via Mux (rapide, externalisé) avec repli FFmpeg local."""
+    Transcodage via Mux (rapide, externalisé) avec repli FFmpeg local — tout en flux disque, zéro RAM."""
     async with TRANSCODE_SEM:
         doc = await db["media.files"].find_one({"_id": oid})
         if not doc:
             return
         meta = doc.get("metadata") or {}
         try:
-            grid_out = await media_fs.open_download_stream(oid)
-            raw = await grid_out.read()
-            suffix = os.path.splitext(doc.get("filename") or "")[1]
-            # Déjà propre (H.264 ≤1080p, débit raisonnable) ? → rien à faire : optimisation instantanée
-            probe = await _probe_video(raw, suffix)
-            if probe and probe["codec"] == "h264" and min(probe["w"], probe["h"]) <= 1080:
-                bitrate = (len(raw) * 8 / probe["duration"]) if probe["duration"] > 0 else 0
-                if 0 < bitrate <= 12_000_000:
-                    await db["media.files"].update_one(
-                        {"_id": oid},
-                        {"$set": {"metadata.transcoded": True, "metadata.processing": False,
-                                  "metadata.transcode_skipped": True}})
-                    logger.info("Transcodage sauté %s : déjà H.264 %dx%d @ %.1f Mbps",
-                                oid, probe["w"], probe["h"], bitrate / 1e6)
+            with tempfile.TemporaryDirectory() as td:
+                suffix = os.path.splitext(doc.get("filename") or "")[1]
+                src = os.path.join(td, "in" + (suffix or ".mp4"))
+                dst = os.path.join(td, "out.mp4")
+                await _grid_to_file(oid, src)
+                size = os.path.getsize(src)
+                # Déjà propre (H.264 ≤1080p, débit raisonnable) ? → rien à faire : optimisation instantanée
+                probe = await _probe_video(src)
+                if probe and probe["codec"] == "h264" and min(probe["w"], probe["h"]) <= 1080:
+                    bitrate = (size * 8 / probe["duration"]) if probe["duration"] > 0 else 0
+                    if 0 < bitrate <= 12_000_000:
+                        await db["media.files"].update_one(
+                            {"_id": oid},
+                            {"$set": {"metadata.transcoded": True, "metadata.processing": False,
+                                      "metadata.transcode_skipped": True}})
+                        logger.info("Transcodage sauté %s : déjà H.264 %dx%d @ %.1f Mbps",
+                                    oid, probe["w"], probe["h"], bitrate / 1e6)
+                        asyncio.create_task(_auto_proxy(oid))
+                        return
+                ok = await _mux_transcode(src, dst)
+                if not ok:
+                    ok = await _ffmpeg_transcode(src, dst)
+                if ok:
+                    fname = os.path.splitext(doc.get("filename") or "media")[0] + ".mp4"
+                    new_meta = {**meta, "content_type": "video/mp4", "transcoded": True, "processing": False}
+                    await media_fs.delete(oid)
+                    with open(dst, "rb") as f:
+                        await media_fs.upload_from_stream_with_id(oid, fname, f, metadata=new_meta)
+                    logger.info("Transcodage OK %s : %d → %d octets", oid, size, os.path.getsize(dst))
                     asyncio.create_task(_auto_proxy(oid))
                     return
-            out = await _mux_transcode(raw)
-            if not out:
-                out = await _ffmpeg_transcode(raw, suffix)
-            if out:
-                fname = os.path.splitext(doc.get("filename") or "media")[0] + ".mp4"
-                new_meta = {**meta, "content_type": "video/mp4", "transcoded": True, "processing": False}
-                await media_fs.delete(oid)
-                await media_fs.upload_from_stream_with_id(oid, fname, out, metadata=new_meta)
-                logger.info("Transcodage OK %s : %d → %d octets", oid, len(raw), len(out))
-                asyncio.create_task(_auto_proxy(oid))
-                return
         except Exception:
             logger.exception("Transcodage échoué %s", oid)
         await db["media.files"].update_one(
@@ -2284,31 +2279,25 @@ async def _transcode_media(oid):
         asyncio.create_task(_auto_proxy(oid))
 
 
-async def _ffmpeg_proxy(src_bytes: bytes, suffix: str):
+async def _ffmpeg_proxy(src: str, dst: str) -> bool:
     """Proxy de preview : H.264 main ≤720p sans audio, keyframes toutes les 0,5 s (décodage WebCodecs fluide)."""
-    with tempfile.TemporaryDirectory() as td:
-        src = os.path.join(td, "in" + (suffix or ".mp4"))
-        dst = os.path.join(td, "out.mp4")
-        with open(src, "wb") as f:
-            f.write(src_bytes)
-        cmd = [FFMPEG_EXE, "-y", "-i", src,
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
-               "-profile:v", "main", "-level", "3.1", "-pix_fmt", "yuv420p",
-               "-vf", "scale=w='if(gt(iw,ih),-2,min(720,iw))':h='if(gt(iw,ih),min(720,ih),-2)',crop=trunc(iw/2)*2:trunc(ih/2)*2",
-               "-force_key_frames", "expr:gte(t,n_forced*0.5)",
-               "-an", "-movflags", "+faststart", dst]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-        try:
-            _, err = await asyncio.wait_for(proc.communicate(), timeout=600)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return None
-        if proc.returncode != 0 or not os.path.exists(dst) or os.path.getsize(dst) == 0:
-            logger.warning("FFmpeg proxy échec: %s", (err or b"")[-300:])
-            return None
-        with open(dst, "rb") as f:
-            return f.read()
+    cmd = [FFMPEG_EXE, "-y", "-i", src, "-threads", "2",
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
+           "-profile:v", "main", "-level", "3.1", "-pix_fmt", "yuv420p",
+           "-vf", "scale=w='if(gt(iw,ih),-2,min(720,iw))':h='if(gt(iw,ih),min(720,ih),-2)',crop=trunc(iw/2)*2:trunc(ih/2)*2",
+           "-force_key_frames", "expr:gte(t,n_forced*0.5)",
+           "-an", "-movflags", "+faststart", dst]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    try:
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=600)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return False
+    if proc.returncode != 0 or not os.path.exists(dst) or os.path.getsize(dst) == 0:
+        logger.warning("FFmpeg proxy échec: %s", (err or b"")[-300:])
+        return False
+    return True
 
 
 async def _make_proxy(oid):
@@ -2322,28 +2311,31 @@ async def _make_proxy(oid):
             await db["media.files"].update_one({"_id": oid}, {"$unset": {"metadata.proxy_processing": ""}})
             return
         try:
-            grid_out = await media_fs.open_download_stream(oid)
-            raw = await grid_out.read()
-            suffix = os.path.splitext(doc.get("filename") or "")[1]
-            probe = await _probe_video(raw, suffix)
-            # déjà léger (H.264 ≤720p) → le média lui-même sert de proxy
-            if probe and probe["codec"] == "h264" and min(probe["w"], probe["h"]) <= 720:
-                await db["media.files"].update_one(
-                    {"_id": oid},
-                    {"$set": {"metadata.proxy_skipped": True}, "$unset": {"metadata.proxy_processing": ""}})
-                return
-            out = await _ffmpeg_proxy(raw, suffix)
-            if out:
-                fname = os.path.splitext(doc.get("filename") or "media")[0] + ".proxy.mp4"
-                proxy_id = await media_fs.upload_from_stream(
-                    fname, out,
-                    metadata={"user_id": meta.get("user_id"), "proxy_of": str(oid), "is_proxy": True,
-                              "content_type": "video/mp4", "created_at": iso(now_utc())})
-                await db["media.files"].update_one(
-                    {"_id": oid},
-                    {"$set": {"metadata.proxy_id": str(proxy_id)}, "$unset": {"metadata.proxy_processing": ""}})
-                logger.info("Proxy preview OK %s → %s (%d → %d octets)", oid, proxy_id, len(raw), len(out))
-                return
+            with tempfile.TemporaryDirectory() as td:
+                suffix = os.path.splitext(doc.get("filename") or "")[1]
+                src = os.path.join(td, "in" + (suffix or ".mp4"))
+                dst = os.path.join(td, "out.mp4")
+                await _grid_to_file(oid, src)
+                probe = await _probe_video(src)
+                # déjà léger (H.264 ≤720p) → le média lui-même sert de proxy
+                if probe and probe["codec"] == "h264" and min(probe["w"], probe["h"]) <= 720:
+                    await db["media.files"].update_one(
+                        {"_id": oid},
+                        {"$set": {"metadata.proxy_skipped": True}, "$unset": {"metadata.proxy_processing": ""}})
+                    return
+                if await _ffmpeg_proxy(src, dst):
+                    fname = os.path.splitext(doc.get("filename") or "media")[0] + ".proxy.mp4"
+                    with open(dst, "rb") as f:
+                        proxy_id = await media_fs.upload_from_stream(
+                            fname, f,
+                            metadata={"user_id": meta.get("user_id"), "proxy_of": str(oid), "is_proxy": True,
+                                      "content_type": "video/mp4", "created_at": iso(now_utc())})
+                    await db["media.files"].update_one(
+                        {"_id": oid},
+                        {"$set": {"metadata.proxy_id": str(proxy_id)}, "$unset": {"metadata.proxy_processing": ""}})
+                    logger.info("Proxy preview OK %s → %s (%d → %d octets)",
+                                oid, proxy_id, os.path.getsize(src), os.path.getsize(dst))
+                    return
         except Exception:
             logger.exception("Proxy preview échoué %s", oid)
         await db["media.files"].update_one(
@@ -2380,11 +2372,17 @@ async def media_quota(user: dict = Depends(get_current_user)):
     return {"tier": info["tier"], "used": used, "quota": STORAGE_QUOTAS[info["tier"]]}
 
 
-async def _store_media(user: dict, content: bytes, filename: str, content_type: str) -> dict:
-    if len(content) > MAX_MEDIA_SIZE:
+async def _store_media_file(user: dict, path: str, filename: str, content_type: str) -> dict:
+    """Range un fichier disque dans GridFS (hash + upload en flux — jamais le fichier entier en RAM)."""
+    size = os.path.getsize(path)
+    if size > MAX_MEDIA_SIZE:
         raise HTTPException(status_code=413, detail="Fichier trop lourd (max 80 Mo)")
     info = sub_info(user)
-    sha = hashlib.sha256(content).hexdigest()
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    sha = h.hexdigest()
     # Dédup : même fichier déjà stocké pour cet utilisateur → on renvoie l'existant
     existing = await db["media.files"].find_one(
         {"metadata.user_id": user["user_id"], "metadata.sha256": sha}
@@ -2394,7 +2392,7 @@ async def _store_media(user: dict, content: bytes, filename: str, content_type: 
         return {"media_id": str(existing["_id"]), "size": existing["length"], "deduped": True,
                 "processing": bool(emeta.get("processing"))}
     used = await _storage_used(user["user_id"])
-    if used + len(content) > STORAGE_QUOTAS[info["tier"]]:
+    if used + size > STORAGE_QUOTAS[info["tier"]]:
         quota_mb = STORAGE_QUOTAS[info["tier"]] // 1_000_000
         raise HTTPException(
             status_code=413,
@@ -2409,44 +2407,73 @@ async def _store_media(user: dict, content: bytes, filename: str, content_type: 
         if nvids >= 5:
             raise HTTPException(status_code=403,
                                 detail="5 clips maximum sans abonnement — débloque tout avec ton essai Pro (3 jours offerts).")
-    media_id = await media_fs.upload_from_stream(
-        filename or "media",
-        content,
-        metadata={
-            "user_id": user["user_id"], "sha256": sha,
-            "content_type": content_type or "application/octet-stream",
-            "created_at": iso(now_utc()),
-            "processing": is_video,
-        },
-    )
+    with open(path, "rb") as f:
+        media_id = await media_fs.upload_from_stream(
+            filename or "media",
+            f,
+            metadata={
+                "user_id": user["user_id"], "sha256": sha,
+                "content_type": content_type or "application/octet-stream",
+                "created_at": iso(now_utc()),
+                "processing": is_video,
+            },
+        )
     if is_video:
         asyncio.create_task(_transcode_media(media_id))
-    return {"media_id": str(media_id), "size": len(content), "deduped": False, "processing": is_video}
+    return {"media_id": str(media_id), "size": size, "deduped": False, "processing": is_video}
 
 
 @api_router.post("/media/upload")
 async def media_upload(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    content = await file.read()
-    return await _store_media(user, content, file.filename or "media", file.content_type or "")
+    tmp = tempfile.mkdtemp(prefix="up_")
+    try:
+        path = os.path.join(tmp, "up.bin")
+        size = 0
+        with open(path, "wb") as f:
+            while True:
+                chunk = await file.read(1 << 20)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_MEDIA_SIZE:
+                    raise HTTPException(status_code=413, detail="Fichier trop lourd (max 80 Mo)")
+                f.write(chunk)
+        return await _store_media_file(user, path, file.filename or "media", file.content_type or "")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 @api_router.post("/media/import-url")
 async def media_import_url(payload: dict, user: dict = Depends(get_current_user)):
-    """Import serveur d'un clip Pexels : téléchargement + transcodage sans re-upload client."""
+    """Import serveur d'un clip Pexels : téléchargement en flux disque + transcodage sans re-upload client."""
     from urllib.parse import urlparse
     url = (payload.get("url") or "").strip()
     name = (payload.get("name") or "").strip() or "clip.mp4"
     host = (urlparse(url).hostname or "") if url else ""
     if not url.startswith("https://") or not (host == "pexels.com" or host.endswith(".pexels.com")):
         raise HTTPException(status_code=400, detail="URL non autorisée")
+    tmp = tempfile.mkdtemp(prefix="imp_")
     try:
-        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as cx:
-            r = await cx.get(url)
-    except Exception:
-        raise HTTPException(status_code=502, detail="Clip indisponible — réessaie")
-    if r.status_code != 200 or not r.content:
-        raise HTTPException(status_code=502, detail="Clip indisponible — réessaie")
-    return await _store_media(user, r.content, name, r.headers.get("content-type") or "video/mp4")
+        path = os.path.join(tmp, "clip.mp4")
+        ctype = "video/mp4"
+        try:
+            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as cx:
+                async with cx.stream("GET", url) as r:
+                    if r.status_code != 200:
+                        raise HTTPException(status_code=502, detail="Clip indisponible — réessaie")
+                    ctype = r.headers.get("content-type") or "video/mp4"
+                    with open(path, "wb") as f:
+                        async for chunk in r.aiter_bytes(1 << 20):
+                            f.write(chunk)
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=502, detail="Clip indisponible — réessaie")
+        if not os.path.getsize(path):
+            raise HTTPException(status_code=502, detail="Clip indisponible — réessaie")
+        return await _store_media_file(user, path, name, ctype)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 IMPORT_LINK_JOBS: dict = {}
@@ -2505,10 +2532,8 @@ async def _run_import_link(job_id: str, url: str, user: dict):
                 raise RuntimeError("YouTube bloque parfois les téléchargements depuis nos serveurs — réessaie, ou utilise un lien TikTok/Vimeo/.mp4 direct, ou télécharge la vidéo puis dépose le fichier")
             raise RuntimeError("Lien non téléchargeable — vérifie qu'il pointe vers une vidéo publique")
         path = os.path.join(tmpdir, files[0])
-        with open(path, "rb") as fh:
-            content = fh.read()
         job["status"] = "storing"
-        stored = await _store_media(user, content, files[0], "video/mp4")
+        stored = await _store_media_file(user, path, files[0], "video/mp4")
         job.update({"status": "done", "media_id": stored["media_id"], "filename": files[0]})
     except HTTPException as e:
         job.update({"status": "error", "error": e.detail})
@@ -2676,19 +2701,27 @@ async def admin_media_migrate_status(user: dict = Depends(get_current_user)):
 async def export_finalize(video: UploadFile = File(...), audio: UploadFile = File(...),
                           user: dict = Depends(get_current_user)):
     """Assemble le MP4 vidéo (encodé côté client via WebCodecs) avec la piste audio WAV.
-    Utilisé par Safari (pas d'AudioEncoder) : -c:v copy → zéro ré-encodage vidéo, très rapide."""
-    v = await video.read()
-    a = await audio.read()
-    if not v or not a:
-        raise HTTPException(status_code=400, detail="Fichiers manquants")
-    if len(v) > 500_000_000 or len(a) > 100_000_000:
-        raise HTTPException(status_code=413, detail="Export trop volumineux")
-    with tempfile.TemporaryDirectory() as td:
+    Utilisé par Safari (pas d'AudioEncoder) : -c:v copy → zéro ré-encodage vidéo, très rapide.
+    Tout passe par le disque (copie et réponse en flux) — jamais l'export entier en RAM."""
+    td = tempfile.mkdtemp(prefix="fin_")
+
+    async def spool(up: UploadFile, path: str, max_bytes: int) -> int:
+        size = 0
+        with open(path, "wb") as f:
+            while True:
+                chunk = await up.read(1 << 20)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(status_code=413, detail="Export trop volumineux")
+                f.write(chunk)
+        return size
+
+    try:
         vp, ap, op = os.path.join(td, "v.mp4"), os.path.join(td, "a.wav"), os.path.join(td, "out.mp4")
-        with open(vp, "wb") as f:
-            f.write(v)
-        with open(ap, "wb") as f:
-            f.write(a)
+        if not await spool(video, vp, 500_000_000) or not await spool(audio, ap, 100_000_000):
+            raise HTTPException(status_code=400, detail="Fichiers manquants")
         cmd = [FFMPEG_EXE, "-y", "-i", vp, "-i", ap,
                "-map", "0:v:0", "-map", "1:a:0",
                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
@@ -2703,9 +2736,28 @@ async def export_finalize(video: UploadFile = File(...), audio: UploadFile = Fil
         if proc.returncode != 0 or not os.path.exists(op):
             logger.warning("export_finalize ffmpeg : %s", (err or b"")[-300:])
             raise HTTPException(status_code=500, detail="Assemblage audio impossible")
-        with open(op, "rb") as f:
-            out = f.read()
-    return Response(content=out, media_type="video/mp4")
+        for p in (vp, ap):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+        def stream():
+            try:
+                with open(op, "rb") as f:
+                    while True:
+                        chunk = f.read(1 << 20)
+                        if not chunk:
+                            break
+                        yield chunk
+            finally:
+                shutil.rmtree(td, ignore_errors=True)
+
+        return _SR(stream(), media_type="video/mp4",
+                   headers={"Content-Length": str(os.path.getsize(op))})
+    except Exception:
+        shutil.rmtree(td, ignore_errors=True)
+        raise
 
 
 def _project_media_ids(state: dict) -> set:
@@ -3357,9 +3409,7 @@ async def _run_render(job_id: str, user_id: str, state: dict):
         files = {}
         for i, mid in enumerate([audio_id] + clip_ids):
             path = os.path.join(work, f"m{i}.bin")
-            with open(path, "wb") as f:
-                stream = await media_fs.open_download_stream(ObjectId(mid))
-                f.write(await stream.read())
+            await _grid_to_file(ObjectId(mid), path)
             files[mid] = path
         cuts = sorted({round(float(t.get("time") if isinstance(t, dict) else t), 3)
                        for t in (state.get("cuts") or [])

@@ -65,6 +65,17 @@ def demo_session(mongo_db, demo_user_id):
     yield s
 
 
+@pytest.fixture(scope="module", autouse=True)
+def preserve_demo_projects(mongo_db, demo_user_id):
+    """Sauvegarde les projets fixture du compte démo (non TEST_) et les restaure après le module
+    — ce module fait des delete_many destructifs dont dépendent d'autres suites."""
+    saved = list(mongo_db.projects.find({"user_id": demo_user_id,
+                                         "title": {"$not": {"$regex": "^TEST_"}}}))
+    yield
+    for doc in saved:
+        mongo_db.projects.replace_one({"project_id": doc["project_id"]}, doc, upsert=True)
+
+
 @pytest.fixture(scope="module")
 def vip_session():
     s = requests.Session()
@@ -351,11 +362,13 @@ class TestProjectQuotas:
 
 # -------------------------- Régression --------------------------
 class TestRegression:
-    def test_login_still_works(self):
+    def test_login_still_works(self, demo_session):
         s = requests.Session()
         r = s.post(f"{BASE_URL}/api/auth/login",
                    json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD})
         assert r.status_code == 200
+        # mode session unique : ce login invalide l'ancienne session → on transfère les cookies
+        demo_session.cookies.update(s.cookies)
 
     def test_export_quota_still_works(self, demo_session):
         r = demo_session.get(f"{BASE_URL}/api/export/quota")

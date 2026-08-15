@@ -692,3 +692,15 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Bug corrigé : startPexelsImport appelé mais JAMAIS défini (ReferenceError à l'ajout d'un clip Pexels) → défini via API.importMedia en arrière-plan.
 - ✅ Nettoyage : ancienne route dupliquée /media/proxy (sans auth, code mort ligne 3420) supprimée.
 - Testé : testing_agent iteration_24.json — backend 7/7 PASS, frontend 100 % PASS (0 erreur JS). ⚠️ À REDÉPLOYER pour effet en production.
+
+## RCA Cloudflare « could not parse » + optimisation mémoire (15 août 2026)
+- 🔎 RCA (agent déployeur, prod) : pod backend OOMKilled (exit 137, 13 restarts) — tier_0 Starter = 512Mi. Chaque kill coupe les requêtes en vol → erreur Cloudflare intermittente au login. PAS un bug de code login ni de keep-alive.
+- ⚠️ ACTION UTILISATEUR REQUISE : monter le tier dans Deployment Panel → Resources (min Grow, idéal Scale vu FFmpeg).
+- ✅ Code — empreinte mémoire divisée : pipeline transcodage 100 % flux disque (_grid_to_file, _ffmpeg_transcode/_ffmpeg_proxy sur chemins, _mux_transcode upload/download streaming avec Content-Length), TRANSCODE_SEM 6→1, ffmpeg -threads 2.
+- ✅ /api/media/upload et /api/media/import-url : spool disque par morceaux de 1 Mo (_store_media_file remplace _store_media bytes), hash sha256 en flux.
+- ✅ /api/export/finalize (Safari, jusqu'à 600 Mo) : copie UploadFile→disque par morceaux + réponse en flux (plus jamais l'export entier en RAM).
+- ✅ _run_render (mobile) : téléchargement GridFS en flux.
+- ✅ Monkey-patch keep-alive uvicorn retiré (faux-piste confirmée par la RCA).
+- ✅ Suite pytest réparée (pollution inter-tests pré-existante) : 159/159 PASS. Corrigés : promo REGRESSDAY laissait un bonus Pro sur démo ; test_projects_lot4 supprimait les projets fixture (fixture preserve ajoutée) ; logins multiples vs mode session unique (logout test → user jetable, cookies transférés dans TestRegression) ; assertion promo format obsolète. Projets démo restaurés depuis les backups.
+- 📌 Note séparée : quota Mux atteint (plan gratuit 10 assets) → tous les transcodages passent par le repli FFmpeg local (plus de CPU/RAM sur le pod). À traiter : nettoyer les assets Mux ou upgrader le plan Mux.
+- ⚠️ À REDÉPLOYER après montée de tier.
