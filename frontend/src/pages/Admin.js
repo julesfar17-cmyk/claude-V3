@@ -11,12 +11,12 @@ import { PreviewTelemetryAdmin } from "@/components/PreviewTelemetryAdmin";
 const fmt = (n, suffix = "") => `${n}${suffix}`;
 
 const REASON_LABELS = {
-  too_expensive: "💸 Trop cher",
-  not_enough_use: "🕒 Pas assez utilisé",
-  missing_features: "🧩 Fonctionnalités manquantes",
-  technical_issues: "🐞 Problèmes techniques",
-  promo_done: "🎤 Promo terminée",
-  other: "🤷 Autre",
+  too_expensive: "Trop cher",
+  not_enough_use: "Pas assez utilisé",
+  missing_features: "Fonctionnalités manquantes",
+  technical_issues: "Problèmes techniques",
+  promo_done: "Promo terminée",
+  other: "Autre",
 };
 
 const ONB_QUESTIONS = {
@@ -27,11 +27,11 @@ const ONB_QUESTIONS = {
   source: "Comment ils nous ont trouvés ?",
 };
 const ONB_ANSWER_LABELS = {
-  artiste: "🎤 Artiste", beatmaker: "🎹 Beatmaker/prod", manager: "📱 Manager/label", createur: "🎬 Créateur de contenu",
+  artiste: "Artiste", beatmaker: "Beatmaker/prod", manager: "Manager/label", createur: "Créateur de contenu",
   rap_drill: "Rap / Drill", plugg_hyperpop: "Plugg / Cloud / Hyperpop", afro_shatta: "Afro / Shatta",
   pop_chanson: "Pop / Chanson", electro_club: "Électro / Club", autre: "Autre",
-  cette_semaine: "🔥 Cette semaine", ce_mois: "📅 Ce mois-ci", plusieurs: "🎧 Plusieurs en préparation", pas_de_date: "💭 Pas de date",
-  capcut: "✂️ CapCut / à la main", pochette: "🖼 Pochette fixe", rarement: "🤷 Poste rarement", debute: "🚀 Débute",
+  cette_semaine: "Cette semaine", ce_mois: "Ce mois-ci", plusieurs: "Plusieurs en préparation", pas_de_date: "Pas de date",
+  capcut: "CapCut / à la main", pochette: "Pochette fixe", rarement: "Poste rarement", debute: "Débute",
   tiktok: "TikTok", bouche_a_oreille: "Bouche à oreille", instagram: "Instagram", communautes: "Discord / Facebook", google: "Google",
 };
 
@@ -250,14 +250,14 @@ export default function Admin() {
                   data-testid="admin-reconcile-button"
                   className="bg-primary text-white font-bold px-5 py-2.5 hover:opacity-90 transition-colors disabled:opacity-50"
                 >
-                  {reconciling ? "Vérification Stripe…" : "🔁 Réconcilier maintenant"}
+                  {reconciling ? "Vérification Stripe…" : "Réconcilier maintenant"}
                 </button>
                 <button
                   onClick={setupWebhook}
                   data-testid="admin-webhook-setup-button"
                   className="border border-border px-4 py-2.5 text-xs font-osd tracking-wider hover:border-foreground transition-colors"
                 >
-                  {webhook?.configured ? "WEBHOOK STRIPE ✓ ACTIF" : "⚡ ACTIVER LE WEBHOOK STRIPE"}
+                  {webhook?.configured ? "WEBHOOK STRIPE ✓ ACTIF" : "ACTIVER LE WEBHOOK STRIPE"}
                 </button>
               </div>
               {webhook?.url && (
@@ -288,7 +288,7 @@ export default function Admin() {
                 Qui a annulé son abonnement (ou son essai), quand, et jusqu'à quand son accès court encore.
               </p>
               {!cancellations?.cancellations?.length ? (
-                <p className="text-sm text-muted-foreground" data-testid="admin-cancellations-empty">Aucune annulation pour l'instant 🎉</p>
+                <p className="text-sm text-muted-foreground" data-testid="admin-cancellations-empty">Aucune annulation pour l'instant </p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -367,7 +367,7 @@ export default function Admin() {
                         {stats.cancel_feedback.recent.filter((f) => f.comment).slice(0, 8).map((f, i) => (
                           <p key={i} className="text-sm text-muted-foreground border-l-2 border-border pl-3">
                             « {f.comment} » — <span className="text-foreground">{f.email}</span>{" "}
-                            ({REASON_LABELS[f.reason] || f.reason}{f.retained === true ? " · resté ✦" : f.retained === false ? " · parti" : ""})
+                            ({REASON_LABELS[f.reason] || f.reason}{f.retained === true ? " · resté " : f.retained === false ? " · parti" : ""})
                           </p>
                         ))}
                       </div>
@@ -390,7 +390,7 @@ export default function Admin() {
                 />
                 <button type="submit" disabled={custBusy} data-testid="admin-customer-search-button"
                   className="border border-border px-5 py-2.5 text-xs font-osd tracking-wider hover:border-foreground transition-colors disabled:opacity-50">
-                  {custBusy ? "…" : "🔎 RECHERCHER"}
+                  {custBusy ? "…" : "RECHERCHER"}
                 </button>
               </form>
               {cust && (
@@ -436,7 +436,7 @@ export default function Admin() {
                           <div>
                             <button onClick={() => setRefundArm(true)} data-testid="admin-refund-customer-button"
                               className="border border-border px-4 py-2.5 text-xs font-osd tracking-wider hover:border-foreground transition-colors">
-                              💶 REMBOURSER LE DERNIER PAIEMENT
+                              REMBOURSER LE DERNIER PAIEMENT
                             </button>
                           </div>
                         ) : (
@@ -454,7 +454,7 @@ export default function Admin() {
                         <div>
                           <button onClick={() => setCustArm(true)} data-testid="admin-cancel-customer-button"
                             className="border border-primary text-primary px-4 py-2.5 text-xs font-osd tracking-wider hover:bg-primary hover:text-white transition-colors">
-                            🛑 ANNULER SON ABONNEMENT IMMÉDIATEMENT
+                            ANNULER SON ABONNEMENT IMMÉDIATEMENT
                           </button>
                         </div>
                       ) : (
@@ -485,7 +485,7 @@ export default function Admin() {
                 data-testid="admin-media-cleanup-button"
                 className="border border-border px-4 py-2.5 text-xs font-osd tracking-wider hover:border-foreground transition-colors disabled:opacity-50"
               >
-                {cleaning ? "Nettoyage en cours…" : "🧹 NETTOYER MAINTENANT"}
+                {cleaning ? "Nettoyage en cours…" : "NETTOYER MAINTENANT"}
               </button>
               {cleanupResult && (
                 <p className="mt-3 text-sm" data-testid="admin-media-cleanup-result">

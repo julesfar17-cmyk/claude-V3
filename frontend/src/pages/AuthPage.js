@@ -68,7 +68,7 @@ export default function AuthPage() {
             </h1>
             {refCode && isRegister && (
               <div className="mb-5 border border-[#d9ffd0]/40 bg-[#d9ffd0]/5 px-4 py-3 font-osd text-[11px] tracking-wider text-[#d9ffd0]" data-testid="ref-banner">
-                ✦ Parrainage actif : code <b>{refCode}</b> — +1 mois offert dès ton 1er paiement
+                Parrainage actif : code <b>{refCode}</b> — +1 mois offert dès ton 1er paiement
               </div>
             )}
 
@@ -162,7 +162,7 @@ export default function AuthPage() {
               )}
               {error && (
                 <p className="text-sm text-primary" data-testid="auth-error-message">
-                  ⚠ {error}
+                  {error}
                 </p>
               )}
               <button
@@ -194,7 +194,7 @@ export default function AuthPage() {
             </p>
           </div>
           <p className="mt-5 font-osd text-[11px] text-muted-foreground text-center tracking-wider">
-            🎁 3 JOURS D'ESSAI OFFERTS SUR LE PLAN PRO • ANNULABLE EN 2 CLICS
+            3 JOURS D'ESSAI OFFERTS SUR LE PLAN PRO • ANNULABLE EN 2 CLICS
           </p>
         </div>
       </div>

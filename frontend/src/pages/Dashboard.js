@@ -18,12 +18,12 @@ const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "";
 
 const CANCEL_REASONS = [
-  ["too_expensive", "💸 Trop cher pour moi"],
-  ["not_enough_use", "🕒 Je ne l'utilise pas assez"],
-  ["missing_features", "🧩 Il manque des fonctionnalités"],
-  ["technical_issues", "🐞 Problèmes techniques / bugs"],
-  ["promo_done", "🎤 Ma promo est terminée"],
-  ["other", "🤷 Autre raison"],
+  ["too_expensive", "Trop cher pour moi"],
+  ["not_enough_use", "Je ne l'utilise pas assez"],
+  ["missing_features", "Il manque des fonctionnalités"],
+  ["technical_issues", "Problèmes techniques / bugs"],
+  ["promo_done", "Ma promo est terminée"],
+  ["other", "Autre raison"],
 ];
 
 export default function Dashboard() {
@@ -76,7 +76,7 @@ export default function Dashboard() {
         if (data.payment_status === "paid") {
           await refreshUser();
           setCheckingPayment(false);
-          toast.success("Paiement confirmé — ton abonnement est actif ! 🎉");
+          toast.success("Paiement confirmé — ton abonnement est actif ! ");
           navigate("/dashboard", { replace: true });
           return;
         }
@@ -126,7 +126,7 @@ export default function Dashboard() {
         className="absolute -top-2.5 left-2 bg-[#d9ffd0] text-background font-osd text-[9px] tracking-wider px-2 py-0.5"
         data-testid={`promo-badge-${plan}`}
       >
-        🎁 {affiliate.code}
+        {affiliate.code}
       </span>
     ) : null;
 
@@ -312,7 +312,7 @@ export default function Dashboard() {
       <main className="flex-1 mx-auto w-full max-w-5xl px-5 sm:px-8 py-12 sm:py-16">
         <p className="font-osd text-xs tracking-[0.25em] text-primary mb-3">[ MON COMPTE ]</p>
         <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight" data-testid="dashboard-greeting">
-          Salut, {user?.name || user?.email} 👋
+          Salut, {user?.name || user?.email} 
         </h1>
 
         {checkingPayment && (
@@ -339,7 +339,7 @@ export default function Dashboard() {
                 }`}
                 data-testid="plan-badge"
               >
-                {isVip ? "VIP ✦" : isTrial ? "ESSAI PRO — 3 JOURS" : canceled ? (isBasic ? "BASIC — ANNULÉ" : isEssentiel ? "ESSENTIEL — ANNULÉ" : "PRO — ANNULÉ") : isBasic ? "BASIC" : isEssentiel ? "ESSENTIEL" : isStudio ? "STUDIO ✦" : "PRO ✦"}
+                {isVip ? "VIP " : isTrial ? "ESSAI PRO — 3 JOURS" : canceled ? (isBasic ? "BASIC — ANNULÉ" : isEssentiel ? "ESSENTIEL — ANNULÉ" : "PRO — ANNULÉ") : isBasic ? "BASIC" : isEssentiel ? "ESSENTIEL" : isStudio ? "STUDIO " : "PRO "}
               </span>
             ) : (
                 <span className="font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 bg-secondary text-muted-foreground" data-testid="plan-badge">
@@ -352,11 +352,11 @@ export default function Dashboard() {
               <div data-testid="vip-section">
                 <div className="flex items-center gap-2.5 text-sm">
                   <BadgeCheck size={17} className="text-[#d9ffd0]" />
-                  <span data-testid="subscription-status-text">Compte VIP — accès PRO illimité ✦</span>
+                  <span data-testid="subscription-status-text">Compte VIP — accès PRO illimité </span>
                 </div>
                 <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
                   Export sans watermark, sous-titres .srt et extraction d'acapella — tout est débloqué à vie,
-                  sans abonnement ni paiement. Profite bien ✦
+                  sans abonnement ni paiement. Profite bien 
                 </p>
               </div>
             )}
@@ -430,7 +430,7 @@ export default function Dashboard() {
                   </a>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground text-center">
-                  Sans engagement (mensuel) · 🎁 3 jours offerts avec rappel par email avant le débit · Paiement sécurisé Stripe.
+                  Sans engagement (mensuel) · 3 jours offerts avec rappel par email avant le débit · Paiement sécurisé Stripe.
                 </p>
               </>
             )}
@@ -515,12 +515,12 @@ export default function Dashboard() {
                 )}
                 {!isBasic && !isEssentiel && !isTrial && (
                   <p className="mt-5 text-sm text-muted-foreground leading-relaxed">
-                    Exports illimités, séries de vidéos, tous les styles — tout est débloqué. Merci de soutenir BEATCUT ✦
+                    Exports illimités, séries de vidéos, tous les styles — tout est débloqué. Merci de soutenir BEATCUT 
                   </p>
                 )}
                 {sub.promo && (
                   <div className="mt-4 border border-[#d9ffd0]/40 bg-[#d9ffd0]/5 px-4 py-3 text-sm" data-testid="promo-access-banner">
-                    🎁 Code promo : accès PRO offert jusqu'au <b>{fmtDate(sub.promo_until)}</b>
+                    Code promo : accès PRO offert jusqu'au <b>{fmtDate(sub.promo_until)}</b>
                     {sub.plan && sub.plan !== "promo" && sub.plan !== "pro_monthly" && sub.plan !== "pro_yearly"
                       ? " — ton abonnement actuel continue normalement, rien ne change sur ta facturation."
                       : ""}
@@ -606,7 +606,7 @@ export default function Dashboard() {
 
         {isStudio && (
           <section className="mt-6 bg-card border border-border p-8" data-testid="studio-watermark-card">
-            <h2 className="font-display text-lg font-bold mb-3">Watermark personnalisé ✦ Studio</h2>
+            <h2 className="font-display text-lg font-bold mb-3">Watermark personnalisé Studio</h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Ajoute le logo de ta structure (PNG, fond transparent conseillé) : il sera incrusté en bas à droite
               de chaque vidéo exportée depuis ce compte.
@@ -642,7 +642,7 @@ export default function Dashboard() {
         {/* ===== Parrainage + Promo ===== */}
         <section className="mt-6 grid md:grid-cols-2 gap-6">
           <div className="bg-card border border-border p-8 min-w-0" data-testid="referral-card">
-            <h2 className="font-display text-lg font-bold mb-3">Parrainage ✦</h2>
+            <h2 className="font-display text-lg font-bold mb-3">Parrainage </h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Invite un ami : <b>+1 mois offert</b> pour lui ET pour toi dès qu'il prend un abonnement payant.
             </p>
@@ -662,7 +662,7 @@ export default function Dashboard() {
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground" data-testid="referral-count">
                   {refInfo.referral_count > 0
-                    ? `${refInfo.referral_count} ami${refInfo.referral_count > 1 ? "s" : ""} parrainé${refInfo.referral_count > 1 ? "s" : ""} ✦`
+                    ? `${refInfo.referral_count} ami${refInfo.referral_count > 1 ? "s" : ""} parrainé${refInfo.referral_count > 1 ? "s" : ""} `
                     : "Aucun parrainage pour l'instant."}
                 </p>
               </>
@@ -710,7 +710,7 @@ export default function Dashboard() {
           {cancelStep === "reason" ? (
             <>
               <DialogHeader>
-                <DialogTitle className="font-display">Avant de partir… dis-nous pourquoi 🙏</DialogTitle>
+                <DialogTitle className="font-display">Avant de partir… dis-nous pourquoi </DialogTitle>
                 <DialogDescription>30 secondes — ça nous aide vraiment à améliorer BEATCUT.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-2 mt-1">
@@ -759,7 +759,7 @@ export default function Dashboard() {
             <>
               <DialogHeader>
                 <DialogTitle className="font-display">
-                  {offerAvailable ? "Attends — on t'offre −50 % ✦" : (isTrial ? "Annuler ton essai Pro ?" : "Confirmer l'annulation ?")}
+                  {offerAvailable ? "Attends — on t'offre −50 % " : (isTrial ? "Annuler ton essai Pro ?" : "Confirmer l'annulation ?")}
                 </DialogTitle>
                 <DialogDescription>
                   {offerAvailable
@@ -777,7 +777,7 @@ export default function Dashboard() {
                     data-testid="retention-accept-button"
                     className="bg-primary text-white font-bold px-5 py-3 hover:opacity-90 transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
                   >
-                    {busy ? "…" : "✦ J'accepte −50 % et je reste"}
+                    {busy ? "…" : "J'accepte −50 % et je reste"}
                   </button>
                 )}
                 <button
@@ -820,7 +820,7 @@ export default function Dashboard() {
               data-testid="confirm-activate-now-button"
               className="bg-primary text-white font-bold px-5 py-3 hover:opacity-90 transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
             >
-              {busy ? "…" : "⚡ Activer maintenant — 19,99 €"}
+              {busy ? "…" : "Activer maintenant — 19,99 €"}
             </button>
             <button
               onClick={() => setActivateOpen(false)}

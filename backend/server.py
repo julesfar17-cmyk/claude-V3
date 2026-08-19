@@ -118,24 +118,27 @@ def _fmt_date_fr(iso_str) -> str:
 
 def _email_html(title: str, body: str, cta_label: str = None, cta_url: str = None,
                 cta2_label: str = None, cta2_url: str = None) -> str:
+    """Gabarit email DA v3 : obsidienne, cramoisi #fc1c46, pilules, capitales, zéro emoji."""
     button = (
-        f'<tr><td style="padding:24px 0 8px"><a href="{cta_url}" '
-        f'style="background:#ff3b30;color:#ffffff;text-decoration:none;font-weight:bold;'
-        f'padding:14px 28px;display:inline-block">{cta_label}</a></td></tr>'
+        f'<tr><td style="padding:26px 0 8px"><a href="{cta_url}" '
+        f'style="background:#fc1c46;color:#ffffff;text-decoration:none;font-weight:bold;'
+        f'text-transform:uppercase;letter-spacing:.04em;font-size:13px;'
+        f'padding:14px 30px;display:inline-block;border-radius:9999px">{cta_label}</a></td></tr>'
     ) if cta_url else ""
     if cta2_url:
         button += (
-            f'<tr><td style="padding:4px 0 8px"><a href="{cta2_url}" '
-            f'style="background:transparent;color:#ece6da;text-decoration:none;font-weight:bold;'
-            f'border:1px solid #4a4454;padding:13px 28px;display:inline-block">{cta2_label}</a></td></tr>'
+            f'<tr><td style="padding:6px 0 8px"><a href="{cta2_url}" '
+            f'style="background:transparent;color:#ffffff;text-decoration:none;font-weight:bold;'
+            f'text-transform:uppercase;letter-spacing:.04em;font-size:13px;'
+            f'border:1px solid #2a2a2a;padding:13px 30px;display:inline-block;border-radius:9999px">{cta2_label}</a></td></tr>'
         )
-    return f"""<table width="100%" cellpadding="0" cellspacing="0" style="background:#121016;padding:32px 16px;font-family:Arial,Helvetica,sans-serif">
-<tr><td align="center"><table width="520" cellpadding="0" cellspacing="0" style="background:#1a1720;border:1px solid #2a2631;padding:36px">
-<tr><td style="font-size:20px;font-weight:bold;color:#ece6da;padding-bottom:6px">BEAT<span style="color:#ff3b30">CUT</span></td></tr>
-<tr><td style="font-size:17px;font-weight:bold;color:#ece6da;padding:18px 0 8px">{title}</td></tr>
-<tr><td style="font-size:14px;color:#9a93a6;line-height:1.6">{body}</td></tr>
+    return f"""<table width="100%" cellpadding="0" cellspacing="0" style="background:#000000;padding:36px 16px;font-family:'Space Grotesk',Arial,Helvetica,sans-serif">
+<tr><td align="center"><table width="520" cellpadding="0" cellspacing="0" style="background:#000000;border:1px solid #171717;padding:40px 36px">
+<tr><td style="font-size:18px;font-weight:bold;letter-spacing:-0.04em;color:#ffffff;padding-bottom:4px">BEATCUT<span style="color:#fc1c46">&#9632;</span></td></tr>
+<tr><td style="font-size:19px;font-weight:bold;text-transform:uppercase;letter-spacing:-0.01em;color:#ffffff;padding:22px 0 10px">{title}</td></tr>
+<tr><td style="font-size:14px;color:#cccccc;line-height:1.65">{body}</td></tr>
 {button}
-<tr><td style="font-size:11px;color:#6b6478;padding-top:28px">BEATCUT — studio beat-sync. Sans engagement sur les plans mensuels.</td></tr>
+<tr><td style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#4c4c4c;padding-top:30px;border-top:1px solid #171717">BEATCUT &mdash; studio beat-sync &middot; sans engagement sur les plans mensuels</td></tr>
 </table></td></tr></table>"""
 
 
@@ -163,7 +166,7 @@ def reset_email_html(link: str) -> str:
 
 def sub_confirmed_email_html(period_end) -> str:
     return _email_html(
-        "Bienvenue ✦",
+        "Bienvenue ",
         f"Ton abonnement BEATCUT est actif : exports sans watermark, tous les styles et effets débloqués. "
         f"Renouvellement automatique le {_fmt_date_fr(period_end)}. "
         f"Tu peux te désabonner à tout moment en 2 clics depuis ton compte.",
@@ -172,7 +175,7 @@ def sub_confirmed_email_html(period_end) -> str:
 
 def trial_started_email_html(trial_end) -> str:
     return _email_html(
-        "Ton essai Pro a commencé 🎉",
+        "Ton essai Pro a commencé ",
         f"Tu as 3 jours d'accès Pro complet : exports illimités, séries de vidéos, tous les styles. "
         f"Ton abonnement Pro (19,99 €/mois) démarre automatiquement le {_fmt_date_fr(trial_end)}. "
         f"Tu peux annuler à tout moment avant cette date, en 2 clics, depuis ton compte — rien ne sera débité.",
@@ -187,7 +190,7 @@ def trial_reminder_email_html(trial_end) -> str:
         f"Ton abonnement Pro (19,99 €/mois) démarre automatiquement à cette date. "
         f"Si tu veux continuer, tu n'as rien à faire. Sinon, annule en 2 clics avant le débit — rien ne sera prélevé. "
         f"Déjà convaincu ? Active ton abonnement maintenant et débloque l'illimité tout de suite.",
-        "⚡ Passer en illimité maintenant", "https://beat-cut.com/dashboard?activate=1",
+        "Passer en illimité maintenant", "https://beat-cut.com/dashboard?activate=1",
         "Gérer ou annuler", "https://beat-cut.com/dashboard",
     )
 
@@ -978,10 +981,10 @@ async def _claim_and_activate(session_id: str, customer_id: str = None, subscrip
         return
     end = (user.get("subscription") or {}).get("current_period_end")
     if trial_started:
-        await send_email(user["email"], "Ton essai Pro a commencé ✦ BEATCUT", trial_started_email_html(end))
+        await send_email(user["email"], "Ton essai Pro a commencé BEATCUT", trial_started_email_html(end))
     else:
         label = PLAN_LABELS.get(plan, "PRO")
-        await send_email(user["email"], f"Bienvenue en {label} ✦ BEATCUT", sub_confirmed_email_html(end))
+        await send_email(user["email"], f"Bienvenue en {label} BEATCUT", sub_confirmed_email_html(end))
 
 
 async def _guard_trial_fingerprint(user_id: str, email: str, s) -> bool:
@@ -1520,7 +1523,7 @@ async def retention_accept(user: dict = Depends(get_current_user)):
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"retention_offer_used": True}})
     await db.cancel_feedback.find_one_and_update(
         {"user_id": user["user_id"], "retained": None}, {"$set": {"retained": True}}, sort=[("at", -1)])
-    return {"message": "C'est noté : −50 % sur ta prochaine facture. Content de continuer avec toi 🖤"}
+    return {"message": "C'est noté : −50 % sur ta prochaine facture. Content de continuer avec toi "}
 
 
 @api_router.post("/subscription/reactivate")
@@ -1800,7 +1803,7 @@ async def activate_now(user: dict = Depends(get_current_user)):
         logger.error("Fin d'essai anticipée : %s", e)
         raise HTTPException(status_code=502, detail="Erreur Stripe — réessaie") from e
     await _apply_stripe_sub_state(user["user_id"], s)
-    return {"message": "Ton abonnement Pro est actif — exports illimités débloqués 🎉"}
+    return {"message": "Ton abonnement Pro est actif — exports illimités débloqués "}
 
 
 # ---------------------------------------------------------------------------
@@ -1998,7 +2001,7 @@ async def promo_apply(data: PromoApplyIn, user: dict = Depends(get_current_user)
         {"code": code},
         {"$inc": {"used_count": 1}, "$push": {"used_by": user["user_id"]}},
     )
-    return {"message": f"Code appliqué : accès PRO offert pendant {days} jours ✦",
+    return {"message": f"Code appliqué : accès PRO offert pendant {days} jours ",
             "promo_until": iso(new_until)}
 
 

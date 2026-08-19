@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
 
 const EVENT_LABELS = {
-  preview_stall: "🧊 Gels d'aperçu",
-  frame_miss: "🖼 Replis vignette",
-  decoder_error: "💥 Erreurs décodeur",
-  clip_not_ready: "⏳ Clip pas prêt",
+  preview_stall: "Gels d'aperçu",
+  frame_miss: "Replis vignette",
+  decoder_error: "Erreurs décodeur",
+  clip_not_ready: "Clip pas prêt",
 };
 
 export const PreviewTelemetryAdmin = () => {

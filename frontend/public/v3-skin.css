@@ -144,9 +144,30 @@ nav a.active::after{right:0}
 /* ---------- Segments : le bouton actif porte le fond blanc ---------- */
 .seg{border:1px solid var(--hair-2);border-radius:var(--pill);background:transparent;overflow:hidden}
 .seg b,.seg button{border:none;border-radius:var(--pill);background:transparent;color:var(--graphite)}
-.seg b.on,.seg button.on,.tabs b.on,.subtabs b.on{background:var(--frost)!important;color:var(--void)!important;border-color:var(--frost)!important}
-.tabs,.subtabs{border-radius:var(--pill);border:1px solid var(--hair-2);background:transparent}
-.tabs b,.subtabs b{border-radius:var(--pill);color:var(--graphite);background:transparent}
+.seg b.on,.seg button.on{background:var(--frost)!important;color:var(--void)!important;border-color:var(--frost)!important}
+
+/* ---------- Éditeur : une seule barre (le header global s'efface) ---------- */
+body.editing header{display:none}
+.edit-top{height:58px;border-bottom:1px solid var(--hair);background:var(--void);gap:12px}
+.edit-top .logo{font-weight:700;letter-spacing:-.045em}
+.edit-top .crumb{gap:0}
+.edit-top .crumb span{display:none}
+.edit-top input.title{border:none;border-bottom:1px solid transparent;background:transparent;border-radius:0;
+  font-weight:500;font-size:13.5px;color:var(--frost);width:190px;transition:border-color .2s}
+.edit-top input.title:hover{background:transparent;border-bottom-color:var(--hair-2)}
+.edit-top input.title:focus{background:transparent;border-bottom-color:var(--crimson)}
+#editThemeBtn{width:32px;padding:0}
+
+/* ---------- Onglets colonne droite : soulignés cramoisi (maquette), pas des pilules ---------- */
+.tabs{display:flex;border:none;border-bottom:1px solid var(--hair);border-radius:0;background:var(--void);padding:0;gap:0}
+.tabs b{flex:1;border:none;border-bottom:1px solid transparent;border-radius:0;background:transparent;
+  color:var(--graphite);font-size:12px;text-transform:uppercase;letter-spacing:.06em;text-align:center;
+  padding:13px 4px;margin-bottom:-1px;font-weight:400;transition:color .2s,border-color .2s}
+.tabs b:hover{color:var(--ash)}
+.tabs b.on{background:transparent!important;color:var(--frost)!important;border-color:transparent!important;border-bottom-color:var(--crimson)!important}
+.subtabs{border-radius:var(--pill);border:1px solid var(--hair-2);background:transparent}
+.subtabs b{border-radius:var(--pill);color:var(--graphite);background:transparent}
+.subtabs b.on{background:var(--frost)!important;color:var(--void)!important}
 .preset.on{border-color:var(--crimson)}
 
 /* ---------- Interrupteurs ---------- */

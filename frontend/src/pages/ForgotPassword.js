@@ -57,7 +57,7 @@ export default function ForgotPassword() {
                     className="w-full bg-background border border-border px-4 py-3 text-sm focus:border-[#d9ffd0] focus:outline-none transition-colors"
                   />
                   {error && (
-                    <p className="text-sm text-primary" data-testid="forgot-error-message">⚠ {error}</p>
+                    <p className="text-sm text-primary" data-testid="forgot-error-message">{error}</p>
                   )}
                   <button
                     type="submit"

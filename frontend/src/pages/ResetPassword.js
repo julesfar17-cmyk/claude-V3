@@ -47,7 +47,7 @@ export default function ResetPassword() {
 
             {!token ? (
               <p className="text-sm text-primary" data-testid="reset-no-token">
-                ⚠ Lien invalide — refais une demande depuis{" "}
+                Lien invalide — refais une demande depuis{" "}
                 <Link to="/forgot-password" className="underline underline-offset-4">mot de passe oublié</Link>.
               </p>
             ) : (
@@ -73,7 +73,7 @@ export default function ResetPassword() {
                   className="w-full bg-background border border-border px-4 py-3 text-sm focus:border-[#d9ffd0] focus:outline-none transition-colors"
                 />
                 {error && (
-                  <p className="text-sm text-primary" data-testid="reset-error-message">⚠ {error}</p>
+                  <p className="text-sm text-primary" data-testid="reset-error-message">{error}</p>
                 )}
                 <button
                   type="submit"

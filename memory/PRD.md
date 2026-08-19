@@ -719,3 +719,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Vignettes réelles : renderCards affiche m.thumb (<img>, capturée du canvas à l'autosave — mécanique backend déjà en place) avec repli onde seedée.
 - Testé testing_agent iteration_26.json : 100 % PASS, 0 erreur JS (auth, dashboard, cgv, admin, vignettes réelles avant/après autosave, thème partagé, régressions). 2 mineurs corrigés post-test (promo-submit, violets admin).
 - ⚠️ À REDÉPLOYER. Point 11 recette (export réel Chrome + Safari iPhone) à valider par l'utilisateur.
+
+## Refonte V3 — Fidélité maquette + purge émojis + emails (19 août 2026, suite)
+- ✅ Double barre supprimée : Studio.js = iframe plein écran (plus de barre React) ; en mode éditeur le header global du studio disparaît (body.editing) — edit-top unique façon maquette (←, logo, titre inline, Enregistré, thème, Annuler, Versions, Série, halo Exporter).
+- ✅ PURGE TOTALE des émojis sur tout le site (studio.html, landing, toutes pages React, i18n.js, server.py/emails) — script regex uniforme, dico i18n cohérent. Tolérés : ← → ▶ ❚❚ ✕ ✓ ★ ☀ ☾. Barre mobile = texte pur.
+- ✅ Onglets colonne droite soulignés cramoisi (maquette), segments restent pilules fond blanc. Play ▶/❚❚.
+- ✅ Emails Resend : gabarit central _email_html refait en DA v3 (noir #000, bordure #171717, pilule cramoisie #fc1c46, capitales, carré rouge logo, zéro émoji) — vérifié visuellement.
+- Testé testing_agent iteration_27.json : 100 % PASS desktop + mobile, aucun bug.
+- ⚠️ À REDÉPLOYER.
