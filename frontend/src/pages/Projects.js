@@ -69,7 +69,7 @@ export default function Projects() {
           <Link
             to="/studio"
             data-testid="projects-new-button"
-            className="bg-primary text-white font-bold px-5 py-2.5 text-sm hover:bg-[#d32f2f] transition-colors"
+            className="bg-primary text-white font-bold px-5 py-2.5 text-sm hover:opacity-90 transition-colors"
           >
             + Nouveau projet
           </Link>
@@ -111,7 +111,7 @@ export default function Projects() {
                     <button
                       onClick={() => navigate(`/studio?project=${p.project_id}`)}
                       data-testid={`project-open-${p.project_id}`}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 hover:bg-[#d32f2f] transition-colors"
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 bg-primary text-white text-xs font-bold px-3 py-2 hover:opacity-90 transition-colors"
                     >
                       <FolderOpen size={13} /> Ouvrir
                     </button>

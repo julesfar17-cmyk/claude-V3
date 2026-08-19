@@ -63,7 +63,7 @@ export default function ForgotPassword() {
                     type="submit"
                     disabled={loading}
                     data-testid="forgot-submit-button"
-                    className="w-full bg-primary text-white font-bold px-5 py-3.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
+                    className="w-full bg-primary text-white font-bold px-5 py-3.5 hover:opacity-90 transition-colors disabled:opacity-50"
                   >
                     {loading ? "…" : "Envoyer le lien"}
                   </button>

@@ -169,7 +169,7 @@ export default function AuthPage() {
                 type="submit"
                 disabled={loading}
                 data-testid="auth-submit-button"
-                className="w-full bg-primary text-white font-bold px-5 py-3.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
+                className="w-full bg-primary text-white font-bold px-5 py-3.5 hover:opacity-90 transition-colors disabled:opacity-50"
               >
                 {loading ? "…" : isRegister ? "Créer mon compte" : "Se connecter"}
               </button>

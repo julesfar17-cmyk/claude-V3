@@ -97,7 +97,7 @@ export const AffiliateAdmin = () => {
             ))}
           </div>
         </div>
-        <button type="submit" disabled={busy || !code.trim() || !plans.length} data-testid="affiliate-create-btn" className="bg-primary text-white font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50">
+        <button type="submit" disabled={busy || !code.trim() || !plans.length} data-testid="affiliate-create-btn" className="bg-primary text-white font-bold px-5 py-2.5 hover:opacity-90 transition-colors disabled:opacity-50">
           Créer
         </button>
       </form>

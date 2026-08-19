@@ -335,7 +335,7 @@ export default function Dashboard() {
               {isPro ? (
               <span
                 className={`font-osd text-[11px] tracking-[0.15em] px-3 py-1.5 ${
-                  isVip ? "bg-[#d9ffd0] text-background" : canceled ? "bg-secondary text-muted-foreground" : isBasic ? "bg-[#8f9bff] text-background" : "bg-primary text-white"
+                  isVip ? "bg-foreground text-background" : canceled ? "bg-secondary text-muted-foreground" : isBasic ? "border border-input text-foreground bg-transparent" : "bg-primary text-white"
                 }`}
                 data-testid="plan-badge"
               >
@@ -373,7 +373,7 @@ export default function Dashboard() {
                     onClick={() => startCheckout("pro_monthly")}
                     disabled={busy}
                     data-testid="subscribe-pro-button"
-                    className="relative inline-flex items-center justify-between gap-2 bg-primary text-white font-bold px-5 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
+                    className="relative inline-flex items-center justify-between gap-2 bg-primary text-white font-bold px-5 py-3.5 hover:opacity-90 transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
                   >
                     <span className="absolute -top-2.5 right-2 bg-white text-primary font-osd text-[9px] tracking-wider px-2 py-0.5">
                       3 JOURS OFFERTS
@@ -393,7 +393,7 @@ export default function Dashboard() {
                     onClick={() => startCheckout("essentiel")}
                     disabled={busy}
                     data-testid="subscribe-essentiel-button"
-                    className="relative inline-flex items-center justify-between gap-2 border border-[#8f9bff]/60 bg-[#8f9bff]/10 text-foreground font-bold px-5 py-3.5 hover:bg-[#8f9bff]/20 transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                    className="relative inline-flex items-center justify-between gap-2 border border-input bg-transparent text-foreground font-bold px-5 py-3.5 hover:border-foreground transition-all hover:-translate-y-0.5 disabled:opacity-50"
                   >
                     {promoBadge("essentiel")}
                     <span>ESSENTIEL — 15 exports/mois</span>
@@ -407,9 +407,9 @@ export default function Dashboard() {
                     onClick={() => startCheckout("pro_yearly")}
                     disabled={busy}
                     data-testid="subscribe-pro-yearly-button"
-                    className="relative inline-flex items-center justify-between gap-2 border border-[#ffd97a]/50 bg-[#ffd97a]/5 text-foreground font-bold px-5 py-3.5 hover:bg-[#ffd97a]/10 transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                    className="relative inline-flex items-center justify-between gap-2 border border-input bg-transparent text-foreground font-bold px-5 py-3.5 hover:border-foreground transition-all hover:-translate-y-0.5 disabled:opacity-50"
                   >
-                    <span className="absolute -top-2.5 right-2 bg-[#ffd97a] text-background font-osd text-[9px] tracking-wider px-2 py-0.5">
+                    <span className="absolute -top-2.5 right-2 bg-foreground text-background font-osd text-[9px] tracking-wider px-2 py-0.5">
                       MEILLEURE AFFAIRE · −38 %
                     </span>
                     {promoBadge("pro_yearly")}
@@ -462,7 +462,7 @@ export default function Dashboard() {
                       onClick={() => setActivateOpen(true)}
                       disabled={busy}
                       data-testid="activate-now-button"
-                      className="relative mt-4 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
+                      className="relative mt-4 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:opacity-90 transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
                     >
                       <Crown size={16} /> Déjà convaincu ? Passer en illimité maintenant
                     </button>
@@ -477,13 +477,13 @@ export default function Dashboard() {
                       <span className="text-muted-foreground">
                         {isTrial ? "Exports pendant l'essai" : "Vidéos exportées ce mois-ci"}
                       </span>
-                      <span className="font-osd text-[#8f9bff]" data-testid="quota-count">
+                      <span className="font-osd text-foreground" data-testid="quota-count">
                         {quota.used} / {quota.quota}
                       </span>
                     </div>
                     <div className="h-2 bg-secondary overflow-hidden">
                       <div
-                        className="h-full bg-[#8f9bff] transition-all"
+                        className="h-full bg-foreground transition-all"
                         style={{ width: `${Math.min(100, (quota.used / quota.quota) * 100)}%` }}
                       />
                     </div>
@@ -500,7 +500,7 @@ export default function Dashboard() {
                       onClick={() => startCheckout("pro_monthly")}
                       disabled={busy}
                       data-testid="upgrade-to-pro-button"
-                      className="relative mt-6 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
+                      className="relative mt-6 w-full inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-6 py-3.5 hover:opacity-90 transition-all hover:-translate-y-0.5 shadow-[0_0_20px_rgba(255,59,48,0.35)] disabled:opacity-50"
                     >
                       {promoBadge("pro_monthly")}
                       <Crown size={16} /> Passer en PRO —{" "}
@@ -555,7 +555,7 @@ export default function Dashboard() {
                   onClick={resubscribe}
                   disabled={busy}
                   data-testid="resubscribe-button"
-                  className="mt-7 w-full bg-primary text-white font-bold px-6 py-3.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
+                  className="mt-7 w-full bg-primary text-white font-bold px-6 py-3.5 hover:opacity-90 transition-colors disabled:opacity-50"
                 >
                   {busy ? "…" : "Se réabonner"}
                 </button>
@@ -686,7 +686,7 @@ export default function Dashboard() {
                 type="submit"
                 disabled={promoBusy || !promoCode.trim()}
                 data-testid="promo-submit"
-                className="bg-primary text-white font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
+                className="border border-input text-foreground font-medium px-5 py-2.5 hover:border-foreground transition-colors disabled:opacity-50"
               >
                 {promoBusy ? "…" : "Activer"}
               </button>
@@ -749,7 +749,7 @@ export default function Dashboard() {
                   onClick={submitCancelFeedback}
                   disabled={!cancelReason || busy}
                   data-testid="cancel-feedback-continue-button"
-                  className="bg-primary text-white font-bold px-5 py-2.5 text-sm hover:bg-[#d32f2f] transition-colors disabled:opacity-40"
+                  className="bg-primary text-white font-bold px-5 py-2.5 text-sm hover:opacity-90 transition-colors disabled:opacity-40"
                 >
                   {busy ? "…" : "Continuer"}
                 </button>
@@ -775,7 +775,7 @@ export default function Dashboard() {
                     onClick={acceptRetention}
                     disabled={busy}
                     data-testid="retention-accept-button"
-                    className="bg-primary text-white font-bold px-5 py-3 hover:bg-[#d32f2f] transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
+                    className="bg-primary text-white font-bold px-5 py-3 hover:opacity-90 transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
                   >
                     {busy ? "…" : "✦ J'accepte −50 % et je reste"}
                   </button>
@@ -818,7 +818,7 @@ export default function Dashboard() {
               onClick={activateNow}
               disabled={busy}
               data-testid="confirm-activate-now-button"
-              className="bg-primary text-white font-bold px-5 py-3 hover:bg-[#d32f2f] transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
+              className="bg-primary text-white font-bold px-5 py-3 hover:opacity-90 transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(255,59,48,0.35)]"
             >
               {busy ? "…" : "⚡ Activer maintenant — 19,99 €"}
             </button>

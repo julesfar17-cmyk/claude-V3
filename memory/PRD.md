@@ -712,3 +712,10 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Pages Accueil/Mes morceaux v3 (renderCards réécrit : onde seedée + coupes cramoisies, badge état, tags style, date relative, suppression, i18n) + bouton thème header (themeBtn) + bouton 🔒 Verrouiller dans la tl-bar (lockAtPlayhead sur plan sous la tête de lecture).
 - Testé testing_agent iteration_25.json : 100 % PASS, 0 exception JS (landing dark/light, thème partagé, cartes réelles, outils timeline, segments, export modal). toggleLang re-render les pages listes.
 - ⏳ RESTE (Phase 4, « tout le site ») : AuthPage.js, Dashboard.js (Mon compte), pages légales, Admin.js, page Série aux jetons v3. ⚠️ À REDÉPLOYER après Phase 4.
+
+## Refonte V3 — Phase 4 + vignettes réelles (19 août 2026)
+- ✅ Tout le site React aux jetons v3 : index.css réécrit (tokens shadcn HSL dark + [data-theme=light], Space Grotesk, pilules, zéro ombre/rayon), index.html lit bc_theme (thème partagé landing↔studio↔app React), Toaster sonner noir, rec-dot = carré cramoisi.
+- ✅ Pages passées : AuthPage, Dashboard (badge basic bordé, 1 seule pilule cramoisie = Passer en Pro, annuel sans jaune, promo-submit fantôme), Navbar (studio ghost), Footer, Admin (violets #8f9bff éliminés), légal, Projects, Reset/Forgot.
+- ✅ Vignettes réelles : renderCards affiche m.thumb (<img>, capturée du canvas à l'autosave — mécanique backend déjà en place) avec repli onde seedée.
+- Testé testing_agent iteration_26.json : 100 % PASS, 0 erreur JS (auth, dashboard, cgv, admin, vignettes réelles avant/après autosave, thème partagé, régressions). 2 mineurs corrigés post-test (promo-submit, violets admin).
+- ⚠️ À REDÉPLOYER. Point 11 recette (export réel Chrome + Safari iPhone) à valider par l'utilisateur.

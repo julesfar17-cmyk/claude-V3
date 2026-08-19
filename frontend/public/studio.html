@@ -1605,7 +1605,7 @@ async function bootRemote(){
     const d=await r.json();
     DB.morceaux=d.projects.map(p=>({
       id:p.project_id, title:p.title, _remote:true, _loaded:false,
-      updated_at:p.updated_at, videos:0, words:[], cuts:[], plans:[],
+      updated_at:p.updated_at, thumb:p.thumb||null, videos:0, words:[], cuts:[], plans:[],
     }));
     DB.projectQuota=d.quota;
     route();   // re-render avec les morceaux du compte
@@ -1723,8 +1723,9 @@ function renderCards(root,list){
     if(m.videos) rowBits.push(m.videos+(LANG==='en'?' video':' vidéo')+(m.videos>1?'s':''));
     if(m.updated_at) rowBits.push(relWhen(m.updated_at));
     c.innerHTML='<div class="v3-thumb">'
+      +(m.thumb?'<img src="'+m.thumb+'" alt="" loading="lazy">':seedBars(m.id,32))
       +(m.bpm?'<span class="bpm">'+Math.round(m.bpm)+' BPM</span>':'')
-      +'<span class="st">'+(LANG==='en'?'ready':'prêt')+'</span>'+seedBars(m.id,32)+'</div>'
+      +'<span class="st">'+(LANG==='en'?'ready':'prêt')+'</span></div>'
       +'<div class="v3-meta"><h3>'+m.title+'</h3>'
       +'<div class="v3-tags">'+tags.map(x=>'<span>'+x+'</span>').join('')+'</div>'
       +'<div class="v3-row"><span>'+rowBits.join(', ')+'</span><span class="go">→</span></div></div>';

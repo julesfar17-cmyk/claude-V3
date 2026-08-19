@@ -3,7 +3,7 @@ import { Logo } from "@/components/Navbar";
 
 export default function Footer() {
   return (
-    <footer className="border-t border-border bg-[#0B0E13]">
+    <footer className="border-t border-border bg-background">
       <div className="mx-auto max-w-7xl px-5 sm:px-8 py-12 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
         <div className="space-y-2">
           <Logo />

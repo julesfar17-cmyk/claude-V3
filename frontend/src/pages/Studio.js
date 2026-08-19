@@ -15,7 +15,7 @@ export default function Studio() {
   ].filter(Boolean).join("&");
   return (
     <div className="h-screen w-full flex flex-col bg-background">
-      <div className="hidden sm:flex items-center justify-between px-4 sm:px-6 h-12 bg-[#0d0b11] border-b border-border shrink-0">
+      <div className="hidden sm:flex items-center justify-between px-4 sm:px-6 h-12 bg-background border-b border-border shrink-0">
         <Link
           to="/dashboard"
           data-testid="studio-back-button"

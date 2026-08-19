@@ -84,7 +84,8 @@ function App() {
       <I18nProvider>
         <AuthProvider>
           <AppRouter />
-          <Toaster position="top-center" theme="dark" richColors />
+          <Toaster position="top-center" theme="dark"
+            toastOptions={{ style: { background: "#000", border: "1px solid #2a2a2a", color: "#fff", borderRadius: 0, fontFamily: "'Space Grotesk',sans-serif" } }} />
         </AuthProvider>
       </I18nProvider>
     </BrowserRouter>

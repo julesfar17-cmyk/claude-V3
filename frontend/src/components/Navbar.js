@@ -77,7 +77,7 @@ export default function Navbar({ landing = false }) {
               <Link
                 to="/studio"
                 data-testid="nav-studio-link"
-                className="inline-flex items-center gap-2 bg-primary text-white text-sm font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_15px_rgba(255,59,48,0.35)]"
+                className="inline-flex items-center gap-2 border border-input text-foreground text-sm font-medium px-5 py-2.5 hover:border-foreground transition-colors"
               >
                 <Clapperboard size={16} /> {t("nav.openStudio")}
               </Link>
@@ -98,7 +98,7 @@ export default function Navbar({ landing = false }) {
               <Link
                 to="/register"
                 data-testid="nav-register-link"
-                className="bg-primary text-white text-sm font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-all hover:-translate-y-0.5 shadow-[0_0_15px_rgba(255,59,48,0.35)]"
+                className="bg-primary text-white text-sm font-bold px-5 py-2.5 hover:opacity-90 transition-all hover:-translate-y-0.5 shadow-[0_0_15px_rgba(255,59,48,0.35)]"
               >
                 {t("nav.register")}
               </Link>
@@ -134,7 +134,7 @@ export default function Navbar({ landing = false }) {
               <Link
                 to="/studio"
                 onClick={() => setOpen(false)}
-                className="bg-primary text-white text-sm font-bold px-5 py-3 text-center"
+                className="border border-input text-foreground text-sm font-medium px-5 py-3 text-center"
                 data-testid="nav-mobile-studio"
               >
                 Ouvrir le studio

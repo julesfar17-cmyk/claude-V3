@@ -1,13 +1,12 @@
 /* BEATCUT — styles applicatifs */
 
+/* V3 : le point d'enregistrement devient le carré cramoisi du logo */
 .rec-dot {
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 9999px;
-  background: #ff3b30;
-  box-shadow: 0 0 10px #ff3b30;
-  animation: rec-blink 1.2s steps(1) infinite;
+  width: 7px;
+  height: 7px;
+  border-radius: 0;
+  background: #fc1c46;
 }
 
 @keyframes rec-blink {

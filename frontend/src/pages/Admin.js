@@ -248,7 +248,7 @@ export default function Admin() {
                   onClick={reconcile}
                   disabled={reconciling}
                   data-testid="admin-reconcile-button"
-                  className="bg-primary text-white font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-colors disabled:opacity-50"
+                  className="bg-primary text-white font-bold px-5 py-2.5 hover:opacity-90 transition-colors disabled:opacity-50"
                 >
                   {reconciling ? "Vérification Stripe…" : "🔁 Réconcilier maintenant"}
                 </button>
@@ -306,13 +306,13 @@ export default function Admin() {
                         <tr key={i} className="border-b border-border/50" data-testid={`admin-cancel-row-${i}`}>
                           <td className="py-2 pr-4">{c.email}</td>
                           <td className="py-2 pr-4">
-                            {c.was_trial ? <span className="text-[#8f9bff]">Essai Pro (avant débit)</span> : c.plan}
+                            {c.was_trial ? <span className="text-foreground">Essai Pro (avant débit)</span> : c.plan}
                           </td>
                           <td className="py-2 pr-4">{c.canceled_at ? new Date(c.canceled_at).toLocaleDateString("fr-FR") : "—"}</td>
                           <td className="py-2 pr-4">{c.was_trial ? "—" : c.access_until ? new Date(c.access_until).toLocaleDateString("fr-FR") : "—"}</td>
                           <td className="py-2">
                             {c.state === "access_until_end" ? (
-                              <span className="text-[#ffd97a]">Accès encore actif</span>
+                              <span className="text-foreground">Accès encore actif</span>
                             ) : (
                               <span className="text-muted-foreground">Terminé</span>
                             )}
@@ -352,10 +352,10 @@ export default function Admin() {
                         <div key={reason} data-testid={`admin-cancel-reason-${reason}`}>
                           <div className="flex items-center justify-between text-sm mb-1">
                             <span>{REASON_LABELS[reason] || reason}</span>
-                            <span className="font-osd text-[#8f9bff]">{r.pct} % ({r.count})</span>
+                            <span className="font-osd text-foreground">{r.pct} % ({r.count})</span>
                           </div>
                           <div className="h-2 bg-secondary overflow-hidden">
-                            <div className="h-full bg-[#8f9bff]" style={{ width: `${r.pct}%` }} />
+                            <div className="h-full bg-foreground" style={{ width: `${r.pct}%` }} />
                           </div>
                         </div>
                       ))}
@@ -556,7 +556,7 @@ export default function Admin() {
                   <p className="font-osd text-[11px] text-muted-foreground mb-1">MAX (vide = ∞)</p>
                   <input type="number" min={1} value={newMaxUses} onChange={(e) => setNewMaxUses(e.target.value)} data-testid="admin-promo-maxuses" className="bg-background border border-border px-3 py-2 text-sm w-24" />
                 </div>
-                <button type="submit" data-testid="admin-promo-create" className="bg-primary text-white font-bold px-5 py-2.5 hover:bg-[#d32f2f] transition-colors">
+                <button type="submit" data-testid="admin-promo-create" className="bg-primary text-white font-bold px-5 py-2.5 hover:opacity-90 transition-colors">
                   Créer
                 </button>
               </form>
@@ -643,7 +643,7 @@ export default function Admin() {
                         <td className="py-2">
                           <span className={`font-osd text-[10px] tracking-wider px-2 py-0.5 ${
                             u.tier === "pro" ? "bg-primary/15 text-primary" :
-                            u.tier === "basic" ? "bg-[#8f9bff]/15 text-[#8f9bff]" :
+                            u.tier === "basic" ? "bg-secondary text-foreground" :
                             "bg-secondary text-muted-foreground"
                           }`}>
                             {u.tier === "free" ? "GRATUIT" : (u.plan || u.tier).toUpperCase()}
