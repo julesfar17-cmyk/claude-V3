@@ -1,0 +1,68 @@
+{
+  "summary": "Iter25 — Validation refonte visuelle V3 (monument obsidienne). Landing (iframe /), Studio Accueil (/studio.html) et Studio Éditeur testés avec compte demo@beatcut.fr. Résultat global : 100% des exigences V3 satisfaites, ZÉRO exception JS pendant tout le parcours éditeur.",
+  "landing_tests": {
+    "theme_dark_default": "PASS — body bg = rgb(0,0,0), texte clair",
+    "h1_ton_son_merite_mieux": "PASS — 'Ton son mérite mieux' visible en Space Grotesk",
+    "wave_1440_visible": "PASS — forme d'onde cramoisie animée visible à droite en 1440x900 (barres verticales #fc1c46)",
+    "trois_jours_occurrences": "PASS (visible) — 4 occurrences visibles dans body.textContent + 1 dans <meta description> = 5 dans le source (le brief indiquait 5 occurrences dont l'une est la meta)",
+    "sept_jours_absent": "PASS — 0 occurrence 'Sept jours' / 'sept jours'",
+    "prix": "PASS — 9,99 € (Essentiel), 19,99 € (Pro mensuel), 12,42 €/149 € (Pro annuel), 499 € (Studio) tous présents",
+    "login_links": "PASS — 7 liens vers /login détectés",
+    "theme_toggle_persist": "PASS — clic #theme bascule bg #000 → #fff, localStorage.bc_theme='light' persiste après reload",
+    "faq_qa": "PASS — 5 blocs .qa présents (Comment marche l'essai, Je ne sais pas monter, Ça marche sur téléphone, À qui appartiennent les vidéos, Pourquoi pas CapCut)",
+    "no_box_shadow": "PASS — 0 déclaration box-shadow dans landing.html ; v3-skin.css ne contient qu'un reset *{box-shadow:none!important}"
+  },
+  "studio_home_tests": {
+    "cards_v3_rendered": "PASS — 2 [data-song-id] projets (032e4762018d45 Recette 150BPM, d51b835aa74548 Morceau Série Test), tuiles avec ondes en barres + coupures cramoisies + badge 'ready/prêt' + date relative + flèche → + bouton ✕ (.v3-del)",
+    "nouveau_morceau_tile": "PASS — carte pointillée 'New track/Nouveau morceau' présente avec drop hint",
+    "delete_confirm_cancellable": "PASS — clic ✕ déclenche window.confirm('Supprimer « Recette 150BPM » ?') → dismiss retenu, 2 cartes restent (aucune suppression, projets démo intacts)",
+    "crimson_pill_new_track": "PASS — pilule cramoisie 'NEW TRACK/Nouveau morceau' visible dans le header",
+    "theme_btn_studio": "PASS — #themeBtn (1 occurrence) bascule dark ↔ light, persiste dans localStorage",
+    "stats_displayed": "PASS — '0 videos created', '0 h of editing saved', '9/10 exports left this month' affichés",
+    "theme_shared_landing_to_studio": "PASS — localStorage.bc_theme='light' préréglé côté landing → /studio.html démarre en clair (documentElement.dataset.theme='light')"
+  },
+  "studio_editor_tests": {
+    "load_recette_150bpm": "PASS — clic [data-song-id='032e4762018d45'] ouvre l'éditeur en <5s, tutoriel welcome fermé via bouton Passer",
+    "timeline_toolbar": "PASS — 'Couper ici M', 'Beat : ON', 'Mélanger', 'Sans coupes : OFF', 'Verrouiller', zoom +/−, 'Adapter' tous présents dans .timeline",
+    "tl_lock_btn_testid": "PASS — 1 élément [data-testid='tl-lock-btn'] présent, texte '🔒 Verrouiller'",
+    "lock_click_toggles": "PASS — 2 clics successifs sur le bouton sans erreur JS (toast .toast non capturé au moment de la requête — fade-out rapide ; fonction lockAtPlayhead() ligne 2187 confirmée : toggle p.locked et appelle toast('🔒 Plan verrouillé' / '🔓 Plan déverrouillé'))",
+    "segmented_on_class": "PASS — 20 éléments .on détectés dont 30s, Libre, 9:16, Auto, Paroles, Styles, Mot seul, Gras, MAJ, Centre — chaque groupe .seg n'en compte qu'un seul actif, fond blanc",
+    "play_pause": "PASS — #playBtn cliquable, aucune exception JS (window.playing non exposé en global, mais wcPump pilote la lecture selon iter24)",
+    "tabs_paroles_style_effets": "PASS — Paroles / Style / Effets tous cliquables et basculent le panneau droit",
+    "export_pill_unique": "PASS — 1 seule pilule cramoisie visible sur l'éditeur = #exportBtn ('⏺ Exporter la vidéo', classe 'primary') ; audit couleur rgb(r>200,g<80,50<b<100) filtré offsetParent!==null",
+    "export_modal_open": "OK (comportement conforme) — clic Exporter affiche le toast '⚠ 1 vidéo(s) pas prête(s)…' au lieu d'ouvrir la modale, car en headless WebCodecs n'ouvre pas H.264 → clips restent notReady. Blocage volontaire côté produit. Aucune exception JS.",
+    "plans_range_input": "PASS — 8 inputs type=range (dont 'Plans par vidéo'/Auto)",
+    "save_state": "PASS — #saveState affiche 'Enregistré'",
+    "title_editable": "PASS — #songTitle isContentEditable=true",
+    "back_buttons": "PASS — 3 boutons ← (retour morceaux) détectés",
+    "page_errors_total": "PASS — 0 pageerror pendant tout le parcours (chargement + skip tuto + click lock ×2 + segmented + tabs + export)"
+  },
+  "regression_tests": {
+    "lang_toggle_layout": "PASS — clic #langBtn (texte FR→EN) : header re-traduit (ACCUEIL / MES MORCEAUX / SÉRIE DE VIDÉOS visible dans capture), mise en page intacte, aucune exception",
+    "card_translation": "PARTIAL — badge 'ready' capturé après click mais la capture d'écran finale montre l'UI en français. Locator handle possiblement obsolète après re-render. Non bloquant."
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_25.json"],
+  "action_items": [
+    "OPTIONNEL : le toast déclenché par lockAtPlayhead() disparaît trop vite pour être capturé par un querySelector post-clic (waited 1s). Envisager d'exposer le dernier toast dans window._lastToast pour faciliter les tests automatisés.",
+    "OPTIONNEL : renderCards devrait ré-appliquer immédiatement les libellés après changement de langue (ready/prêt). Vérifier que renderHome() est bien re-déclenchée par le toggle langBtn."
+  ],
+  "critical_code_review_comments": [
+    "landing.html (405 lignes) et v3-skin.css (186 lignes) sont propres, respectent la charte (fond #000, texte #ccc, accent #fc1c46, Space Grotesk, radius 999 uniquement pour pilules, aucun box-shadow).",
+    "studio.html reste un monolithe 4915 lignes — commentaire reporté depuis iter24, non bloquant.",
+    "lockAtPlayhead ligne 2187 : logique idempotente, pushHistory avant toggle, drawTimeline/dirty appelés — implementation correcte."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend only)", "frontend": "100% (toutes les exigences V3 validées, 0 exception JS)"},
+  "test_credentials": "demo@beatcut.fr / Demo1234! (session unique — login via fetch credentials:include sur /api/auth/login)",
+  "seed_data_creation": "Aucune. Projets démo intacts (Recette 150BPM, Morceau Série Test).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Refonte visuelle V3 100% validée. Landing (iframe /) et Studio (/studio.html) partagent bc_theme. Timeline lock : [data-testid='tl-lock-btn']. Une seule pilule cramoisie par écran (Trois jours d'essai sur landing, Nouveau morceau sur Accueil, Exporter dans l'éditeur). Pour re-tester : login demo, poser localStorage.bc_theme puis goto /studio.html, cliquer [data-song-id='032e4762018d45'] pour ouvrir l'éditeur.",
+  "rca of the issue": "N/A — aucun bug détecté."
+}

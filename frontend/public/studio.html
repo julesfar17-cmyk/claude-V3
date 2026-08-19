@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BeatCut — Ton son. Un mois de vidéos.</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@500&family=Anton&family=Archivo+Black&family=Special+Elite&family=Permanent+Marker&family=VT323&family=Monoton&family=UnifrakturCologne&family=Rubik+Glitch&family=Bangers&family=Caveat:wght@700&family=Archivo+Narrow:wght@500;700&family=Silkscreen:wght@400;700&family=Rubik+Distressed&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&family=Bricolage+Grotesque:wght@500;700;800&family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@500&family=Anton&family=Archivo+Black&family=Special+Elite&family=Permanent+Marker&family=VT323&family=Monoton&family=UnifrakturCologne&family=Rubik+Glitch&family=Bangers&family=Caveat:wght@700&family=Archivo+Narrow:wght@500;700&family=Silkscreen:wght@400;700&family=Rubik+Distressed&display=swap" rel="stylesheet">
 <style>
 /* =====================================================================
    BEATCUT V2 — Design system
@@ -525,6 +525,19 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
   .hero{padding:22px 16px}
 }
 </style>
+<link rel="stylesheet" href="/v3-skin.css">
+<script>
+/* Thème V3 : partagé avec la landing via bc_theme */
+(function(){try{const s=localStorage.getItem('bc_theme');if(s)document.documentElement.dataset.theme=s;}catch(e){}})();
+function swapTheme(){
+  const d=document.documentElement;
+  d.dataset.theme=d.dataset.theme==='dark'?'light':'dark';
+  try{localStorage.setItem('bc_theme',d.dataset.theme)}catch(e){}
+  paintThemeBtn();
+}
+function paintThemeBtn(){const b=document.getElementById('themeBtn');if(b)b.textContent=document.documentElement.dataset.theme==='dark'?'☀':'☾';}
+document.addEventListener('DOMContentLoaded',paintThemeBtn);
+</script>
 </head>
 <body>
 
@@ -544,6 +557,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
   </nav>
   <div class="head-right">
     <button class="small ghost" id="langBtn" onclick="toggleLang()" title="Switch language">EN</button>
+    <button class="small" id="themeBtn" onclick="swapTheme()" title="Changer de thème" data-testid="theme-toggle-btn">☀</button>
     <div class="counter" title="Exports restants ce mois">⏺ <b id="quotaLeft">10</b>/<span id="quotaMax">10</span></div>
     <div class="avatar" id="avatar">?</div>
   </div>
@@ -551,14 +565,12 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
 
 <!-- ================= ACCUEIL ================= -->
 <div class="page" id="pageAccueil">
-  <div class="hero">
+  <div class="v3-top">
     <div>
-      <h1>Ton son.<br>Un mois de vidéos.</h1>
-      <p>Dépose ton morceau une fois : BeatCut trouve le tempo, cale les plans sur le beat et écrit tes paroles à l'écran. Ensuite, tu crées des vidéos à volonté.</p>
-      <button class="primary" onclick="newMorceau()">＋ Créer une vidéo</button>
-      <button class="ghost" onclick="go('serie')">Série de vidéos →</button>
+      <h1>Mes morceaux</h1>
+      <p>Un morceau se règle une fois. Ensuite tu en tires autant de vidéos que tu veux pendant le mois.</p>
     </div>
-    <div class="hero-wave" id="heroWave" aria-hidden="true"></div>
+    <span class="halo"><button class="pill-crimson" onclick="newMorceau()" data-testid="new-song-btn">Nouveau morceau</button></span>
   </div>
 
   <div class="stats">
@@ -567,8 +579,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
     <div class="stat"><div class="k"><span id="statLeft">10</span>/<span id="statMax">10</span></div><div class="l">exports restants ce mois</div></div>
   </div>
 
-  <div class="section-title"><h2>Mes morceaux</h2><button class="small" onclick="go('morceaux')">Tout voir</button></div>
-  <div class="grid" id="homeMorceaux"></div>
+  <div class="v3-grid" id="homeMorceaux" style="margin-top:22px"></div>
 
   <div class="starter" id="starter">
     <b>Bien démarrer</b>
@@ -583,9 +594,14 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
 
 <!-- ================= MES MORCEAUX ================= -->
 <div class="page" id="pageMorceaux">
-  <div class="section-title"><h2 style="font-size:24px">Mes morceaux</h2><button class="primary" onclick="newMorceau()">＋ Nouveau morceau</button></div>
-  <p class="hint" style="margin-bottom:16px">Un morceau se règle une fois (extrait, tempo, paroles). Ensuite tu en tires autant de vidéos que tu veux.</p>
-  <div class="grid" id="listMorceaux"></div>
+  <div class="v3-top">
+    <div>
+      <h1>Mes morceaux</h1>
+      <p>Un morceau se règle une fois (extrait, tempo, paroles). Ensuite tu en tires autant de vidéos que tu veux.</p>
+    </div>
+    <span class="halo"><button class="pill-crimson" onclick="newMorceau()">Nouveau morceau</button></span>
+  </div>
+  <div class="v3-grid" id="listMorceaux"></div>
 </div>
 
 <!-- ================= ÉDITEUR ================= -->
@@ -904,6 +920,7 @@ header{background:rgba(14,17,22,.85);backdrop-filter:blur(14px) saturate(1.3)}
       <button class="small" id="snapBtn" onclick="toggleSnap()">🧲 Beat : ON</button>
       <button class="small" onclick="shufflePlans()">🎲 Mélanger</button>
       <button class="small" id="noCutsBtn" onclick="toggleNoCuts()">🎬 Sans coupes : OFF</button>
+      <button class="small" onclick="lockAtPlayhead()" data-testid="tl-lock-btn" title="Verrouiller / déverrouiller le plan sous la tête de lecture">🔒 Verrouiller</button>
       <span id="wordSelBar" style="display:none;gap:6px;align-items:center">
         <span class="hint" id="wordSelCount" data-testid="word-sel-count"></span>
         <button class="small" onclick="copySelWords()" data-testid="word-copy-btn">⧉ Copier</button>
@@ -1456,7 +1473,7 @@ const EN={
 "Styles":"Styles","Texte":"Text","Effets":"Effects","Animation":"Animation","Police":"Font","Bricolage — moderne":"Bricolage — modern","Anton — impact condensé":"Anton — condensed impact","Archivo Black — massif":"Archivo Black — massive","Impact — classique":"Impact — classic","Inter — sobre":"Inter — clean","Special Elite — machine à écrire":"Special Elite — typewriter","Marker — feutre":"Marker — felt pen","Caveat — manuscrit":"Caveat — handwritten","VT323 — écran rétro":"VT323 — retro screen","Monoton — néon":"Monoton — neon","Fraktur — gothique":"Fraktur — gothic","Rubik Glitch — glitché":"Rubik Glitch — glitched",
 "Affichage":"Display","Mot seul":"Single word","Phrase":"Sentence","Étalé":"Spread","Taille":"Size","Épaisseur":"Weight","Fin":"Thin","Normal":"Normal","Gras":"Bold","Casse":"Case","MAJ":"UPPER","min":"lower","Couleur du texte":"Text color","Position":"Position","Haut":"Top","Centre":"Center","Bas":"Bottom","Mot en cours coloré (karaoké)":"Current word colored (karaoke)","Contour":"Outline","Lueur (néon)":"Glow (neon)","Ombre portée":"Drop shadow","Espacement des lettres":"Letter spacing","Inclinaison":"Slant","Lignes d'écran rétro (CRT)":"Retro screen lines (CRT)","Fond derrière le texte":"Background behind text",
 "Effets vidéo — au rythme des coupures":"Video effects — on every cut","⚡ Flash blanc sur les coupures":"⚡ White flash on cuts","🔍 Zoom punch":"🔍 Punch zoom","💥 Secousse légère":"💥 Light shake","📼 VHS (lignes d'écran)":"📼 VHS (screen lines)","🎞 Grain de pellicule":"🎞 Film grain","Apparition des mots":"Word entrance","Aucune":"None","Pop":"Pop","Fondu":"Fade","Glissé":"Slide","Zoom":"Zoom","Secousse":"Shake","Le mot reste affiché jusqu'au suivant":"Each word stays until the next one","💾 Enregistrer comme mon style":"💾 Save as my style","Mots mis en avant":"Highlighted words","clique les mots à mettre en avant":"click the words you want to highlight","Tes mots — clique pour mettre en avant":"Your words — click to highlight","Fond derrière le mot":"Background behind word","Avec":"On","Sans":"Off","Douce":"Soft","Forte":"Strong","Néon":"Neon","Comme le texte":"Same as text","Ajoute d'abord tes paroles (onglet Paroles)":"Add your lyrics first (Lyrics tab)","Fréquence":"Frequency","1 mesure":"1 bar","2 mesures":"2 bars","4 mesures":"4 bars","Taille du mot":"Word size","Même police":"Same font",
-"Timeline":"Timeline","✂ Couper ici":"✂ Cut here","🧲 Beat : ON":"🧲 Beat: ON","🧲 Beat : OFF":"🧲 Beat: OFF","🎲 Mélanger":"🎲 Shuffle","⧉ Copier":"⧉ Copy","🗑 Supprimer":"🗑 Delete","📋 Coller au curseur":"📋 Paste at cursor","Adapter":"Fit","Clic sur un plan = coupes & verrou · glisser un clip dessus = le changer":"Click a shot = cuts & lock · drag a clip onto it = swap it","Plans":"Shots","Accueil":"Home","Morceaux":"Songs","Série":"Series","Compte":"Account","Ce plan":"This shot","Remplacer le clip":"Swap clip","Autre plan":"Another shot","Découper en 2":"Split in 2","Supprimer":"Delete","🔒 Verrouiller ce plan":"🔒 Lock this shot",
+"Timeline":"Timeline","Un morceau se règle une fois. Ensuite tu en tires autant de vidéos que tu veux pendant le mois.":"Set a track up once. Then pull as many videos as you want from it all month.","Un morceau se règle une fois (extrait, tempo, paroles). Ensuite tu en tires autant de vidéos que tu veux.":"Set a track up once (excerpt, tempo, lyrics). Then pull as many videos as you want.","Nouveau morceau":"New track","Dépose un MP3, WAV ou M4A. Le tempo se détecte tout seul.":"Drop an MP3, WAV or M4A. The tempo detects itself.","🔒 Verrouiller":"🔒 Lock","✂ Couper ici":"✂ Cut here","🧲 Beat : ON":"🧲 Beat: ON","🧲 Beat : OFF":"🧲 Beat: OFF","🎲 Mélanger":"🎲 Shuffle","⧉ Copier":"⧉ Copy","🗑 Supprimer":"🗑 Delete","📋 Coller au curseur":"📋 Paste at cursor","Adapter":"Fit","Clic sur un plan = coupes & verrou · glisser un clip dessus = le changer":"Click a shot = cuts & lock · drag a clip onto it = swap it","Plans":"Shots","Accueil":"Home","Morceaux":"Songs","Série":"Series","Compte":"Account","Ce plan":"This shot","Remplacer le clip":"Swap clip","Autre plan":"Another shot","Découper en 2":"Split in 2","Supprimer":"Delete","🔒 Verrouiller ce plan":"🔒 Lock this shot",
 "Choisis un morceau, tes styles de sous-titres préférés et un nombre de vidéos : BeatCut prépare plusieurs versions réelles. Tu gardes les meilleures, tu exportes, c'est posté.":"Pick a track, your favorite subtitle styles and a number of videos: BeatCut builds several real versions. Keep the best, export, post.",
 "Préparer":"Set up","Choisir les meilleures":"Pick the best","Nombre de vidéos":"Number of videos","Styles de sous-titres — choisis-en un ou plusieurs (tes styles ★ inclus)":"Subtitle styles — pick one or more (your ★ styles included)","Préparer les vidéos →":"Prepare videos →",
 "Chaque vidéo garde tes paroles calées : seuls les plans et le style changent. Seules celles que tu gardes comptent dans tes exports.":"Every video keeps your synced lyrics: only the shots and style change. Only the ones you keep count toward your exports.",
@@ -1536,7 +1553,7 @@ function applyLang(){
     });
   } finally { setTimeout(()=>{_i18nBusy=false;},0); }
 }
-function toggleLang(){ LANG=(LANG==='fr')?'en':'fr'; try{localStorage.setItem('bc_lang',LANG);}catch(e){} applyLang(); }
+function toggleLang(){ LANG=(LANG==='fr')?'en':'fr'; try{localStorage.setItem('bc_lang',LANG);}catch(e){} applyLang(); try{ if(!location.hash.includes('edit/')) route(); }catch(e){} }
 new MutationObserver(()=>{ if(_i18nBusy||LANG!=='en') return;
   clearTimeout(_i18nTimer); _i18nTimer=setTimeout(applyLang,150);
 }).observe(document.body,{childList:true,subtree:true});
@@ -1662,42 +1679,57 @@ window.addEventListener('hashchange',route);
 
 /* ---------------- Accueil ---------------- */
 function renderHome(){
-  const w=$('#heroWave'); if(!w.children.length){
-    // silhouette de waveform (enveloppe drop) : monte, explose au centre, redescend — comme un vrai extrait
-    const N=34;
-    for(let i=0;i<N;i++){
-      const u=i/(N-1);
-      const env=0.28+0.72*Math.pow(Math.sin(Math.PI*u),1.6);                    // enveloppe du morceau
-      const beat=0.75+0.25*Math.sin(u*22);                                       // détail des transitoires
-      const b=document.createElement('i');
-      b.style.height=Math.round(env*beat*100)+'%';
-      b.style.animationDelay=(-(i*0.09)%1.4)+'s';
-      b.style.animationDuration=(1.15+((i*7)%5)*0.09)+'s';
-      w.append(b);
-    }
-  }
   const vids=DB.exports;
   $('#statVideos').textContent=vids;
   $('#statTime').textContent=Math.round(vids*45/60)+' h';
   updateQuotaUI();
-  renderCards($('#homeMorceaux'), DB.morceaux.slice(0,3));
+  renderCards($('#homeMorceaux'), DB.morceaux);
   $('#st1').classList.toggle('done',DB.morceaux.length>0);
   $('#st2').classList.toggle('done',DB.morceaux.some(m=>m.words&&m.words.length));
   $('#st3').classList.toggle('done',DB.morceaux.some(m=>m.style));
   $('#st4').classList.toggle('done',DB.exports>0);
-  $('#starter').style.display = DB.exports>0? 'none':'block';
+  $('#starter').style.display = (DB.exports>0||DB.morceaux.length)? 'none':'block';
+}
+/* date relative façon V3 */
+function relWhen(iso){
+  if(!iso) return '';
+  const d=new Date(iso), diff=(Date.now()-d.getTime())/1000;
+  if(diff<3600) return (LANG==='en'?'just now':'à l\u2019instant');
+  if(diff<86400){ const h=Math.round(diff/3600); return LANG==='en'?h+' h ago':'il y a '+h+' h'; }
+  if(diff<172800) return LANG==='en'?'yesterday':'hier';
+  if(diff<604800){ const j=Math.round(diff/86400); return LANG==='en'?j+' days ago':'il y a '+j+' jours'; }
+  return d.toLocaleDateString(LANG==='en'?'en-GB':'fr-FR');
+}
+/* barres d'onde stables par morceau (graine = id) */
+function seedBars(id,n){
+  let h=0; for(const c of String(id)) h=(h*31+c.charCodeAt(0))>>>0;
+  return Array.from({length:n},(_,i)=>{
+    h=(h*1103515245+12345)>>>0;
+    const u=i/(n-1), env=.16+.84*Math.pow(Math.sin(Math.PI*u),1.4)*(.7+.3*((h>>16)%100)/100);
+    return '<i class="'+(i%8===0?'k':'')+'" style="height:'+Math.round(env*100)+'%"></i>';
+  }).join('');
 }
 function renderCards(root,list){
   root.innerHTML='';
-  const nw=document.createElement('div');nw.className='card new';nw.innerHTML='<div><div class="plus">＋</div>Nouveau morceau</div>';nw.onclick=newMorceau;root.append(nw);
+  const nw=document.createElement('div');
+  nw.className='v3-new';
+  nw.innerHTML='<div class="plus">+</div><b>'+(LANG==='en'?'New track':'Nouveau morceau')+'</b><span>'+(LANG==='en'?'Drop an MP3, WAV or M4A. The tempo detects itself.':'Dépose un MP3, WAV ou M4A. Le tempo se détecte tout seul.')+'</span>';
+  nw.onclick=newMorceau; root.append(nw);
   list.forEach(m=>{
-    const c=document.createElement('div');c.className='card';c.style.position='relative';
+    const c=document.createElement('div');c.className='v3-proj';
     c.setAttribute('data-testid','song-card'); c.setAttribute('data-song-id',m.id);
-    c.innerHTML=`<div class="thumb">${Array.from({length:18},()=>`<i style="height:${10+Math.random()*80}%"></i>`).join('')}</div>
-      <h3>${m.title}</h3><div class="meta">${m.bpm?Math.round(m.bpm)+' BPM · ':''}${m.videos||0} vidéo${(m.videos||0)>1?'s':''}</div>`;
+    const tags=[]; if(m.style&&m.style.preset) tags.push(m.style.preset); if(m.style&&m.style.font) tags.push(m.style.font);
+    const rowBits=[];
+    if(m.videos) rowBits.push(m.videos+(LANG==='en'?' video':' vidéo')+(m.videos>1?'s':''));
+    if(m.updated_at) rowBits.push(relWhen(m.updated_at));
+    c.innerHTML='<div class="v3-thumb">'
+      +(m.bpm?'<span class="bpm">'+Math.round(m.bpm)+' BPM</span>':'')
+      +'<span class="st">'+(LANG==='en'?'ready':'prêt')+'</span>'+seedBars(m.id,32)+'</div>'
+      +'<div class="v3-meta"><h3>'+m.title+'</h3>'
+      +'<div class="v3-tags">'+tags.map(x=>'<span>'+x+'</span>').join('')+'</div>'
+      +'<div class="v3-row"><span>'+rowBits.join(', ')+'</span><span class="go">→</span></div></div>';
     const del=document.createElement('button');
-    del.textContent='✕'; del.title='Supprimer';
-    del.style.cssText='position:absolute;top:8px;right:8px;z-index:3;width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:rgba(14,17,22,.85);color:var(--muted);cursor:pointer';
+    del.textContent='✕'; del.title='Supprimer'; del.className='v3-del';
     del.onclick=e=>{ e.stopPropagation(); deleteMorceau(m.id, m.title); };
     c.appendChild(del);
     c.onclick=()=>go('edit/'+m.id); root.append(c);
@@ -2150,6 +2182,16 @@ function toggleNoCuts(){
   buildPlans(); drawTimeline(); dirty();
   const nb=$('#noCutsBtn'); if(nb) nb.textContent=T(M.noCuts?'🎬 Sans coupes : ON':'🎬 Sans coupes : OFF');
   toast(M.noCuts?'Vidéo entière, sans coupes 🎬':'Coupes sur le beat réactivées ✂');
+}
+/* Verrou depuis la barre timeline : agit sur le plan sous la tête de lecture */
+function lockAtPlayhead(){
+  if(!M||!M.plans||!M.plans.length){ toast('Ajoute d\u2019abord un morceau et des plans'); return; }
+  const t=curTime();
+  const p=M.plans.find(p=>t>=p.start&&t<p.end)||M.plans[0];
+  pushHistory();
+  p.locked=!p.locked;
+  drawTimeline(); dirty();
+  toast(p.locked?'🔒 Plan verrouillé — il ne bougera plus':'🔓 Plan déverrouillé');
 }
 function shufflePlans(){
   if(!clips.length){toast('Ajoute d\u2019abord des vidéos à gauche');return;}

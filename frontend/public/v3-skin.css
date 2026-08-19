@@ -1,0 +1,186 @@
+/* ============================================================
+   BEATCUT V3 — Monument obsidienne, signal cramoisi.
+   Skin appliqué PAR-DESSUS le design system V2 du studio :
+   les jetons V2 sont remappés sur la palette V3, les rayons et
+   ombres disparaissent, Space Grotesk remplace Inter/Bricolage.
+============================================================ */
+:root{
+  --void:#000000; --ash:#cccccc; --frost:#ffffff; --graphite:#4c4c4c;
+  --crimson:#fc1c46; --hair:#171717; --hair-2:#2a2a2a; --lift:#0a0a0b;
+  --pill:9999px; --ease:cubic-bezier(.2,.7,.2,1);
+  /* remap des jetons V2 → V3 */
+  --ink:var(--void); --panel:var(--void); --panel-2:var(--lift);
+  --line:var(--hair); --text:var(--ash); --muted:var(--graphite);
+  --accent:var(--crimson); --accent-ink:#ffffff;
+  --ok:var(--ash); --danger:var(--crimson);
+  --r-s:0; --r-m:0; --r-l:0;
+  --font:'Space Grotesk',ui-sans-serif,system-ui,sans-serif;
+  --display:var(--font); --body:var(--font); --mono:var(--font);
+}
+[data-theme="light"]{
+  --void:#ffffff; --ash:#3d3d3d; --frost:#000000; --graphite:#8a8a8a;
+  --crimson:#e5062f; --hair:#e8e8e8; --hair-2:#d2d2d2; --lift:#fafafa;
+}
+/* Interdits V3 : aucune ombre, aucun rayon hors pilules */
+*{box-shadow:none!important;text-shadow:none!important}
+body{font-variant-numeric:tabular-nums}
+::selection{background:var(--crimson);color:#fff}
+h1,h2,h3{color:var(--frost);text-transform:uppercase;letter-spacing:-.024em}
+.hint{color:var(--graphite)}
+.mono{font-family:var(--font);font-size:12px;letter-spacing:.02em}
+
+/* ---------- Boutons : fantômes en pilule, cramoisi réservé ---------- */
+button{border-radius:var(--pill);background:var(--void);border:1px solid var(--hair-2);
+  color:var(--frost);text-transform:uppercase;font-size:12.5px;letter-spacing:.01em;
+  transition:border-color .2s var(--ease),background .18s var(--ease),color .2s,transform .18s var(--ease)}
+button:hover{border-color:var(--frost);background:var(--void)}
+button:active{transform:scale(.98)}
+button.primary{background:var(--void);border-color:var(--hair-2);color:var(--frost);font-weight:500}
+button.primary:hover{background:var(--void);border-color:var(--frost)}
+/* LA pilule cramoisie de l'écran éditeur : Exporter */
+#exportBtn.primary,button.pill-crimson{background:var(--crimson)!important;border-color:var(--crimson)!important;color:#fff!important;font-weight:500}
+#exportBtn.primary:hover,button.pill-crimson:hover{background:#ff3559!important;border-color:#ff3559!important}
+button.ghost{background:transparent;border-color:transparent;color:var(--graphite)}
+button.ghost:hover{color:var(--frost);border-color:transparent}
+button.small{border-radius:var(--pill)}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(--crimson);outline-offset:2px}
+
+/* ---------- Champs : bordure basse seule ---------- */
+input[type=text],textarea,select{background:transparent;border:none;border-bottom:1px solid var(--hair-2);
+  border-radius:0;color:var(--frost);transition:border-color .2s var(--ease)}
+input[type=text]:focus,textarea:focus,select:focus{border-bottom-color:var(--crimson);outline:none}
+::placeholder{color:var(--graphite)}
+select{background:var(--void)}
+select option{background:var(--void);color:var(--frost)}
+
+/* ---------- Curseurs de valeur ---------- */
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;height:22px}
+input[type=range]::-webkit-slider-runnable-track{height:1px;background:var(--hair-2)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;margin-top:-6px;
+  border-radius:var(--pill);background:var(--frost);border:none;transition:transform .15s var(--ease),background .15s}
+input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.28);background:var(--crimson)}
+input[type=range]::-moz-range-track{height:1px;background:var(--hair-2)}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:var(--pill);background:var(--frost);border:none}
+input[type=range]:active::-moz-range-thumb{background:var(--crimson)}
+
+/* ---------- En-tête ---------- */
+header{background:color-mix(in srgb,var(--void) 86%,transparent);border-bottom:1px solid var(--hair)}
+.logo span{font-weight:700;letter-spacing:-.045em;text-transform:uppercase;color:var(--frost)}
+.logo b{color:var(--frost);position:relative}
+.logo b::after{content:'';display:inline-block;width:5px;height:5px;background:var(--crimson);margin-left:4px;margin-bottom:1px}
+nav a{border-radius:0;color:var(--graphite);text-transform:uppercase;font-size:13px;letter-spacing:.02em;
+  position:relative;padding:7px 2px;margin:0 10px;background:none}
+nav a::after{content:'';position:absolute;left:0;right:100%;bottom:2px;height:1px;background:var(--crimson);transition:right .25s var(--ease)}
+nav a.active,nav a:hover{background:none;color:var(--frost)}
+nav a.active::after{right:0}
+.counter{border-color:var(--hair-2);color:var(--graphite);border-radius:var(--pill)}
+.counter b{color:var(--frost)}
+.avatar{background:var(--void);border-color:var(--hair-2)}
+#themeBtn{width:34px;height:34px;padding:0;display:grid;place-items:center;font-size:11px;color:var(--graphite)}
+#themeBtn:hover{color:var(--frost)}
+
+/* ---------- Pages Accueil / Morceaux (structure V3) ---------- */
+.page{max-width:1400px;padding:0 clamp(22px,4vw,90px) 80px}
+.v3-top{display:flex;align-items:flex-end;justify-content:space-between;gap:36px;padding:56px 0 29px;flex-wrap:wrap}
+.v3-top h1{font-size:clamp(32px,4.6vw,58px);font-weight:700;line-height:.98}
+.v3-top p{margin-top:9px;font-size:15px;color:var(--graphite);max-width:48ch;line-height:1.35;text-transform:none}
+.v3-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:1px;background:var(--hair);
+  border:1px solid var(--hair);margin-bottom:40px}
+.v3-proj{background:var(--void);cursor:pointer;position:relative;transition:background .2s var(--ease)}
+.v3-proj:hover{background:var(--lift)}
+.v3-proj:hover .go{color:var(--frost)}
+.v3-thumb{position:relative;aspect-ratio:16/10;border-bottom:1px solid var(--hair);
+  display:flex;align-items:center;gap:2px;padding:20px 16px;overflow:hidden}
+.v3-thumb i{flex:1;background:var(--hair-2);border-radius:var(--pill);min-height:3px}
+.v3-thumb i.k{background:var(--crimson)}
+.v3-thumb .bpm{position:absolute;top:12px;left:16px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--graphite)}
+.v3-thumb .st{position:absolute;top:10px;right:44px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--graphite);border:1px solid var(--hair-2);border-radius:var(--pill);padding:3px 10px}
+.v3-meta{padding:16px}
+.v3-meta h3{font-size:15px;font-weight:500;letter-spacing:-.01em;text-transform:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v3-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:11px;min-height:22px}
+.v3-tags span{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--graphite);
+  border:1px solid var(--hair-2);border-radius:var(--pill);padding:3px 9px}
+.v3-row{display:flex;justify-content:space-between;align-items:center;margin-top:13px;font-size:11.5px;color:var(--graphite)}
+.v3-row .go{transition:color .2s}
+.v3-new{background:var(--void);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;min-height:262px;padding:26px;text-align:center;cursor:pointer;transition:background .2s var(--ease)}
+.v3-new:hover{background:var(--lift)}
+.v3-new:hover .plus{border-color:var(--frost);color:var(--frost)}
+.v3-new .plus{width:46px;height:46px;border:1px solid var(--hair-2);border-radius:var(--pill);display:grid;place-items:center;
+  font-size:18px;color:var(--crimson);transition:border-color .2s,color .2s}
+.v3-new b{font-size:14px;color:var(--frost);font-weight:500}
+.v3-new span{font-size:12px;color:var(--graphite);max-width:210px;line-height:1.4;text-transform:none}
+.v3-del{position:absolute;top:9px;right:12px;z-index:3;width:26px;height:26px;border-radius:var(--pill);
+  border:1px solid var(--hair-2);background:var(--void);color:var(--graphite);font-size:11px;cursor:pointer}
+.v3-del:hover{border-color:var(--crimson);color:var(--crimson)}
+.v3-empty{border:1px solid var(--hair);padding:64px 36px;text-align:center;margin-bottom:40px}
+.v3-empty h2{font-size:26px;font-weight:700}
+.v3-empty p{margin:9px auto 29px;max-width:44ch;font-size:14px;color:var(--graphite);line-height:1.45;text-transform:none}
+/* Halo liseré : uniquement Nouveau morceau des pages projets */
+.halo{position:relative;display:inline-block;border-radius:var(--pill);padding:1px;overflow:hidden;isolation:isolate}
+.halo::before{content:'';position:absolute;inset:-170%;z-index:-1;
+  background:conic-gradient(from 0deg,transparent 0 70%,var(--frost) 82%,transparent 90%);animation:v3turn 5s linear infinite}
+@keyframes v3turn{to{transform:rotate(360deg)}}
+.stats,.stat{border-radius:0}
+.stat{background:var(--void);border:1px solid var(--hair)}
+.stat .k{color:var(--frost)}
+.starter{background:var(--void);border:1px solid var(--hair);border-radius:0}
+.section-title button{font-size:12px}
+
+/* ---------- Éditeur : surfaces & colonnes ---------- */
+.col,.stage,.timeline,.extract,.drop,.clip-box,.preset,.card,.auth-card,.dl-card,.mini-pop,.bpm-pop,
+.wblock,.variation,.choice2,.dl-row,.field{border-radius:0;background:var(--void);border-color:var(--hair)}
+.col h,.clip-head b{text-transform:uppercase;letter-spacing:.1em;color:var(--graphite)}
+.edit-top .title{border:none;border-bottom:1px solid transparent;background:transparent;font-weight:700;color:var(--frost)}
+.edit-top .title:focus{border-bottom-color:var(--crimson)}
+.savestate{border-radius:var(--pill);text-transform:uppercase;font-size:10.5px;letter-spacing:.1em}
+
+/* ---------- Segments : le bouton actif porte le fond blanc ---------- */
+.seg{border:1px solid var(--hair-2);border-radius:var(--pill);background:transparent;overflow:hidden}
+.seg b,.seg button{border:none;border-radius:var(--pill);background:transparent;color:var(--graphite)}
+.seg b.on,.seg button.on,.tabs b.on,.subtabs b.on{background:var(--frost)!important;color:var(--void)!important;border-color:var(--frost)!important}
+.tabs,.subtabs{border-radius:var(--pill);border:1px solid var(--hair-2);background:transparent}
+.tabs b,.subtabs b{border-radius:var(--pill);color:var(--graphite);background:transparent}
+.preset.on{border-color:var(--crimson)}
+
+/* ---------- Interrupteurs ---------- */
+.sw{border-radius:var(--pill)!important;transition:background .22s var(--ease),border-color .22s}
+.sw::after,.sw i{border-radius:var(--pill)!important;transition:transform .22s var(--ease),background .22s}
+.sw.on{background:var(--crimson)!important;border-color:var(--crimson)!important}
+
+/* ---------- Timeline ---------- */
+.tl-bar{border-bottom:1px solid var(--hair)}
+.tl-bar .lbl{text-transform:uppercase;letter-spacing:.12em;color:var(--graphite);font-size:11px}
+.playhead{background:var(--crimson)}
+.tl-lab{text-transform:uppercase;letter-spacing:.1em;font-size:10px;color:var(--graphite)}
+.plan{border-radius:0}
+.track{border-radius:0}
+
+/* ---------- Transport ---------- */
+.play-btn{border-radius:var(--pill);background:var(--void);border:1px solid var(--hair-2);color:var(--frost)}
+.play-btn:hover{border-color:var(--frost)}
+.timecode{font-family:var(--font);font-variant-numeric:tabular-nums;color:var(--frost)}
+.bpm-chip{border-radius:var(--pill)}
+.bpm-led{border-radius:var(--pill)}
+
+/* ---------- Accueil V2 (héro conservé pour compat) ---------- */
+.hero{background:var(--void);border:1px solid var(--hair);border-radius:0}
+.hero-wave i{background:var(--crimson);border-radius:var(--pill)}
+.word-chip,.clip-opt-chip,.dl-btn{border-radius:var(--pill)}
+#toast{border-radius:0;background:var(--void);border:1px solid var(--hair-2);color:var(--frost)}
+.ai-bar{border-radius:0}
+#loadOverlay .box{border-radius:0;background:var(--void);border:1px solid var(--hair-2)}
+#loadOverlay .bar{border-radius:var(--pill)}
+#loadOverlay .bar i{border-radius:var(--pill);background:var(--crimson)}
+.drop{border-style:dashed;border-color:var(--hair-2)}
+.drop:hover{border-color:var(--frost)}
+
+/* ---------- Mobile ---------- */
+#mobBar{background:color-mix(in srgb,var(--void) 92%,transparent);border-top:1px solid var(--hair)}
+#mobBar button{border-radius:0;border:none;background:transparent;color:var(--graphite)}
+#mobBar button.on{color:var(--frost);background:transparent}
+
+@media (prefers-reduced-motion:reduce){.halo::before{animation:none}}

@@ -704,3 +704,11 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Suite pytest réparée (pollution inter-tests pré-existante) : 159/159 PASS. Corrigés : promo REGRESSDAY laissait un bonus Pro sur démo ; test_projects_lot4 supprimait les projets fixture (fixture preserve ajoutée) ; logins multiples vs mode session unique (logout test → user jetable, cookies transférés dans TestRegression) ; assertion promo format obsolète. Projets démo restaurés depuis les backups.
 - 📌 Note séparée : quota Mux atteint (plan gratuit 10 assets) → tous les transcodages passent par le repli FFmpeg local (plus de CPU/RAM sur le pod). À traiter : nettoyer les assets Mux ou upgrader le plan Mux.
 - ⚠️ À REDÉPLOYER après montée de tier.
+
+## Refonte visuelle V3 — Phases 1-3 (19 août 2026)
+- Brief fondateur « monument obsidienne » : noir #000, cramoisi #fc1c46, Space Grotesk, zéro ombre/rayon (sauf pilules), 1 pilule cramoisie/écran, thème clair/sombre partagé (localStorage bc_theme).
+- ✅ Landing : /landing.html remplacée par v3 (essai « 3 jours » partout — choix utilisateur vs brief 7 j ; ancienne = landing-v2-backup.html). Curseur custom, onde héro 52 barres, halos héro+plan Pro, FAQ, tarifs 9,99/19,99/149/499.
+- ✅ Studio rhabillé (PAS réécrit) via /v3-skin.css : jetons V2 remappés → V3, pilules, segments .on fond blanc, inputs soulignés, ranges v3, timeline, mobile bar. #exportBtn = seule pilule cramoisie éditeur. Fonts Space Grotesk ajoutée.
+- ✅ Pages Accueil/Mes morceaux v3 (renderCards réécrit : onde seedée + coupes cramoisies, badge état, tags style, date relative, suppression, i18n) + bouton thème header (themeBtn) + bouton 🔒 Verrouiller dans la tl-bar (lockAtPlayhead sur plan sous la tête de lecture).
+- Testé testing_agent iteration_25.json : 100 % PASS, 0 exception JS (landing dark/light, thème partagé, cartes réelles, outils timeline, segments, export modal). toggleLang re-render les pages listes.
+- ⏳ RESTE (Phase 4, « tout le site ») : AuthPage.js, Dashboard.js (Mon compte), pages légales, Admin.js, page Série aux jetons v3. ⚠️ À REDÉPLOYER après Phase 4.

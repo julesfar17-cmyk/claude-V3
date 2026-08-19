@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BeatCut — Ton son. Un mois de vidéos.</title>
+<meta name="description" content="Dépose ton morceau : BeatCut détecte le tempo, monte tes clips sur le beat et écrit tes paroles à l'écran. 3 jours d'essai offerts — annulable en 2 clics.">
+<meta property="og:title" content="BeatCut — Ton son. Un mois de vidéos.">
+<meta property="og:description" content="L'outil des artistes : un son → une vidéo TikTok calée sur le beat, en 3 minutes.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://beat-cut.com">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   BEATCUT LANDING — Nuit de studio · Rouge REC · Or comptable
+   Display: Archivo Black · Body: Inter · Timecodes: JetBrains Mono
+============================================================ */
+:root{
+  --ink:#0B0E13; --panel:#12161D; --panel2:#171C25; --line:#232B36;
+  --text:#F4F6F8; --muted:#97A3B2;
+  --rec:#FF453A; --berry:#FF2D55;
+  --gold:#FFC959;
+  --grad:linear-gradient(135deg,#FF5C52,var(--rec) 45%,var(--berry));
+  --glow:0 0 0 1px rgba(255,69,58,.25),0 6px 30px rgba(255,45,85,.30);
+  --r:16px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--ink);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+::selection{background:var(--rec);color:#fff}
+img{max-width:100%}
+a{color:inherit;text-decoration:none}
+.mono{font-family:'JetBrains Mono',monospace}
+html{-webkit-text-size-adjust:100%}
+html,body{overflow-x:hidden}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+.disp{font-family:'Archivo Black',sans-serif;text-transform:uppercase;line-height:.95;letter-spacing:-.01em}
+
+/* ---------- Boutons ---------- */
+.btn{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:16px;padding:16px 28px;border-radius:14px;border:none;cursor:pointer;transition:transform .15s,box-shadow .2s;font-family:Inter}
+.btn.rec{background:var(--grad);color:#fff;box-shadow:var(--glow)}
+.btn.rec:hover{transform:translateY(-2px);box-shadow:0 0 0 1px rgba(255,69,58,.4),0 10px 40px rgba(255,45,85,.45)}
+.btn.rec:active{transform:scale(.98)}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--rec)}
+.btn .dot{width:9px;height:9px;border-radius:50%;background:#fff;animation:blink 1.6s infinite}
+@keyframes blink{50%{opacity:.35}}
+.under{display:block;margin-top:10px;font-size:13px;color:var(--muted)}
+
+/* ---------- Nav ---------- */
+nav{position:sticky;top:0;z-index:100;background:rgba(11,14,19,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{display:flex;align-items:center;gap:9px;font-family:'Archivo Black';font-size:19px;letter-spacing:.02em}
+.logo i{width:9px;height:9px;border-radius:50%;background:var(--rec);box-shadow:0 0 12px var(--rec);animation:blink 2.2s infinite}
+.logo b{color:var(--rec)}
+.nav-r{display:flex;gap:14px;align-items:center}
+.nav-r a.plain{color:var(--muted);font-size:14.5px;font-weight:500}
+.nav-r a.plain:hover{color:var(--text)}
+.nav-r .btn{padding:10px 20px;font-size:14.5px}
+
+/* ---------- Bannière promo (optionnelle, honnête) ---------- */
+#promo{display:none;background:linear-gradient(90deg,#2A1214,#1E0F16);border-bottom:1px solid rgba(255,69,58,.4);text-align:center;padding:10px 16px;font-size:14px}
+#promo b{color:var(--gold)}
+
+/* ---------- HÉRO ---------- */
+.hero{position:relative;padding:84px 0 70px;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-46%;left:50%;transform:translateX(-50%);width:900px;height:900px;background:radial-gradient(closest-side,rgba(255,45,85,.12),transparent 70%);pointer-events:none}
+.hero-in{display:flex;justify-content:center;text-align:center}
+.hero-center{max-width:780px}
+.hero-center .kicker{justify-content:center}
+.hero-center p.lead{margin-left:auto;margin-right:auto;max-width:560px}
+.hero-center .proof{justify-content:center}
+.kicker{display:inline-flex;align-items:center;gap:8px;font-family:'JetBrains Mono';font-size:12.5px;font-weight:700;letter-spacing:.14em;color:var(--rec);text-transform:uppercase;margin-bottom:22px}
+.kicker::before{content:'';width:22px;height:2px;background:var(--rec)}
+h1{font-size:clamp(42px,6.2vw,74px)}
+h1 .hit{color:var(--rec);text-shadow:0 0 34px rgba(255,69,58,.45)}
+.hero p.lead{margin:24px auto 34px;font-size:19px;color:var(--muted);max-width:560px}
+.hero p.lead b{color:var(--text)}
+.proof{display:flex;gap:26px;margin-top:38px;flex-wrap:wrap}
+.proof div{font-size:13.5px;color:var(--muted)}
+.proof b{display:block;font-family:'JetBrains Mono';font-size:21px;font-weight:700;color:var(--text)}
+.proof b em{font-style:normal;color:var(--rec)}
+
+/* ---------- Ticker ---------- */
+.ticker{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--panel);overflow:hidden;transform:rotate(-1.2deg);margin:26px -20px;padding:13px 0}
+.ticker-in{display:flex;gap:38px;white-space:nowrap;animation:tick 26s linear infinite;width:max-content}
+.ticker-in span{font-family:'Archivo Black';font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.ticker-in span::after{content:'⏺';color:var(--rec);margin-left:38px;font-size:11px}
+@keyframes tick{to{transform:translateX(-50%)}}
+
+/* ---------- Sections ---------- */
+section{padding:92px 0}
+.sec-head{text-align:center}
+.sec-head .sub{margin-left:auto;margin-right:auto}
+.eyebrow{font-family:'JetBrains Mono';font-size:12.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--rec);margin-bottom:16px}
+h2{font-size:clamp(30px,4.4vw,50px)}
+.sub{color:var(--muted);font-size:17.5px;margin-top:16px;max-width:640px}
+
+/* Problème */
+.pain{background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.pain-in{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center}
+.views{font-family:'JetBrains Mono';font-weight:700;background:var(--ink);border:1px solid var(--line);border-radius:var(--r);padding:30px;position:relative}
+.views .row{display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px dashed var(--line);font-size:14.5px;color:var(--muted)}
+.views .row:last-child{border:none}
+.views .row b{color:var(--text)}
+.views .row.bad b{color:var(--rec)}
+.views .tag{position:absolute;top:-13px;left:26px;background:var(--rec);color:#fff;font-size:11px;letter-spacing:.1em;padding:5px 12px;border-radius:8px}
+
+/* 3 étapes — vraie séquence, numéros mérités */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:52px}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:30px;position:relative;transition:transform .18s,border-color .18s}
+.step:hover{transform:translateY(-4px);border-color:rgba(255,69,58,.4)}
+.step .n{font-family:'JetBrains Mono';font-size:12px;font-weight:700;color:var(--rec);letter-spacing:.12em}
+.step h3{font-size:21px;margin:12px 0 10px;font-weight:700}
+.step p{color:var(--muted);font-size:15px}
+.step .t{font-family:'JetBrains Mono';font-size:12px;color:var(--gold);margin-top:16px;display:block}
+
+/* Features */
+.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:52px}
+.feat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:26px;transition:transform .18s,border-color .18s}
+.feat:hover{transform:translateY(-3px);border-color:rgba(255,69,58,.35)}
+.feat .ic{font-size:24px;margin-bottom:12px}
+.feat h3{font-size:17px;font-weight:700;margin-bottom:7px}
+.feat p{color:var(--muted);font-size:14.5px}
+
+/* Avant / Après */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:52px}
+.ba .side{border-radius:var(--r);border:1px solid var(--line);padding:30px;background:var(--panel)}
+.ba .side.after{border-color:rgba(255,69,58,.45);background:linear-gradient(170deg,#1A1216,var(--panel) 60%);box-shadow:var(--glow)}
+.ba .lab{font-family:'JetBrains Mono';font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:18px}
+.ba .side.after .lab{color:var(--rec)}
+.ba ul{list-style:none}
+.ba li{padding:9px 0;font-size:15.5px;color:var(--muted);display:flex;gap:11px}
+.ba li::before{content:'✕';color:#5B6674;font-weight:700}
+.ba .after li{color:var(--text)}
+.ba .after li::before{content:'✓';color:var(--rec)}
+
+/* Preuve */
+
+
+
+
+
+/* ---------- PRICING ---------- */
+.pricing{background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+
+
+
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:44px;align-items:stretch}
+.plan{background:var(--ink);border:1px solid var(--line);border-radius:20px;padding:34px 30px;display:flex;flex-direction:column;position:relative}
+.plan.star{border-color:var(--rec);box-shadow:var(--glow);transform:scale(1.03)}
+.plan.gold{border-color:rgba(255,201,89,.65);box-shadow:0 0 0 1px rgba(255,201,89,.25),0 6px 30px rgba(255,201,89,.14)}
+.plan.gold .badge{background:linear-gradient(135deg,#FFD97A,var(--gold) 60%,#E8A93C);color:#1A1204}
+.plan.gold li::before{color:var(--gold)}
+.plan .peryear{font-family:'JetBrains Mono';font-size:12.5px;color:var(--gold);margin-top:4px;min-height:18px}
+.plan .badge{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--grad);color:#fff;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:6px 16px;border-radius:20px;white-space:nowrap}
+.plan h3{font-size:19px;font-weight:700}
+.plan .for{color:var(--muted);font-size:13.5px;margin-top:5px;min-height:20px}
+.price{margin:24px 0 6px;display:flex;align-items:baseline;gap:8px}
+.price b{font-family:'JetBrains Mono';font-size:44px;font-weight:700;letter-spacing:-.02em}
+.price span{color:var(--muted);font-size:15px}
+
+
+.plan ul{list-style:none;margin:26px 0 30px;flex:1}
+.plan li{padding:8px 0;font-size:15px;color:var(--muted);display:flex;gap:10px}
+.plan li::before{content:'✓';color:var(--rec);font-weight:700}
+.plan li.no{opacity:.45}
+.plan li.no::before{content:'—';color:var(--muted)}
+.plan .btn{justify-content:center}
+.assure{display:flex;gap:28px;justify-content:center;margin-top:40px;flex-wrap:wrap}
+.assure div{font-size:13.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.assure b{color:var(--text);font-weight:600}
+
+/* FAQ */
+.faq{max-width:760px;margin:52px auto 0}
+.qa{border:1px solid var(--line);border-radius:14px;background:var(--panel);margin-bottom:12px;overflow:hidden}
+.qa button{width:100%;text-align:left;background:none;border:none;color:var(--text);font-family:Inter;font-size:16.5px;font-weight:600;padding:20px 24px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.qa button::after{content:'+';font-family:'JetBrains Mono';font-size:20px;color:var(--rec);transition:transform .2s}
+.qa.open button::after{transform:rotate(45deg)}
+.qa .a{max-height:0;overflow:hidden;transition:max-height .3s ease;color:var(--muted);font-size:15.5px}
+.qa.open .a{max-height:260px}
+.qa .a div{padding:0 24px 22px}
+
+/* CTA final */
+.final{text-align:center;position:relative;overflow:hidden}
+.final::before{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:820px;height:820px;background:radial-gradient(closest-side,rgba(255,45,85,.14),transparent 70%);pointer-events:none}
+.final h2{font-size:clamp(34px,5.4vw,62px)}
+.final .btn{margin-top:36px}
+
+footer{border-top:1px solid var(--line);padding:36px 0;color:var(--muted);font-size:13.5px}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+
+/* Sticky CTA mobile */
+#sticky{position:fixed;left:0;right:0;bottom:0;z-index:90;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:rgba(11,14,19,.9);backdrop-filter:blur(12px);border-top:1px solid var(--line);display:none}
+#sticky .btn{width:100%;justify-content:center;padding:15px}
+
+/* Reveal on scroll */
+.rv{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease}
+.rv.in{opacity:1;transform:none}
+
+/* ---------- Responsive ---------- */
+@media (max-width:920px){
+  .hero{padding:56px 0 50px}
+  .pain-in{grid-template-columns:1fr;gap:40px}
+  .steps,.feats{grid-template-columns:1fr}
+  .ba,.quotes{grid-template-columns:1fr}
+  .plans{grid-template-columns:1fr 1fr;gap:18px}
+  .plan.star{transform:none}
+  section{padding:66px 0}
+  #sticky{display:block}
+  footer{padding-bottom:96px}
+}
+@media (max-width:600px){
+  .plans{grid-template-columns:1fr;gap:26px}
+  /* --- nav compacte : logo + Connexion + CTA, plus aucun débordement --- */
+  .nav-in{height:58px;gap:8px}
+  .logo{flex-shrink:0}
+  .logo span{font-size:17px}
+  .nav-r{gap:12px;flex-shrink:0}
+  .nav-r a.plain{display:none}
+  .nav-r a.plain[href="/login"]{display:inline;white-space:nowrap;font-size:13.5px}
+  .nav-r .btn{padding:9px 14px;font-size:13.5px;white-space:nowrap;border-radius:10px}
+  /* --- hero : titre calibré, CTA pleine largeur, un seul CTA visible --- */
+  .hero{padding:44px 0 44px}
+  h1{font-size:clamp(34px,10.5vw,42px)}
+  .disp{overflow-wrap:break-word}
+  .hero p.lead{font-size:16px;margin:18px auto 26px}
+  .hero .btn{width:100%;justify-content:center;padding:16px}
+  .kicker{font-size:11px;letter-spacing:.12em}
+  .kicker::before{display:none}
+  .proof{gap:18px;margin-top:28px;justify-content:center}
+  .proof b{font-size:18px}
+  section{padding:54px 0}
+  h2.disp{font-size:clamp(26px,7.6vw,34px)}
+  .btn{font-size:15px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,.ticker-in{animation:none!important;transition:none!important}
+  .rv{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<div id="promo"><b>-10 %</b> avec le code <b class="mono" id="promoCode">TIKTOK10</b> — pour ceux qui viennent de TikTok ⏺</div>
+
+<nav>
+  <div class="wrap nav-in">
+    <a class="logo" href="#"><i></i><span>BEAT<b>CUT</b></span></a>
+    <div class="nav-r">
+      <a class="plain" href="#comment">Comment ça marche</a>
+      <a class="plain" href="#tarifs">Tarifs</a>
+      <a class="plain" href="/login">Connexion</a>
+      <a class="btn rec" href="/login">Créer ma vidéo</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-in">
+    <div class="hero-center">
+      <div class="kicker">Fait par un artiste, pour les artistes</div>
+      <h1 class="disp">Ton son mérite<br>mieux que <span class="hit">200 vues</span></h1>
+      <p class="lead">TikTok ne juge pas ta musique — il juge ta vidéo. <b>BeatCut monte ta vidéo à ta place</b> : plans calés sur le beat, paroles écrites à l'écran, format TikTok natif. En 3 minutes.</p>
+      <a class="btn rec" href="/login"><span class="dot"></span>Essaie 3 jours offerts</a>
+      <span class="under">3 jours offerts · Annulable en 2 clics avant le débit</span>
+      <div class="proof">
+        <div><b>1 000<em>+</em></b>artistes inscrits</div>
+        <div><b>3 min</b>du son à la vidéo</div>
+        <div><b>0</b>compétence en montage</div>
+      </div>
+    </div>
+  </div>
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-in" id="ticker">
+      <span>Rap FR</span><span>Plugg</span><span>Drill</span><span>Hyperpop</span><span>Afro</span><span>Cloud</span><span>Jersey</span><span>Rage</span><span>Trap</span><span>Shatta</span>
+    </div>
+  </div>
+</header>
+
+<section class="pain">
+  <div class="wrap pain-in">
+    <div class="rv">
+      <div class="eyebrow">Le vrai problème</div>
+      <h2 class="disp">L'algo ne juge pas ta musique.<br>Il juge ta vidéo.</h2>
+      <p class="sub">Trois semaines sur le mix, les prises refaites la nuit… et le jour de la sortie, une pochette fixe avec le son derrière. L'algo la classe en 2 secondes : personne ne s'arrête, ton morceau n'existe pas. Le problème n'a jamais été ta musique.</p>
+    </div>
+    <div class="views rv">
+      <div class="tag">Vécu · vérifiable</div>
+      <div class="row bad"><span>Pochette fixe + son</span><b>217 vues</b></div>
+      <div class="row"><span>Même son, vidéo calée sur le beat</span><b>Rétention ×2,2</b></div>
+      <div class="row"><span>Temps de montage</span><b>2 h → 3 min</b></div>
+      <div class="row"><span>Compétence requise</span><b>Aucune</b></div>
+    </div>
+  </div>
+</section>
+
+<section id="comment">
+  <div class="wrap">
+    <div class="rv sec-head">
+      <div class="eyebrow">Comment ça marche</div>
+      <h2 class="disp">Trois minutes, trois étapes</h2>
+    </div>
+    <div class="steps">
+      <div class="step rv">
+        <div class="n mono">ÉTAPE 01</div>
+        <h3>Dépose ton son</h3>
+        <p>MP3, WAV ou M4A. BeatCut détecte le tempo et pose la grille de beats tout seul. Choisis ton extrait — le refrain, le drop, ce que tu veux.</p>
+        <span class="t mono">⏱ 30 secondes</span>
+      </div>
+      <div class="step rv">
+        <div class="n mono">ÉTAPE 02</div>
+        <h3>Le beat fait le montage</h3>
+        <p>Tes clips (ou notre banque de clips incluse) sont découpés en plans et placés sur chaque temps. Tes paroles s'écrivent à l'écran, mot par mot, calées sur ta voix.</p>
+        <span class="t mono">⏱ 2 minutes</span>
+      </div>
+      <div class="step rv">
+        <div class="n mono">ÉTAPE 03</div>
+        <h3>Exporte. Poste. Recommence.</h3>
+        <p>Vidéo verticale 1080p prête pour TikTok, Reels et Shorts. Un morceau réglé une fois = des vidéos à volonté pour tout le mois.</p>
+        <span class="t mono">⏱ 30 secondes</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="rv sec-head">
+      <div class="eyebrow">Ce que tu as en main</div>
+      <h2 class="disp">Un studio de promo complet</h2>
+    </div>
+    <div class="feats">
+      <div class="feat rv"><div class="ic">🥁</div><h3>Coupes sur le beat</h3><p>Chaque changement de plan tombe sur un temps. C'est ça qui retient l'œil — et l'algo mesure exactement ça.</p></div>
+      <div class="feat rv"><div class="ic">✍️</div><h3>Paroles synchronisées</h3><p>Détection IA ou ton texte collé : chaque mot s'affiche au moment où tu le poses. Orthographe intacte.</p></div>
+      <div class="feat rv"><div class="ic">🎨</div><h3>Styles viraux</h3><p>Polices d'affiche, néon, pixel, abrasé. Karaoké, négatif, glow, VHS, fisheye, caméra portée — les codes de ta scène.</p></div>
+      <div class="feat rv"><div class="ic">🎬</div><h3>Série de vidéos</h3><p>Un morceau → plusieurs versions d'un coup, styles et plans différents. Tu gardes les meilleures, tu postes toute la semaine.</p></div>
+      <div class="feat rv"><div class="ic">📼</div><h3>Banque de clips incluse</h3><p>Pas de rushes ? Cherche « néon », « fumée », « ville la nuit » — des clips libres prêts à être calés sur ton beat.</p></div>
+      <div class="feat rv"><div class="ic">📱</div><h3>Sur téléphone aussi</h3><p>Studio complet dans le navigateur, pensé mobile. Interface en français et en anglais.</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="rv sec-head">
+      <div class="eyebrow">La différence à l'écran</div>
+      <h2 class="disp">Avant / Après BeatCut</h2>
+    </div>
+    <div class="ba">
+      <div class="side rv">
+        <div class="lab">Avant — ta promo actuelle</div>
+        <ul>
+          <li>Pochette fixe, zéro mouvement</li>
+          <li>2 h sur CapCut pour un rendu pas calé</li>
+          <li>Paroles absentes ou en retard sur la voix</li>
+          <li>Un format posté, puis plus rien pendant 3 semaines</li>
+        </ul>
+      </div>
+      <div class="side after rv">
+        <div class="lab">Après — chaque sortie</div>
+        <ul>
+          <li>Plans qui claquent sur chaque temps</li>
+          <li>3 minutes chrono, depuis ton téléphone</li>
+          <li>Chaque mot posé sur ta voix, style karaoké ou brut</li>
+          <li>Une série de vidéos par morceau — de quoi être présent toute la semaine</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+
+<section class="pricing" id="tarifs">
+  <div class="wrap" style="text-align:center">
+    <div class="rv">
+      <div class="eyebrow">Tarifs</div>
+      <h2 class="disp">Moins cher qu'une pochette,<br>plus utile qu'un clip</h2>
+      <div style="display:inline-flex;align-items:center;gap:8px;margin-top:14px;border:1px solid rgba(255,69,58,.45);background:rgba(255,69,58,.08);border-radius:999px;padding:8px 16px;font-size:13.5px">🎁 <b>3 jours d'essai offerts sur le plan Pro</b> — annulable en 2 clics avant le débit</div>
+    </div>
+    <div class="plans">
+      <div class="plan rv">
+        <h3>Essentiel</h3>
+        <div class="for">Pour sortir régulièrement</div>
+        <div class="price"><b>9,99 €</b><span>/mois</span></div>
+        <ul>
+          <li>15 exports par mois</li>
+          <li>Tous les styles et effets</li>
+          <li>Banque de clips incluse</li>
+          <li class="no">Séries de vidéos</li>
+        </ul>
+        <a class="btn ghost" href="/login">Choisir Essentiel</a>
+      </div>
+      <div class="plan star rv">
+        <div class="badge">Le plus choisi par les artistes</div>
+        <h3>Pro</h3>
+        <div class="for">Pour sortir des vidéos chaque semaine</div>
+        <div class="price"><b>19,99 €</b><span>/mois</span></div>
+        <ul>
+          <li><b>Exports illimités</b></li>
+          <li>Séries de vidéos (plusieurs versions d'un coup)</li>
+          <li>Tous les styles, effets et polices</li>
+          <li>Nouveautés en premier</li>
+        </ul>
+        <a class="btn rec" href="/login" style="justify-content:center">Essayer 3 jours offerts</a>
+        <div class="peryear" style="margin-top:8px">Puis 19,99 €/mois · annulable pendant l'essai</div>
+      </div>
+      <div class="plan gold rv">
+        <div class="badge">Meilleure affaire · −38 %</div>
+        <h3>Pro Annuel</h3>
+        <div class="for">Une année de sorties, réglée une fois</div>
+        <div class="price"><b>12,42 €</b><span>/mois</span></div>
+        <div class="peryear">149 € facturés une fois par an</div>
+        <ul>
+          <li><b>Tout le plan Pro</b>, exports illimités</li>
+          <li>Économise <b>90,88 €</b> vs Pro mensuel</li>
+          <li>≈ 4 mois et demi offerts sur l'année</li>
+          <li>Un seul paiement, zéro mensualité</li>
+        </ul>
+        <a class="btn rec" href="/login" style="justify-content:center;background:linear-gradient(135deg,#FFD97A,var(--gold) 55%,#E8A93C);color:#1A1204;box-shadow:0 0 0 1px rgba(255,201,89,.35),0 6px 30px rgba(255,201,89,.25)">Prendre l'année</a>
+      </div>
+      <div class="plan rv">
+        <h3>Studio</h3>
+        <div class="for">Pour les labels, managers et studios</div>
+        <div class="price"><b>499 €</b><span>/an</span></div>
+        <div class="peryear">≈ 8,32 € par artiste et par mois — facturé une fois par an</div>
+        <ul>
+          <li><b>5 profils artistes</b> séparés · 3 utilisateurs</li>
+          <li>Exports et séries illimités sur chaque profil</li>
+          <li>Votre logo sur les vidéos</li>
+          <li>Onboarding individuel 30 min · support prioritaire · facture entreprise</li>
+        </ul>
+        <a class="btn ghost" href="mailto:jules.beatcut@gmail.com?subject=D%C3%A9mo%20BeatCut%20Studio">Planifier une démo</a>
+        <div class="peryear" style="margin-top:8px">Plus de 5 artistes ? On construit votre offre.</div>
+      </div>
+    </div>
+    <div class="assure rv">
+      <div>🔓 <b>Sans engagement</b> (mensuel) — résilie en 2 clics</div>
+      <div>🎁 <b>3 jours offerts</b> — rappel par email avant le débit</div>
+      <div>🔐 Paiement sécurisé <b>Stripe</b></div>
+      <div>📄 Tes vidéos t'appartiennent à 100 %</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="rv" style="text-align:center">
+      <div class="eyebrow">Questions directes</div>
+      <h2 class="disp">Réponses directes</h2>
+    </div>
+    <div class="faq">
+      <div class="qa rv"><button onclick="qa(this)">Comment fonctionne l'essai de 3 jours ?</button>
+        <div class="a"><div>Tu choisis le plan Pro, ta carte est enregistrée (paiement sécurisé Stripe) et tu as immédiatement l'accès complet pendant 3 jours. On t'envoie un rappel par email avant le débit, et tu peux annuler en 2 clics jusqu'au dernier moment — si tu annules pendant l'essai, rien n'est débité.</div></div></div>
+      <div class="qa rv"><button onclick="qa(this)">Je ne sais pas monter. C'est un problème ?</button>
+        <div class="a"><div>C'est exactement pour toi. Tu déposes ton son, le tempo et les plans se règlent seuls. La seule décision que tu prends, c'est le style — et il y a des presets.</div></div></div>
+      <div class="qa rv"><button onclick="qa(this)">Ça marche sur téléphone ?</button>
+        <div class="a"><div>Oui, le studio complet tourne dans le navigateur du téléphone (Chrome ou Safari — pas le navigateur intégré de TikTok, qui bloque les téléchargements de vidéos).</div></div></div>
+      <div class="qa rv"><button onclick="qa(this)">À qui appartiennent les vidéos ?</button>
+        <div class="a"><div>À toi, entièrement, usage commercial compris. BeatCut ne pose aucun droit sur ton contenu et n'ajoute aucun watermark sur tes vidéos.</div></div></div>
+      <div class="qa rv"><button onclick="qa(this)">Et si je veux arrêter ?</button>
+        <div class="a"><div>Résiliation en 2 clics depuis ton compte, effective à la fin de la période payée. Pas de mail à envoyer, pas de rétention forcée.</div></div></div>
+      <div class="qa rv"><button onclick="qa(this)">Pourquoi pas CapCut ?</button>
+        <div class="a"><div>CapCut est un excellent éditeur généraliste — si tu as 2 h et l'œil pour caler chaque coupe à la main. BeatCut fait une seule chose : des vidéos de musique calées sur le beat, automatiquement. C'est l'outil de l'artiste pressé, pas celui du monteur.</div></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap rv">
+    <div class="eyebrow" style="justify-content:center;display:inline-flex">Ton prochain son sort quand ?</div>
+    <h2 class="disp">Cette fois, sors-le<br>avec une vraie vidéo</h2>
+    <a class="btn rec" href="/login"><span class="dot"></span>Essaie 3 jours offerts</a>
+    <span class="under">3 minutes montre en main · Annulable en 2 clics avant le débit</span>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <a class="logo" href="#"><i></i><span>BEAT<b>CUT</b></span></a>
+    <div>Fait avec ⏺ par un artiste indépendant · <a href="/cgv" style="text-decoration:underline">CGV</a> · <a href="/confidentialite" style="text-decoration:underline">Confidentialité</a> · <a href="/contact" style="text-decoration:underline">Contact</a></div>
+  </div>
+</footer>
+
+<div id="sticky"><a class="btn rec" href="/login"><span class="dot"></span>Essaie 3 jours offerts</a></div>
+
+<script>
+/* ---------- Ticker : dupliquer pour boucler ---------- */
+(function(){const t=document.getElementById('ticker');t.innerHTML+=t.innerHTML;})();
+
+/* ---------- FAQ ---------- */
+function qa(btn){ btn.parentElement.classList.toggle('open'); }
+
+/* ---------- Reveal au scroll ---------- */
+(function(){
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.12});
+  document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+})();
+
+/* ---------- CTA sticky : ne s'affiche qu'une fois le CTA du hero hors écran (évite le doublon) ---------- */
+(function(){
+  const st=document.getElementById('sticky');
+  const heroCta=document.querySelector('.hero .btn');
+  if(!st||!heroCta||!('IntersectionObserver' in window)) return;
+  st.style.display='none';
+  new IntersectionObserver(en=>{ st.style.display=en[0].isIntersecting?'none':''; },{threshold:0}).observe(heroCta);
+})();
+
+/* ---------- Bannière promo : activable par Jules ----------
+   Pour activer : décommente la ligne, mets ton vrai code actif.
+   RÈGLE : jamais de fausse urgence — la bannière ne s'affiche que si un code tourne vraiment. */
+// document.getElementById('promo').style.display='block';
+</script>
+</body>
+</html>
