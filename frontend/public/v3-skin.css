@@ -208,3 +208,15 @@ body.editing header{display:none}
 #mobBar button.on{color:var(--frost);background:transparent}
 
 @media (prefers-reduced-motion:reduce){.halo::before{animation:none}}
+
+/* ---------- Curseur point + anneau (desktop uniquement) ---------- */
+@media (hover:hover) and (pointer:fine){
+  body{cursor:none}
+  a,button,input,label,select,textarea,[data-hit]{cursor:none!important}
+  .cur,.cur-ring{position:fixed;top:0;left:0;z-index:9999;pointer-events:none;border-radius:var(--pill);mix-blend-mode:difference}
+  .cur{width:6px;height:6px;background:#fff;transform:translate(-50%,-50%)}
+  .cur-ring{width:26px;height:26px;border:1px solid #fff;transition:width .2s var(--ease),height .2s var(--ease),opacity .2s}
+  body.hit .cur-ring{width:44px;height:44px}
+  body.hit .cur{opacity:0}
+  body.down .cur-ring{width:18px;height:18px}
+}

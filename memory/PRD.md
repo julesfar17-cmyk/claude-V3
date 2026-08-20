@@ -727,3 +727,9 @@ Voir `/app/memory/test_credentials.md` (admin@beatcut.fr, demo@beatcut.fr)
 - ✅ Emails Resend : gabarit central _email_html refait en DA v3 (noir #000, bordure #171717, pilule cramoisie #fc1c46, capitales, carré rouge logo, zéro émoji) — vérifié visuellement.
 - Testé testing_agent iteration_27.json : 100 % PASS desktop + mobile, aucun bug.
 - ⚠️ À REDÉPLOYER.
+
+## Curseur V3 point + anneau (20 août 2026)
+- ✅ Curseur custom maquette (point 6px + anneau 26px, mix-blend difference, hover .hit 44px, clic .down 18px, lerp .16) sur TOUTES les pages : app React (index.js + index.css), studio.html (script DOMContentLoaded + v3-skin.css), landing (déjà présent).
+- ✅ Desktop uniquement (@media hover+pointer:fine), délégation mouseover (éléments dynamiques du studio couverts).
+- ✅ Anti-double-curseur : les routes iframe (/ landing et /studio) posent body.no-cur → curseur parent masqué, celui de l'iframe fait foi ; retiré au unmount (dashboard etc. le récupèrent).
+- Testé par vérifications Playwright ciblées : .cur/.cur-ring présents, cursor:none, .hit au survol des boutons, no-cur correct sur les 3 contextes.

@@ -68,6 +68,25 @@ html {
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
 
+/* ---------- Curseur V3 : point + anneau (desktop uniquement) ---------- */
+@media (hover: hover) and (pointer: fine) {
+    body { cursor: none; }
+    a, button, input, label, select, textarea, [role="button"] { cursor: none !important; }
+    .cur, .cur-ring {
+        position: fixed; top: 0; left: 0; z-index: 9999; pointer-events: none;
+        border-radius: 9999px; mix-blend-mode: difference;
+    }
+    .cur { width: 6px; height: 6px; background: #fff; transform: translate(-50%, -50%); }
+    .cur-ring {
+        width: 26px; height: 26px; border: 1px solid #fff;
+        transition: width .2s cubic-bezier(.2,.7,.2,1), height .2s cubic-bezier(.2,.7,.2,1), opacity .2s;
+    }
+    body.hit .cur-ring { width: 44px; height: 44px; }
+    body.hit .cur { opacity: 0; }
+    body.down .cur-ring { width: 18px; height: 18px; }
+    body.no-cur .cur, body.no-cur .cur-ring { display: none; }
+}
+
 @layer base {
     :root {
         /* void #000 · ash #ccc · frost #fff · graphite #4c4c4c · crimson #fc1c46 · hair #171717 · hair-2 #2a2a2a */

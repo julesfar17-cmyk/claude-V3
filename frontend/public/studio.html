@@ -537,6 +537,20 @@ function swapTheme(){
 }
 function paintThemeBtn(){const s=document.documentElement.dataset.theme==='dark'?'☀':'☾';['themeBtn','editThemeBtn'].forEach(id=>{const b=document.getElementById(id);if(b)b.textContent=s;});}
 document.addEventListener('DOMContentLoaded',paintThemeBtn);
+/* Curseur V3 : point + anneau, délégation (les éléments du studio sont créés dynamiquement) */
+document.addEventListener('DOMContentLoaded',function(){
+  if(!matchMedia('(hover:hover) and (pointer:fine)').matches) return;
+  const c=document.createElement('div');c.className='cur';
+  const r=document.createElement('div');r.className='cur-ring';
+  document.body.append(c,r);
+  let x=innerWidth/2,y=innerHeight/2,rx=x,ry=y;
+  addEventListener('mousemove',e=>{x=e.clientX;y=e.clientY;c.style.transform='translate('+x+'px,'+y+'px) translate(-50%,-50%)';},{passive:true});
+  addEventListener('mousedown',()=>document.body.classList.add('down'));
+  addEventListener('mouseup',()=>document.body.classList.remove('down'));
+  const HIT='a,button,input,label,select,textarea,[data-hit],[onclick],[role="button"]';
+  addEventListener('mouseover',e=>{document.body.classList.toggle('hit',!!(e.target.closest&&e.target.closest(HIT)));},{passive:true});
+  (function loop(){rx+=(x-rx)*.16;ry+=(y-ry)*.16;r.style.transform='translate('+rx+'px,'+ry+'px) translate(-50%,-50%)';requestAnimationFrame(loop);})();
+});
 </script>
 </head>
 <body>
